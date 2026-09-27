@@ -42,6 +42,26 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 .wa-office-btn:hover{filter:brightness(.95);}
 </style>
 
+  <!-- FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAG5jGJKIltpJ-a0DKz53Kyx90c8_peHS0",
+    authDomain: "preventista-naa.firebaseapp.com",
+    projectId: "preventista-naa",
+    storageBucket: "preventista-naa.firebasestorage.app",
+    messagingSenderId: "540336043975",
+    appId: "1:540336043975:web:13f1d90b4ac5e29c108be2"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+
+  const firebaseAuth = firebase.auth();
+  const firebaseDB = firebase.firestore();
+</script>
 </head>
 <body><div id="toast" class="toast">✅ Produto carregado</div>
 
