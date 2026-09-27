@@ -1,0 +1,10 @@
+{
+  "name": "Preventista Fácil N.A.A.",
+  "short_name": "Preventista N.A.A.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "description": "Sistema Preventista Fácil de DISTRIBUIDORA N.A.A. S.A.S.",
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
