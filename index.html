@@ -319,6 +319,10 @@ function renderCatalogEditor(){
   box.querySelectorAll(".catalog-edit").forEach(btn=>btn.onclick=()=>editCatalogProduct(Number(btn.dataset.editIndex)));
 }
 function editCatalogProduct(j){
+  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
+    alert('Solo el administrador puede editar productos.');
+    return;
+  }
   const built=PRODUCTS.map((p,i)=>({p:getProducts()[i], original:p, type:"base", index:i}));
   const manual=customProducts.map((p,i)=>({p, original:p, type:"manual", index:i}));
   const all=built.concat(manual), item=all[j]; if(!item)return;
@@ -340,6 +344,10 @@ function editCatalogProduct(j){
   if(rb)rb.onclick=()=>restoreCatalogProduct(item);
 }
 function saveCatalogProduct(item){
+  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
+    alert('Solo el administrador puede editar productos.');
+    return;
+  }
   const name=document.getElementById("editName").value.trim();
   const pres=document.getElementById("editPres").value.trim();
   const unit=document.getElementById("editUnit").value.trim()||"unidad";
@@ -369,6 +377,10 @@ function restoreCatalogProduct(item){
 }
 
 function addManualProduct(){
+  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
+  alert('Solo el administrador puede agregar productos.');
+  return;
+}
 let name=document.getElementById("pName").value.trim(),pres=document.getElementById("pPres").value.trim(),unit=document.getElementById("pUnit").value.trim()||"unidad",price=Number(document.getElementById("pPrice").value);
 if(!name||!pres||!price||price<0){alert("Completá nombre, presentación y precio");return}
 customProducts.push([name,pres,unit,[[1,price]]]);
@@ -377,6 +389,10 @@ localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
 renderManualProducts();renderProducts();alert("Producto agregado");
 }
 function removeManualProduct(i){
+  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
+    alert('Solo el administrador puede eliminar productos.');
+    return;
+  }
 if(!confirm("¿Quitar este producto?"))return;
 customProducts.splice(i,1);localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));renderManualProducts();renderProducts();
 }
