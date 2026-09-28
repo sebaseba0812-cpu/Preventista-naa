@@ -207,36 +207,58 @@ function money(n){return Number(n||0).toLocaleString("es-AR",{minimumFractionDig
 function save(){localStorage.setItem("NAA_CLIENTS",JSON.stringify(clients));localStorage.setItem("NAA_ORDERS",JSON.stringify(orders))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 
-function login(){
+async function login(){
   const username = (document.getElementById('loginName')?.value || '').trim().toLowerCase();
   const password = document.getElementById('loginPass')?.value || '';
 
-  const USERS = [
-    {"name":"Administrador","username":"admin","password":"12345678","role":"admin"},
-    {"name":"Alejandra González","username":"alejandra.gonzalez","password":"NAA-Ale27#Gz","role":"preventista"},
-    {"name":"Milagros González","username":"milagros.gonzalez","password":"NAA-Mila84#Gz","role":"preventista"},
-    {"name":"Pablo González","username":"pablo.gonzalez","password":"NAA-Pab63#Gz","role":"preventista"},
-    {"name":"Gustavo Joaquín","username":"gustavo.joaquin","password":"NAA-Gus51#Jq","role":"preventista"},
-    {"name":"Antonella López","username":"antonella.lopez","password":"NAA-Ant92#Lp","role":"preventista"},
-    {"name":"Santiago Ramón López","username":"santiago.lopez","password":"NAA-San46#Lp","role":"preventista"},
-    {"name":"Lorena Ruth Sosa","username":"lorena.sosa","password":"NAA-Lor78#Ss","role":"preventista"}
-  ];
-
-  const found = USERS.find(u =>
-    u.username.toLowerCase() === username && u.password === password
-  );
-
-  if(!found){
-    alert('Usuario o contraseña incorrectos.');
+  if(!username || !password){
+    alert('Ingresá usuario y contraseña.');
     return;
   }
 
-  localStorage.setItem('NAA_USER', JSON.stringify({
-    name: found.name,
-    username: found.username,
-    role: found.role || 'preventista'
-  }));
-  location.reload();
+  try{
+    const snap = await firebaseDB
+      .collection('users')
+      .where('username', '==', username)
+      .limit(1)
+      .get();
+
+    if(snap.empty){
+      alert('Usuario o contraseña incorrectos.');
+      return;
+    }
+
+    const userDoc = snap.docs[0];
+    const data = userDoc.data();
+
+    if(data.active !== true){
+      alert('Este usuario está desactivado.');
+      return;
+    }
+
+    if(!data.authEmail){
+      alert('El usuario no tiene un correo de acceso configurado.');
+      return;
+    }
+
+    await firebaseAuth.signInWithEmailAndPassword(
+      data.authEmail,
+      password
+    );
+
+    localStorage.setItem('NAA_USER', JSON.stringify({
+      uid: userDoc.id,
+      name: data.name,
+      username: data.username,
+      role: data.role || 'preventista'
+    }));
+
+    location.reload();
+
+  }catch(error){
+    console.error(error);
+    alert('Usuario o contraseña incorrectos.');
+  }
 }
 function init(){
 let d=new Date(),ds=d.toISOString().slice(0,10);
