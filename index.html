@@ -87,7 +87,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button class="active" onclick="show('pedido',this)">🛒 Pedido</button>
 <button onclick="show('clientes',this)">🏪 Clientes</button>
 <button onclick="show('historial',this)">📋 Historial</button>
-<button onclick="show('productos',this)">📦 Productos</button>
+<button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
 <button onclick="show('cierre',this)">📊 Cierre</button>
 </nav>
 <main>
@@ -282,6 +282,10 @@ async function login(){
   }
 }
 function init(){
+  const user = JSON.parse(localStorage.getItem('NAA_USER') || '{}');
+if(user.role !== 'admin'){
+  document.getElementById('productosNavBtn')?.classList.add('hidden');
+}
 let d=new Date(),ds=d.toISOString().slice(0,10);
 document.getElementById("from").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
 document.getElementById("to").value=ds;
