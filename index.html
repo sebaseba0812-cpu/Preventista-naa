@@ -217,37 +217,58 @@ async function login(){
   }
 
   try{
-    const snap = await firebaseDB
-      .collection('users')
-      .where('username', '==', username)
-      .limit(1)
-      .get();
+    let authEmail = '';
 
-    if(snap.empty){
+    // Administrador
+    if(username === 'admin'){
+      authEmail = 'sebaseba0812@gmail.com';
+    }else{
+      // Preventistas
+      const emails = {
+        'alejandra.gonzalez': 'alejandra.gonzalez@preventista-naa.com',
+        'milagros.gonzalez': 'milagros.gonzalez@preventista-naa.com',
+        'pablo.gonzalez': 'pablo.gonzalez@preventista-naa.com',
+        'gustavo.joaquin': 'gustavo.joaquin@preventista-naa.com',
+        'antonella.lopez': 'antonella.lopez@preventista-naa.com',
+        'santiago.lopez': 'santiago.lopez@preventista-naa.com',
+        'lorena.sosa': 'lorena.sosa@preventista-naa.com'
+      };
+
+      authEmail = emails[username] || '';
+    }
+
+    if(!authEmail){
       alert('Usuario o contraseña incorrectos.');
       return;
     }
 
-    const userDoc = snap.docs[0];
+    // Primero autenticamos con Firebase
+    const credential = await firebaseAuth.signInWithEmailAndPassword(
+      authEmail,
+      password
+    );
+
+    // Después buscamos los datos del usuario
+    const userDoc = await firebaseDB
+      .collection('users')
+      .doc(credential.user.uid)
+      .get();
+
+    if(!userDoc.exists){
+      alert('El usuario está autenticado pero no tiene perfil configurado.');
+      return;
+    }
+
     const data = userDoc.data();
 
     if(data.active !== true){
+      await firebaseAuth.signOut();
       alert('Este usuario está desactivado.');
       return;
     }
 
-    if(!data.authEmail){
-      alert('El usuario no tiene un correo de acceso configurado.');
-      return;
-    }
-
-    await firebaseAuth.signInWithEmailAndPassword(
-      data.authEmail,
-      password
-    );
-
     localStorage.setItem('NAA_USER', JSON.stringify({
-      uid: userDoc.id,
+      uid: credential.user.uid,
       name: data.name,
       username: data.username,
       role: data.role || 'preventista'
