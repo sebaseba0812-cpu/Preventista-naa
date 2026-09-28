@@ -89,6 +89,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button onclick="show('historial',this)">📋 Historial</button>
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
 <button onclick="show('cierre',this)">📊 Cierre</button>
+  <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
 <main>
 
@@ -291,7 +292,12 @@ document.getElementById("from").value=d.getFullYear()+"-"+String(d.getMonth()+1)
 document.getElementById("to").value=ds;
 updateNet();renderClients();showSelectedClient();renderProducts();renderHistory();renderManualProducts();renderCatalogEditor();renderClosure();
 }
-function updateNet(){document.getElementById("net").textContent=navigator.onLine?"🟢 Conectado":"🔴 Sin internet"}
+function logout(){
+  firebaseAuth.signOut();
+  localStorage.removeItem('NAA_USER');
+  location.reload();
+}
+  function updateNet(){document.getElementById("net").textContent=navigator.onLine?"🟢 Conectado":"🔴 Sin internet"}
 addEventListener("online",updateNet);addEventListener("offline",updateNet);
 
 function show(id,btn){
