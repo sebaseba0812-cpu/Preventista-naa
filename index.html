@@ -476,6 +476,16 @@ async function renderStock(){
         </p>
       `;
 
+     const actions = document.createElement("div");
+actions.style.marginTop = "10px";
+
+actions.innerHTML = `
+  <button class="secondary" onclick="stockEntrada('${p.id}')">➕ Entrada</button>
+  <button class="secondary" onclick="stockSalida('${p.id}')">➖ Salida</button>
+  <button class="secondary" onclick="stockAjustar('${p.id}')">✏️ Ajustar</button>
+`;
+
+div.appendChild(actions);
       list.appendChild(div);
 
     });
