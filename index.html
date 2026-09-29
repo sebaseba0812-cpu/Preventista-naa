@@ -142,6 +142,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <label>Unidad / empaque</label><input id="pUnit" placeholder="Ej.: bulto, caja, unidad">
 <label>Precio inicial</label><input id="pPrice" type="number" min="0" step="0.01" placeholder="0">
 <button class="primary" style="margin-top:10px;width:100%" onclick="addManualProduct()">➕ Agregar producto</button>
+  <button class="secondary" style="margin-top:10px;width:100%" onclick="syncProductsToFirebase()">🔄 Sincronizar productos con Firebase</button>
 </div>
 <div class="card"><h3>✏️ Editar productos del catálogo</h3>
 <p class="small">Acá aparecen también los productos que ya vienen cargados en la pantalla principal. Podés cambiar precios, presentación, empaque o nombre. Los cambios quedan guardados en este dispositivo.</p>
