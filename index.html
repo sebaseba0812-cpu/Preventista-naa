@@ -88,6 +88,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button onclick="show('clientes',this)">🏪 Clientes</button>
 <button onclick="show('historial',this)">📋 Historial</button>
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
+  <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
 <button onclick="show('cierre',this)">📊 Cierre</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
@@ -151,7 +152,45 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <div class="card"><h3>Productos manuales</h3><div id="manualProducts"></div></div>
 </section>
 
-<section id="cierre" class="screen">
+<section id="stock" class="screen">
+
+<div class="card">
+<h2>📦 Stock / Inventario</h2>
+<p class="small">
+Desde acá el administrador puede cargar y controlar el stock de todos los productos.
+</p>
+
+<label>Nombre del producto</label>
+<input id="stockName" placeholder="Ej.: Sancor Leche Entera">
+
+<label>Presentación</label>
+<input id="stockPres" placeholder="Ej.: 1 litro">
+
+<label>Unidad / empaque</label>
+<input id="stockUnit" placeholder="Ej.: caja x12, bulto, unidad">
+
+<label>Cantidad disponible</label>
+<input id="stockQty" type="number" min="0" step="1" placeholder="0">
+
+<button class="primary" style="width:100%;margin-top:10px"
+onclick="addStockProduct()">
+➕ Agregar al stock
+</button>
+
+</div>
+
+<div class="card">
+<h3>📋 Productos en stock</h3>
+
+<input id="stockSearch"
+placeholder="🔎 Buscar producto..."
+oninput="renderStock()">
+
+<div id="stockList"></div>
+
+</div>
+
+</section><section id="cierre" class="screen">
 <div class="card"><h2>Cierre quincenal</h2>
 <div class="row"><div><label>Desde</label><input type="date" id="from"></div><div><label>Hasta</label><input type="date" id="to"></div></div>
 <label>Comisión</label><input id="commission" type="number" value="4" step=".1" oninput="renderClosure()">%
