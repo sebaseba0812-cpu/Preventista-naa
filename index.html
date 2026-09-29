@@ -498,6 +498,51 @@ div.appendChild(actions);
 
   }
 }
+ async function stockEntrada(id){
+
+  const ref = firebaseDB.collection("stock").doc(id);
+  const snap = await ref.get();
+
+  if(!snap.exists){
+    alert("No se encontró el producto.");
+    return;
+  }
+
+  const p = snap.data();
+  const actual = Number(p.quantity || 0);
+
+  const cantidad = prompt(
+    Entrada de stock\n\nProducto: ${p.name || ""}\nStock actual: ${actual}\n\n¿Cuántas unidades ingresaron?,
+    "1"
+  );
+
+  if(cantidad === null) return;
+
+  const ingreso = Number(cantidad);
+
+  if(!Number.isFinite(ingreso) || ingreso <= 0){
+    alert("Ingresá una cantidad válida.");
+    return;
+  }
+
+  try{
+
+    await ref.update({
+      quantity: actual + ingreso,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert(Stock actualizado.\n\n${actual} → ${actual + ingreso});
+
+    renderStock();
+
+  }catch(error){
+
+    console.error(error);
+    alert("No se pudo actualizar el stock.");
+
+  }
+}
   async function addStockProduct(){
 
   const name = document.getElementById("stockName").value.trim();
