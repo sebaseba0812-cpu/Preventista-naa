@@ -206,7 +206,7 @@ function getProducts(){
         name: p[0],
         presentation: p[1],
         unit: p[2],
-        prices: p[3],
+        prices: p[3].map(t => ({from: t[0], price: t[1]})),
         active: true,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
