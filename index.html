@@ -398,6 +398,15 @@ async function renderPromotions(){
       `;
 
       list.appendChild(div);
+      const actions = document.createElement("div");
+actions.style.marginTop = "10px";
+
+actions.innerHTML = `
+  <button class="secondary" onclick="editPromotion('${doc.id}')">✏️ Editar</button>
+  <button class="danger" onclick="cancelPromotion('${doc.id}')">🚫 Anular</button>
+`;
+
+div.appendChild(actions);
     });
 
   }catch(error){
