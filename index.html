@@ -431,7 +431,63 @@ function productImage(p){
  return "";
 }
 
-function money(n){return Number(n||0).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}
+async function editPromotion(id){
+  const ref = firebaseDB.collection("promotions").doc(id);
+  const snap = await ref.get();
+
+  if(!snap.exists){
+    alert("No se encontró la promoción.");
+    return;
+  }
+
+  const p = snap.data();
+
+  const nuevoNombre = prompt("Nombre de la promoción:", p.name || "");
+  if(nuevoNombre === null) return;
+
+  const nuevoValor = prompt("Valor / condición:", p.value ?? "");
+  if(nuevoValor === null) return;
+
+  const nuevoInicio = prompt("Desde (AAAA-MM-DD):", p.start || "");
+  if(nuevoInicio === null) return;
+
+  const nuevoFin = prompt("Hasta (AAAA-MM-DD):", p.end || "");
+  if(nuevoFin === null) return;
+
+  try{
+    await ref.update({
+      name: nuevoNombre,
+      value: nuevoValor,
+      start: nuevoInicio,
+      end: nuevoFin,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("Promoción modificada correctamente.");
+    loadPromotions();
+  }catch(error){
+    console.error(error);
+    alert("No se pudo modificar la promoción.");
+  }
+}
+
+async function cancelPromotion(id){
+  if(!confirm("¿Querés anular esta promoción?")) return;
+
+  try{
+    await firebaseDB.collection("promotions").doc(id).update({
+      active: false,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("Promoción anulada correctamente.");
+    loadPromotions();
+  }catch(error){
+    console.error(error);
+    alert("No se pudo anular la promoción.");
+  }
+}
+  function money(n){return Number(n||0).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function save(){localStorage.setItem("NAA_CLIENTS",JSON.stringify(clients));localStorage.setItem("NAA_ORDERS",JSON.stringify(orders))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 
