@@ -89,6 +89,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button onclick="show('historial',this)">📋 Historial</button>
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
+  <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
 <button onclick="show('cierre',this)">📊 Cierre</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
@@ -190,7 +191,57 @@ oninput="renderStock()">
 
 </div>
 
-</section><section id="cierre" class="screen">
+</section>
+
+<section id="promociones" class="screen">
+
+<div class="card">
+<h2>🔥 Promociones</h2>
+
+<p class="small">
+Creá y administrá promociones para los preventistas.
+</p>
+
+<label>Nombre de la promoción</label>
+<input id="promoName" placeholder="Ej.: Promo Leche">
+
+<label>Producto</label>
+<input id="promoProduct" placeholder="Ej.: Sancor Leche Entera">
+
+<label>Tipo de promoción</label>
+<select id="promoType">
+<option value="percent">Descuento porcentual</option>
+<option value="fixed">Precio promocional</option>
+<option value="quantity">Bonificación por cantidad</option>
+<option value="tier">Precio por cantidad</option>
+</select>
+
+<label>Valor / condición</label>
+<input id="promoValue" type="number" min="0" step="0.01"
+placeholder="Ej.: 10">
+
+<label>Desde</label>
+<input id="promoStart" type="date">
+
+<label>Hasta</label>
+<input id="promoEnd" type="date">
+
+<button class="primary" style="width:100%;margin-top:10px">
+➕ Crear promoción
+</button>
+
+</div>
+
+<div class="card">
+<h3>📋 Promociones creadas</h3>
+
+<div id="promotionsList"></div>
+
+</div>
+
+</section>
+
+<section id="cierre" class="screen">
 <div class="card"><h2>Cierre quincenal</h2>
 <div class="row"><div><label>Desde</label><input type="date" id="from"></div><div><label>Hasta</label><input type="date" id="to"></div></div>
 <label>Comisión</label><input id="commission" type="number" value="4" step=".1" oninput="renderClosure()">%
