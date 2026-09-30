@@ -1146,20 +1146,97 @@ if(p&&q>0)total+=q*tierPrice(p,q);
 document.getElementById("orderTotal").textContent=money(total);
 }
 
-function saveOrder(){
-let cid=document.getElementById("orderClient").value;
-if(!cid){alert("Seleccioná un cliente");return}
-let lines=[],total=0;
-Object.entries(cart).forEach(([key,q])=>{
-if(q<=0)return;
-let [name,pres]=key.split("|"),p=getProducts().find(x=>x[0]===name&&x[1]===pres);
-let unit=tierPrice(p,q);lines.push({name,presentation:pres,qty:q,unit,total:q*unit});total+=q*unit;
-});
-if(!lines.length){alert("Agregá al menos un producto");return}
-let c=clients.find(x=>String(x.id)===String(cid));
-orders.unshift({id:Date.now(),date:new Date().toISOString(),user,client:c.name,clientId:cid,lines,total,obs:document.getElementById("orderObs").value,status:"valid"});
-save();cart={};document.getElementById("orderObs").value="";renderProducts();renderHistory();renderClosure();
-alert("Pedido guardado");
+async function saveOrder(){
+  let cid=document.getElementById("orderClient").value;
+
+  if(!cid){
+    alert("Seleccioná un cliente");
+    return;
+  }
+
+  let lines=[],total=0;
+
+  Object.entries(cart).forEach(([key,q])=>{
+    if(q<=0)return;
+
+    let [name,pres]=key.split("|");
+    let p=getProducts().find(x=>x[0]===name&&x[1]===pres);
+
+    if(!p)return;
+
+    let unit=tierPrice(p,q);
+
+    lines.push({
+      name,
+      presentation:pres,
+      qty:q,
+      unit,
+      total:q*unit
+    });
+
+    total+=q*unit;
+  });
+
+  if(!lines.length){
+    alert("Agregá al menos un producto");
+    return;
+  }
+
+  let c=clients.find(x=>String(x.id)===String(cid));
+
+  if(!c){
+    alert("No se encontró el cliente.");
+    return;
+  }
+
+  const currentUser = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
+
+  const pedido = {
+    date:new Date().toISOString(),
+    ownerUid:currentUser.uid || "",
+    preventistaUid:currentUser.uid || "",
+    preventistaName:currentUser.name || currentUser.username || user,
+    client:c.name,
+    clientId:cid,
+    lines,
+    total,
+    obs:document.getElementById("orderObs").value,
+    status:"nuevo",
+    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try{
+
+    const ref = await firebaseDB
+      .collection("orders")
+      .add(pedido);
+
+    orders.unshift({
+      id:ref.id,
+      ...pedido
+    });
+
+    save();
+
+    cart={};
+
+    document.getElementById("orderObs").value="";
+
+    renderProducts();
+    renderHistory();
+    renderClosure();
+
+    alert("Pedido enviado correctamente a la oficina.");
+
+  }catch(error){
+
+    console.error(error);
+
+    alert("No se pudo enviar el pedido a la oficina.");
+
+  }
 }
 
 function cancelOrder(id){
