@@ -1189,34 +1189,103 @@ async function saveOrder(){
     return;
   }
 
-  const currentUser = JSON.parse(
+  const currentUser=JSON.parse(
     localStorage.getItem("NAA_USER") || "{}"
   );
 
-  const pedido = {
-    date:new Date().toISOString(),
-    ownerUid:currentUser.uid || "",
-    preventistaUid:currentUser.uid || "",
-    preventistaName:currentUser.name || currentUser.username || user,
-    client:c.name,
-    clientId:cid,
-    lines,
-    total,
-    obs:document.getElementById("orderObs").value,
-    status:"nuevo",
-    createdAt:firebase.firestore.FieldValue.serverTimestamp()
-  };
+  const numberRef=firebaseDB
+    .collection("settings")
+    .doc("numbering");
+
+  const orderRef=firebaseDB
+    .collection("orders")
+    .doc();
 
   try{
 
-    const ref = await firebaseDB
-      .collection("orders")
-      .add(pedido);
+    let boletaNumber=await firebaseDB.runTransaction(
+      async transaction=>{
 
-    orders.unshift({
-      id:ref.id,
-      ...pedido
-    });
+        const numberSnap=await transaction.get(numberRef);
+
+        if(!numberSnap.exists){
+          throw new Error("No existe la configuración de numeración.");
+        }
+
+        const nextNumber=Number(
+          numberSnap.data().nextInvoiceNumber
+        );
+
+        if(!nextNumber || nextNumber<1){
+          throw new Error("Número de boleta inválido.");
+        }
+
+        const pedido={
+          date:new Date().toISOString(),
+          ownerUid:currentUser.uid || "",
+          preventistaUid:currentUser.uid || "",
+          preventistaName:
+            currentUser.name ||
+            currentUser.username ||
+            user,
+
+          user:user,
+
+          client:c.name,
+          clientId:cid,
+
+          lines:lines,
+          total:total,
+
+          obs:document.getElementById("orderObs").value,
+
+          status:"nuevo",
+
+          boletaNumber:nextNumber,
+
+          createdAt:
+            firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        transaction.update(numberRef,{
+          nextInvoiceNumber:nextNumber+1
+        });
+
+        transaction.set(orderRef,pedido);
+
+        return nextNumber;
+      }
+    );
+
+    const pedidoGuardado={
+      id:orderRef.id,
+
+      date:new Date().toISOString(),
+
+      ownerUid:currentUser.uid || "",
+      preventistaUid:currentUser.uid || "",
+
+      preventistaName:
+        currentUser.name ||
+        currentUser.username ||
+        user,
+
+      user:user,
+
+      client:c.name,
+      clientId:cid,
+
+      lines:lines,
+      total:total,
+
+      obs:document.getElementById("orderObs").value,
+
+      status:"nuevo",
+
+      boletaNumber:boletaNumber
+    };
+
+    orders.unshift(pedidoGuardado);
 
     save();
 
@@ -1228,17 +1297,21 @@ async function saveOrder(){
     renderHistory();
     renderClosure();
 
-    alert("Pedido enviado correctamente a la oficina.");
+    alert(
+      "Pedido enviado correctamente a la oficina.\n\n" +
+      "Boleta Nº " + boletaNumber
+    );
 
   }catch(error){
 
     console.error(error);
 
-    alert("No se pudo enviar el pedido a la oficina.");
-
+    alert(
+      "No se pudo enviar el pedido.\n\n" +
+      error.message
+    );
   }
 }
-
 function cancelOrder(id){
 let reason=prompt("Motivo: cliente sin dinero / cerrado / rechazó / falta de stock / pedido equivocado / otro");
 if(reason===null)return;
