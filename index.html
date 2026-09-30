@@ -850,6 +850,7 @@ document.getElementById(id).classList.add("active");
 document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
 btn.classList.add("active");
 if(id==="pedido"){renderClients();renderProducts()}
+  if(id==="stock") renderStock();
 if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
