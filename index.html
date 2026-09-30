@@ -528,7 +528,7 @@ if(cantidad === null) return;
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    alert(Stock actualizado.\n\n${actual} → ${actual + ingreso});
+    alert(`Stock actualizado.\n\n${actual} → ${actual + ingreso}`);
 
     renderStock();
 
