@@ -539,6 +539,46 @@ if(cantidad === null) return;
 
   }
 }
+  async function stockSalida(id){
+  const ref = firebaseDB.collection("stock").doc(id);
+  const snap = await ref.get();
+
+  if(!snap.exists){
+    alert("No se encontró el producto.");
+    return;
+  }
+
+  const p = snap.data();
+  const actual = Number(p.quantity || 0);
+
+  const cantidad = prompt("¿Cuántas unidades salieron?");
+  if(cantidad === null) return;
+
+  const salida = Number(cantidad);
+
+  if(!Number.isFinite(salida) || salida <= 0){
+    alert("Ingresá una cantidad válida.");
+    return;
+  }
+
+  if(salida > actual){
+    alert(No hay suficiente stock.\n\nStock disponible: ${actual});
+    return;
+  }
+
+  try{
+    await ref.update({
+      quantity: actual - salida,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert(`Stock actualizado.\n\n${actual} → ${actual - salida}`);
+    renderStock();
+  }catch(error){
+    console.error(error);
+    alert("No se pudo registrar la salida.");
+  }
+}
   async function addStockProduct(){
 
   const name = document.getElementById("stockName").value.trim();
