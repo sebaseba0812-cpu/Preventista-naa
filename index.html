@@ -286,7 +286,7 @@ const PRODUCTS=[
 
 let clients=JSON.parse(localStorage.getItem("NAA_CLIENTS")||"[]");
 let orders=JSON.parse(localStorage.getItem("NAA_ORDERS")||"[]");
-let user=localStorage.getItem("NAA_USER")||"";
+let user=JSON.parse(localStorage.getItem("NAA_USER")||"null");
 let cart={};
 let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]");
 
