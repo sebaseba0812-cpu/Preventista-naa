@@ -1558,7 +1558,150 @@ let actions=canceled
 return '<div class="product"><b>'+new Date(o.date).toLocaleString("es-AR")+'</b><div><b>'+esc(o.client)+'</b> · <b>$'+money(o.total)+'</b></div><div class="muted">'+status+'</div>'+sent+'<div class="row" style="margin-top:8px">'+actions+'</div></div>';
 }).join(""):'<div class="empty">No hay pedidos.</div>';
 }
-function closureData(){
+async function renderOfficeOrders(){
+
+  const list = document.getElementById("officeOrdersList");
+
+  if(!list) return;
+
+  list.innerHTML = '<div class="empty">Cargando pedidos recibidos...</div>';
+
+  try{
+
+    const currentUser = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    if(currentUser.role !== "admin"){
+      list.innerHTML = '<div class="empty">Acceso solo para administrador.</div>';
+      return;
+    }
+
+    const snap = await firebaseDB
+      .collection("orders")
+      .get();
+
+    if(snap.empty){
+      list.innerHTML = '<div class="empty">No hay pedidos recibidos.</div>';
+      return;
+    }
+
+    let pedidos = [];
+
+    snap.forEach(doc => {
+
+      const o = doc.data();
+
+      if(o.status === "borrador") return;
+
+      pedidos.push({
+        id: doc.id,
+        ...o
+      });
+
+    });
+
+    pedidos.sort((a,b) => {
+
+      const da = a.createdAt?.toDate
+        ? a.createdAt.toDate()
+        : new Date(a.date || 0);
+
+      const db = b.createdAt?.toDate
+        ? b.createdAt.toDate()
+        : new Date(b.date || 0);
+
+      return db - da;
+
+    });
+
+    if(!pedidos.length){
+      list.innerHTML = '<div class="empty">No hay pedidos recibidos.</div>';
+      return;
+    }
+
+    list.innerHTML = pedidos.map(o => {
+
+      const fecha = o.createdAt?.toDate
+        ? o.createdAt.toDate().toLocaleString("es-AR")
+        : (o.date
+            ? new Date(o.date).toLocaleString("es-AR")
+            : "Sin fecha");
+
+      const estado = o.status || "nuevo";
+
+      const lineas = Array.isArray(o.lines)
+        ? o.lines.map(line => `
+            <div style="margin-top:4px">
+              • ${esc(line.name || "")}
+              ${line.presentation ? " · " + esc(line.presentation) : ""}
+              · Cant.: <b>${line.qty || 0}</b>
+              · $${money(line.total || 0)}
+            </div>
+          `).join("")
+        : "";
+
+      return `
+        <div class="product" style="margin-top:10px">
+
+          <div>
+            <b>Boleta Nº ${o.boletaNumber || "Sin número"}</b>
+          </div>
+
+          <div class="small" style="margin-top:4px">
+            📅 ${fecha}
+          </div>
+
+          <div style="margin-top:8px">
+            👤 Preventista:
+            <b>${esc(o.preventistaName || o.user || "Sin nombre")}</b>
+          </div>
+
+          <div style="margin-top:5px">
+            🏪 Cliente:
+            <b>${esc(o.client || "Sin cliente")}</b>
+          </div>
+
+          <div style="margin-top:8px">
+            <b>Productos:</b>
+            ${lineas || '<div class="small">Sin productos</div>'}
+          </div>
+
+          <div style="margin-top:10px">
+            💰 Total:
+            <b>$${money(o.total || 0)}</b>
+          </div>
+
+          ${
+            o.obs
+              ? `<div class="small" style="margin-top:8px">
+                   📝 Observaciones: ${esc(o.obs)}
+                 </div>`
+              : ""
+          }
+
+          <div style="margin-top:10px">
+            <span class="badge">
+              Estado: ${esc(estado)}
+            </span>
+          </div>
+
+        </div>
+      `;
+
+    }).join("");
+
+  }catch(error){
+
+    console.error(error);
+
+    list.innerHTML =
+      '<div class="empty">No se pudieron cargar los pedidos.</div>';
+
+  }
+
+}
+  function closureData(){
 let a=new Date(document.getElementById("from").value+"T00:00:00"),b=new Date(document.getElementById("to").value+"T23:59:59");
 let mine=orders.filter(o=>o.user===user&&new Date(o.date)>=a&&new Date(o.date)<=b);
 let valid=mine.filter(o=>o.status!=="canceled"),can=mine.filter(o=>o.status==="canceled"),total=valid.reduce((s,o)=>s+o.total,0),pct=Number(document.getElementById("commission").value||4);
