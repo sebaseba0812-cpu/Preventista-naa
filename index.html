@@ -1673,47 +1673,6 @@ async function anularPedidoOficina(id){
   }
 
 }
-    await renderOfficeOrders();
-
-    alert("Pedido anulado correctamente.");
-
-  }catch(error){
-
-    console.error(error);
-
-    alert("No se pudo anular el pedido: " + error.message);
-
-  }
-
-}
-
-  }catch(error){
-    console.error(error);
-    alert("No se pudo anular el pedido.");
-  }
-}
-  try{
-
-    await firebaseDB
-      .collection("orders")
-      .doc(id)
-      .update({
-        status: nuevoEstado,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-    await renderOfficeOrders();
-
-  }catch(error){
-
-    console.error(error);
-
-    alert("No se pudo actualizar el estado del pedido.");
-
-  }
-
-}
-async function renderOfficeOrders(){
 
   const list = document.getElementById("officeOrdersList");
 
