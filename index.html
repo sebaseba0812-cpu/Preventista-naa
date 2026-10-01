@@ -79,13 +79,14 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button class="primary" style="width:100%;margin-top:12px" onclick="login()">Ingresar</button>
 <p class="small">Ingresá el usuario y contraseña asignados por la administración. Podés tildar “Mostrar contraseña” para comprobar lo escrito.</p>
 </div></div>
-
+ 
 <div id="app" class="hidden">
 <header><h1>DISTRIBUIDORA N.A.A. S.A.S.</h1><div class="sub"><span id="roleLabel">Preventista</span>: <span id="who"></span> · <span id="net"></span></div></header>
 <div id="adminBanner" class="hidden" style="margin:10px 14px 0;padding:10px 12px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-weight:700;text-align:center">👑 MODO ADMINISTRADOR — acceso de administración</div>
 <nav>
 <button class="active" onclick="show('pedido',this)">🛒 Pedido</button>
-<button onclick="show('clientes',this)">🏪 Clientes</button>
+<button id="pedidosOficinaNavBtn" style="display:none" onclick="show('pedidosOficina',this)">📥 Oficina</button>
+  <button onclick="show('clientes',this)">🏪 Clientes</button>
 <button onclick="show('historial',this)">📋 Historial</button>
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
@@ -109,7 +110,22 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 </div></div>
 </section>
 
-<section id="clientes" class="screen">
+<section id="pedidosOficina" class="screen">
+
+<div class="card">
+  <h2>📥 Pedidos recibidos</h2>
+  <p class="small">
+    Pedidos enviados por los preventistas a la oficina.
+  </p>
+
+  <div id="officeOrdersList">
+    <div class="empty">Cargando pedidos...</div>
+  </div>
+
+</div>
+
+</section>
+  <section id="clientes" class="screen">
 <div class="card"><h2>Clientes</h2>
 <label>Nombre / comercio</label><input id="cName">
 <label>Barrio / Zona</label><input id="cZone" placeholder="Ej.: Barrio Fátima">
@@ -1584,6 +1600,8 @@ try{await navigator.clipboard.writeText(text);alert("Texto copiado. Pegalo en Wh
 if(user){document.getElementById("login").classList.add("hidden");document.getElementById("app").classList.remove("hidden");document.getElementById("who").textContent=user.name || user.username;
 if(document.getElementById("roleLabel")) document.getElementById("roleLabel").textContent=(user.role === "admin" ? "Administrador" : "Preventista");
 if(user.role === "admin" && document.getElementById("adminBanner")) document.getElementById("adminBanner").classList.remove("hidden");
+ if(user.role==="admin" && document.getElementById("pedidosOficinaNavBtn"))
+  document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";        
 setTimeout(init,0)}
 </script>
 
