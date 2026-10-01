@@ -1542,12 +1542,99 @@ async function sendDraftToOffice(){
     );
   }
 }
-  function cancelOrder(id){
-let reason=prompt("Motivo: cliente sin dinero / cerrado / rechazó / falta de stock / pedido equivocado / otro");
-if(reason===null)return;
-let o=orders.find(x=>x.id===id);o.status="canceled";o.cancelReason=reason;save();renderHistory();renderClosure();
-}
+  window.cancelOrder = function(id){
+  const orderId = String(id);
+
+  const o = orders.find(x => String(x.id) === orderId);
+
+  if(!o){
+    alert("No se encontró el pedido para anular.");
+    return;
+  }
+
+  const reason = prompt(
+    "Motivo: cliente sin dinero / cerrado / rechazó / falta de stock / pedido equivocado / otro"
+  );
+
+  if(reason === null) return;
+
+  const cleanReason = String(reason).trim();
+
+  if(!cleanReason){
+    alert("Tenés que indicar un motivo.");
+    return;
+  }
+
+  o.status = "canceled";
+  o.cancelReason = cleanReason;
+  o.canceledAt = new Date().toISOString();
+
+  save();
+  renderHistory();
+  renderClosure();
+
+  alert("Pedido anulado correctamente.");
+};
+
+
+// Compatibilidad con versiones anteriores
+window.anularPedidoOficina = window.cancelOrder;
+window.anularPedido = window.cancelOrder;
+
+
 function renderHistory(){
+
+  let mine = orders.filter(o => o.user === user);
+
+  document.getElementById("history").innerHTML =
+    mine.length
+      ? mine.map(o => {
+
+          let canceled = o.status === "canceled";
+
+          let status =
+            canceled
+              ? "❌ Anulado: " + esc(o.cancelReason || "")
+              : "✅ Válido";
+
+          let sent =
+            o.sentAt
+              ? '<span class="sentbadge">📤 Ya enviado ' +
+                new Date(o.sentAt).toLocaleString("es-AR") +
+                '</span>'
+              : '<span class="small">📥 Pendiente de enviar</span>';
+
+          let actions = canceled
+
+            ? '<span class="small" style="display:block;margin-top:8px;color:#b91c1c;font-weight:700;">🚫 Pedido anulado · No se puede enviar a oficina</span>'
+
+            : '<button class="danger" type="button" onclick="window.cancelOrder(' +
+              JSON.stringify(String(o.id)) +
+              ')">❌ Anular</button>' +
+
+              '<button class="wa-office-btn" type="button" onclick="sendOrderToOfficeWhatsApp(' +
+              JSON.stringify(String(o.id)) +
+              ')">📲 ' +
+              (o.sentAt
+                ? "Reenviar a WhatsApp oficina"
+                : "Enviar a WhatsApp oficina") +
+              '</button>';
+
+          return '<div class="product">' +
+            '<b>' + new Date(o.date).toLocaleString("es-AR") + '</b>' +
+            '<div><b>' + esc(o.client) +
+            '</b> · <b>$' + money(o.total) + '</b></div>' +
+            '<div class="muted">' + status + '</div>' +
+            sent +
+            '<div class="row" style="margin-top:8px">' +
+            actions +
+            '</div>' +
+            '</div>';
+
+        }).join("")
+
+      : '<div class="empty">No hay pedidos.</div>';
+}
 let mine=orders.filter(o=>o.user===user);
 document.getElementById("history").innerHTML=mine.length?mine.map(o=>{
 let canceled=o.status==="canceled";
