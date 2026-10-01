@@ -1722,6 +1722,19 @@ ${
     `
     : ""
 }
+${
+  estado === "preparando"
+    ? `
+      <div style="margin-top:10px">
+        <button
+          class="primary"
+          onclick="cambiarEstadoPedidoOficina('${o.id}','preparado')">
+          📦 Marcar como Preparado
+        </button>
+      </div>
+    `
+    : ""
+}
         </div>
       `;
 
