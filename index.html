@@ -1735,6 +1735,18 @@ ${
     `
     : ""
 }
+${estado === "preparado"
+  ? `
+    <div style="margin-top:10px">
+      <button
+        class="primary"
+        onclick="cambiarEstadoPedidoOficina('${o.id}','entregado')">
+        🚚 Marcar como Entregado
+      </button>
+    </div>
+  `
+  : ""
+}
         </div>
       `;
 
