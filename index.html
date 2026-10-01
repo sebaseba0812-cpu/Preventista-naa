@@ -1560,7 +1560,32 @@ return '<div class="product"><b>'+new Date(o.date).toLocaleString("es-AR")+'</b>
 }).join(""):'<div class="empty">No hay pedidos.</div>';
 }
   async function cambiarEstadoPedidoOficina(id, nuevoEstado){
+async function anularPedidoOficina(id){
+  const motivo = prompt("Motivo de anulación:");
 
+  if(motivo === null) return;
+
+  if(!motivo.trim()){
+    alert("Ingresá un motivo para anular el pedido.");
+    return;
+  }
+
+  try{
+    await firebaseDB.collection("orders").doc(id).update({
+      status: "anulado",
+      cancelReason: motivo.trim(),
+      canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("Pedido anulado correctamente.");
+    await renderOfficeOrders();
+
+  }catch(error){
+    console.error(error);
+    alert("No se pudo anular el pedido.");
+  }
+}
   try{
 
     await firebaseDB
@@ -1747,6 +1772,15 @@ ${estado === "preparado"
   `
   : ""
 }
+ ${estado !== "entregado" && estado !== "anulado" ? `
+<div style="margin-top:10px;">
+  <button
+    class="secondary"
+    onclick="anularPedidoOficina('${o.id}')">
+    🚫 Anular pedido
+  </button>
+</div>
+` : ""}      
         </div>
       `;
 
