@@ -103,7 +103,10 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <label>Observaciones</label><textarea id="orderObs" rows="2"></textarea>
 </div>
 <div class="card"><div class="total">Total: $<span id="orderTotal">0,00</span></div>
-<button class="primary" style="width:100%;margin-top:10px" onclick="saveOrder()">💾 Guardar pedido</button></div>
+<div style="display:flex;gap:8px;margin-top:10px">
+  <button class="secondary" style="flex:1" onclick="saveDraft()">💾 Guardar borrador</button>
+  <button class="primary" style="flex:1" onclick="sendDraftToOffice()">📤 Enviar a oficina</button>
+</div></div>
 </section>
 
 <section id="clientes" class="screen">
@@ -1312,7 +1315,217 @@ async function saveOrder(){
     );
   }
 }
-function cancelOrder(id){
+function saveDraft(){
+
+  let cid=document.getElementById("orderClient").value;
+
+  if(!cid){
+    alert("Seleccioná un cliente");
+    return;
+  }
+
+  let lines=[],total=0;
+
+  Object.entries(cart).forEach(([key,q])=>{
+    if(q<=0)return;
+
+    let [name,pres]=key.split("|");
+
+    let p=getProducts().find(
+      x=>x[0]===name && x[1]===pres
+    );
+
+    if(!p)return;
+
+    let unit=tierPrice(p,q);
+
+    lines.push({
+      name:name,
+      presentation:pres,
+      qty:q,
+      unit:unit,
+      total:q*unit
+    });
+
+    total+=q*unit;
+  });
+
+  if(!lines.length){
+    alert("Agregá al menos un producto");
+    return;
+  }
+
+  let c=clients.find(
+    x=>String(x.id)===String(cid)
+  );
+
+  if(!c){
+    alert("No se encontró el cliente.");
+    return;
+  }
+
+  const currentUser=JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
+
+  const draft={
+    date:new Date().toISOString(),
+
+    ownerUid:currentUser.uid || "",
+
+    preventistaUid:currentUser.uid || "",
+
+    preventistaName:
+      currentUser.name ||
+      currentUser.username ||
+      user,
+
+    user:user,
+
+    client:c.name,
+
+    clientId:cid,
+
+    lines:lines,
+
+    total:total,
+
+    obs:document.getElementById("orderObs").value,
+
+    status:"borrador"
+  };
+
+  localStorage.setItem(
+    "NAA_DRAFT_ORDER",
+    JSON.stringify(draft)
+  );
+
+  alert("Borrador guardado correctamente.");
+}
+
+
+async function sendDraftToOffice(){
+
+  const draftRaw=localStorage.getItem(
+    "NAA_DRAFT_ORDER"
+  );
+
+  if(!draftRaw){
+    alert("Primero guardá el pedido como borrador.");
+    return;
+  }
+
+  const draft=JSON.parse(draftRaw);
+
+  if(!draft.lines || !draft.lines.length){
+    alert("El borrador no tiene productos.");
+    return;
+  }
+
+  const numberRef=firebaseDB
+    .collection("settings")
+    .doc("numbering");
+
+  const orderRef=firebaseDB
+    .collection("orders")
+    .doc();
+
+  try{
+
+    const boletaNumber=
+      await firebaseDB.runTransaction(
+        async transaction=>{
+
+          const numberSnap=
+            await transaction.get(numberRef);
+
+          if(!numberSnap.exists){
+            throw new Error(
+              "No existe la configuración de numeración."
+            );
+          }
+
+          const nextNumber=
+            Number(
+              numberSnap.data().nextInvoiceNumber
+            );
+
+          if(!nextNumber || nextNumber<1){
+            throw new Error(
+              "Número de boleta inválido."
+            );
+          }
+
+          const pedido={
+            ...draft,
+
+            status:"nuevo",
+
+            boletaNumber:nextNumber,
+
+            sentAt:
+              firebase.firestore.FieldValue.serverTimestamp(),
+
+            createdAt:
+              firebase.firestore.FieldValue.serverTimestamp()
+          };
+
+          transaction.update(
+            numberRef,
+            {
+              nextInvoiceNumber:
+                nextNumber+1
+            }
+          );
+
+          transaction.set(
+            orderRef,
+            pedido
+          );
+
+          return nextNumber;
+        }
+      );
+
+    localStorage.removeItem(
+      "NAA_DRAFT_ORDER"
+    );
+
+    orders.unshift({
+      id:orderRef.id,
+      ...draft,
+      status:"nuevo",
+      boletaNumber:boletaNumber
+    });
+
+    save();
+
+    cart={};
+
+    document.getElementById(
+      "orderObs"
+    ).value="";
+
+    renderProducts();
+    renderHistory();
+    renderClosure();
+
+    alert(
+      "Pedido enviado correctamente a la oficina.\n\n"+
+      "Boleta Nº "+boletaNumber
+    );
+
+  }catch(error){
+
+    console.error(error);
+
+    alert(
+      "No se pudo enviar el pedido.\n\n"+
+      error.message
+    );
+  }
+}
+  function cancelOrder(id){
 let reason=prompt("Motivo: cliente sin dinero / cerrado / rechazó / falta de stock / pedido equivocado / otro");
 if(reason===null)return;
 let o=orders.find(x=>x.id===id);o.status="canceled";o.cancelReason=reason;save();renderHistory();renderClosure();
