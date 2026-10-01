@@ -1559,6 +1559,29 @@ let actions=canceled
 return '<div class="product"><b>'+new Date(o.date).toLocaleString("es-AR")+'</b><div><b>'+esc(o.client)+'</b> · <b>$'+money(o.total)+'</b></div><div class="muted">'+status+'</div>'+sent+'<div class="row" style="margin-top:8px">'+actions+'</div></div>';
 }).join(""):'<div class="empty">No hay pedidos.</div>';
 }
+  async function cambiarEstadoPedidoOficina(id, nuevoEstado){
+
+  try{
+
+    await firebaseDB
+      .collection("orders")
+      .doc(id)
+      .update({
+        status: nuevoEstado,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+    await renderOfficeOrders();
+
+  }catch(error){
+
+    console.error(error);
+
+    alert("No se pudo actualizar el estado del pedido.");
+
+  }
+
+}
 async function renderOfficeOrders(){
 
   const list = document.getElementById("officeOrdersList");
