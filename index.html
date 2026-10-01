@@ -1709,7 +1709,19 @@ async function renderOfficeOrders(){
               Estado: ${esc(estado)}
             </span>
           </div>
-
+${
+  estado === "nuevo"
+    ? `
+      <div style="margin-top:10px">
+        <button
+          class="primary"
+          onclick="cambiarEstadoPedidoOficina('${o.id}','preparando')">
+          ⚙️ Pasar a Preparando
+        </button>
+      </div>
+    `
+    : ""
+}
         </div>
       `;
 
