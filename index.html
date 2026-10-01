@@ -1639,7 +1639,9 @@ async function anularPedidoOficina(id){
   if(motivo === null) return;
 
   if(!motivo.trim()){
+
     alert("Ingresá un motivo para anular el pedido.");
+
     return;
   }
 
@@ -1649,13 +1651,28 @@ async function anularPedidoOficina(id){
       .collection("orders")
       .doc(String(id))
       .update({
+
         status: "anulado",
         estado: "anulado",
         cancelReason: motivo.trim(),
         canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+
       });
 
+    await renderOfficeOrders();
+
+    alert("Pedido anulado correctamente.");
+
+  }catch(error){
+
+    console.error(error);
+
+    alert("No se pudo anular el pedido: " + error.message);
+
+  }
+
+}
     await renderOfficeOrders();
 
     alert("Pedido anulado correctamente.");
