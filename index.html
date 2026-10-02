@@ -1006,7 +1006,7 @@ if(c.address && !c.street)parts.push("Dirección: "+c.address);
 return parts.join(" · ") || "Sin dirección";
 }
 function daysSinceLastPurchase(clientId){
-let mine=orders.filter(o=>o.user===user&&String(o.clientId)===String(clientId)&&o.status!=="canceled");
+let mine=orders.filter(o=>o.user?.uid===user?.uid&&String(o.clientId)===String(clientId)&&o.status!=="canceled");
 if(!mine.length)return null;
 let last=mine.reduce((a,b)=>new Date(a.date)>new Date(b.date)?a:b);
 let lastDate=new Date(last.date),today=new Date();
@@ -1021,7 +1021,7 @@ if(x.days===1)return '<span class="activebuy">🟢 Última compra: ayer</span>';
 return '<span class="inactive">⏱️ Hace '+x.days+' días que no compra</span>';
 }
 function renderClients(){
-let mine=clients.filter(c=>c.user===user);
+let mine=clients.filter(c=>c.user?.uid===user?.uid);
 document.getElementById("orderClient").innerHTML='<option value="">Seleccionar cliente...</option>'+mine.map(c=>'<option value="'+c.id+'">'+esc(c.name)+" · "+esc(c.zone||"")+"</option>").join("");
 document.getElementById("clientList").innerHTML=mine.length?mine.map(c=>'<div class="product"><b>'+esc(c.name)+'</b><div class="muted">'+esc(clientAddress(c))+" · "+esc(c.phone||"Sin teléfono")+(c.whatsapp?" · 📲 "+esc(c.whatsapp):"")+(c.obs?" · 📍 "+esc(c.obs):"")+'</div>'+purchaseStatus(c)+'</div>').join(""):'<div class="empty">Todavía no hay clientes.</div>';
 renderClientWhatsapp();
@@ -1038,7 +1038,7 @@ function normalizeWhatsappNumber(raw){
   return "549"+n;
 }
 function lastPurchaseInfo(clientId){
-  let mine=orders.filter(o=>o.user===user&&String(o.clientId)===String(clientId)&&o.status!=="canceled");
+  let mine=orders.filter(o=>o.user?.uid===user?.uid&&String(o.clientId)===String(clientId)&&o.status!=="canceled");
   if(!mine.length)return null;
   let last=mine.reduce((a,b)=>new Date(a.date)>new Date(b.date)?a:b);
   return new Date(last.date);
@@ -1055,7 +1055,7 @@ function whatsappFollowupMessage(c){
   return text;
 }
 function sendClientWhatsApp(id){
-  let c=clients.find(x=>String(x.id)===String(id)&&x.user===user);
+  let c=clients.find(x=>String(x.id)===String(id)&&x.user?.uid===user?.uid
   if(!c)return;
   let number=normalizeWhatsappNumber(c.whatsapp);
   if(!number){
@@ -1068,7 +1068,7 @@ function sendClientWhatsApp(id){
 function renderClientWhatsapp(){
   let box=document.getElementById("clientWhatsappList");
   if(!box)return;
-  let mine=clients.filter(c=>c.user===user&&c.whatsapp);
+  let mine=clients.filter(c=>c.user?.uid===user?.uid&&c.whatsapp);
   if(!mine.length){
     box.innerHTML='<div class="empty">Todavía no hay clientes con WhatsApp registrado.</div>';
     return;
@@ -1566,7 +1566,7 @@ function anularPedidoOficina(id){
   cancelOrder(id);
 }
 function renderHistory(){
-  let mine=orders.filter(o=>o.user===user);
+ let mine=orders.filter(o=>o.user?.uid===user?.uid);
 
   document.getElementById("history").innerHTML=
     mine.length
@@ -1863,7 +1863,7 @@ ${estado === "preparado"
 }
   function closureData(){
 let a=new Date(document.getElementById("from").value+"T00:00:00"),b=new Date(document.getElementById("to").value+"T23:59:59");
-let mine=orders.filter(o=>o.user===user&&new Date(o.date)>=a&&new Date(o.date)<=b);
+let mine=orders.filter(o=>o.user?.uid===user?.uid&&new Date(o.date)>=a&&new Date(o.date)<=b);
 let valid=mine.filter(o=>o.status!=="canceled"),can=mine.filter(o=>o.status==="canceled"),total=valid.reduce((s,o)=>s+o.total,0),pct=Number(document.getElementById("commission").value||4);
 return {valid,can,total,pct,comm:total*pct/100};
 }
