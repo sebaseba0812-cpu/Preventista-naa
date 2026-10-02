@@ -1572,7 +1572,7 @@ function renderHistory(){
     mine.length
       ? mine.map(o=>{
 
-          let canceled=o.status==="canceled";
+          let canceled=o.status==="canceled" || o.status==="anulado";
 
           let status=
             canceled
@@ -1864,7 +1864,7 @@ ${estado === "preparado"
   function closureData(){
 let a=new Date(document.getElementById("from").value+"T00:00:00"),b=new Date(document.getElementById("to").value+"T23:59:59");
 let mine=orders.filter(o=>o.user?.uid===user?.uid&&new Date(o.date)>=a&&new Date(o.date)<=b);
-let valid=mine.filter(o=>o.status!=="canceled"),can=mine.filter(o=>o.status==="canceled"),total=valid.reduce((s,o)=>s+o.total,0),pct=Number(document.getElementById("commission").value||4);
+let valid=mine.filter(o=>o.status!=="canceled"&&o.status!=="anulado"),can=mine.filter(o=>o.status==="canceled"||o.status==="anulado"),total=valid.reduce((s,o)=>s+o.total,0),pct=Number(document.getElementById("commission").value||4);
 return {valid,can,total,pct,comm:total*pct/100};
 }
 function renderClosure(){
