@@ -65,7 +65,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 </head>
 <body><div id="toast" class="toast">✅ Produto carregado</div>
 
-<div id="login">
+<div id="loginScreen">
 <div class="loginbox">
 <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MDAiIGhlaWdodD0iMjIwIiB2aWV3Qm94PSIwIDAgODAwIDIyMCI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMjIwIiByeD0iMzIiIGZpbGw9IiMxMTE4MjciLz4KPGNpcmNsZSBjeD0iMTE1IiBjeT0iMTEwIiByPSI3NSIgZmlsbD0id2hpdGUiLz4KPHRleHQgeD0iMTE1IiB5PSIxMjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSI0MyIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzExMTgyNyI+Ti5BLkEuPC90ZXh0Pgo8dGV4dCB4PSIyMjUiIHk9IjEwMyIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjQzIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSJ3aGl0ZSI+RElTVFJJQlVJRE9SQTwvdGV4dD4KPHRleHQgeD0iMjI1IiB5PSIxNTMiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIzOCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiPk4uQS5BLiBTLkEuUy48L3RleHQ+Cjwvc3ZnPg==" style="display:block;width:100%;height:auto;margin:0 auto 14px;border-radius:16px" alt="DISTRIBUIDORA N.A.A. S.A.S.">
 <h2 style="text-align:center">DISTRIBUIDORA N.A.A. S.A.S.</h2>
@@ -1900,7 +1900,7 @@ try{await navigator.share({text});return true}catch(e){return false}
 }
 try{await navigator.clipboard.writeText(text);alert("Texto copiado. Pegalo en WhatsApp.");return true}catch(e){alert(text);return false}
 }
-if(user){document.getElementById("login").classList.add("hidden");document.getElementById("app").classList.remove("hidden");document.getElementById("who").textContent=user.name || user.username;
+if(user){document.getElementById("loginScreen").classList.add("hidden");document.getElementById("app").classList.remove("hidden");document.getElementById("who").textContent=user.name || user.username;
 if(document.getElementById("roleLabel")) document.getElementById("roleLabel").textContent=(user.role === "admin" ? "Administrador" : "Preventista");
 if(user.role === "admin" && document.getElementById("adminBanner")) document.getElementById("adminBanner").classList.remove("hidden");
  if(user.role==="admin" && document.getElementById("pedidosOficinaNavBtn"))
