@@ -1055,7 +1055,7 @@ function whatsappFollowupMessage(c){
   return text;
 }
 function sendClientWhatsApp(id){
-  let c=clients.find(x=>String(x.id)===String(id)&&x.user?.uid===user?.uid
+  let c=clients.find(x=>String(x.id)===String(id)&&x.user?.uid===user?.uid);
   if(!c)return;
   let number=normalizeWhatsappNumber(c.whatsapp);
   if(!number){
