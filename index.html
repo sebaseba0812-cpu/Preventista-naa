@@ -1632,7 +1632,18 @@ function renderHistory(){
             o.sentAt
               ?'<span class="sentbadge">📤 Ya enviado '+new Date(o.sentAt).toLocaleString("es-AR")+'</span>'
               :'<span class="small">📥 Pendiente de enviar</span>';
-
+let officeStatus=
+  canceled
+    ? "Anulado"
+    : o.status==="nuevo"
+      ? "Nuevo"
+      : o.status==="preparando"
+        ? "Preparando"
+        : o.status==="preparado"
+          ? "Preparado"
+          : o.status==="entregado"
+            ? "Entregado"
+            : "Válido";
           let actions=canceled
             ?'<span class="small" style="display:block;margin-top:8px;color:#b91c1c;font-weight:700;">🚫 Pedido anulado · No se puede enviar a oficina</span>'
             :'<button class="danger" type="button" onclick="cancelOrder('+JSON.stringify(String(o.id))+')">❌ Anular</button><button class="wa-office-btn" type="button" onclick="sendOrderToOfficeWhatsApp('+JSON.stringify(String(o.id))+')">📲 '+(o.sentAt?"Reenviar a WhatsApp oficina":"Enviar a WhatsApp oficina")+'</button>';
@@ -1645,8 +1656,9 @@ function renderHistory(){
             money(o.total)+
             '</b></div><div class="muted">'+
             status+
-            '</div>'+
-            sent+
+'</div>'+
+'<div class="small" style="margin-top:6px;">🧾 Boleta Nº '+(o.boletaNumber||"Sin número")+' · Estado: '+esc(officeStatus)+'</div>'+
+sent+
             '<div class="row" style="margin-top:8px">'+
             actions+
             '</div></div>';
