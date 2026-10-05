@@ -853,9 +853,58 @@ if(user.role !== 'admin'){
 let d=new Date(),ds=d.toISOString().slice(0,10);
 document.getElementById("from").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
 document.getElementById("to").value=ds;
-updateNet();renderClients();showSelectedClient();renderProducts();renderHistory();renderManualProducts();renderCatalogEditor();renderClosure();
+updateNet();renderClients();showSelectedClient();renderProducts();renderHistory();renderManualProducts();renderCatalogEditor();renderClosure();syncOrdersFromFirebase();
 }
-function logout(){
+async function syncOrdersFromFirebase(){
+  if(!user?.uid) return;
+
+  try{
+    const snap=await firebaseDB
+      .collection("orders")
+      .where("preventistaUid","==",user.uid)
+      .get();
+
+    const firebaseOrders=snap.docs.map(doc=>{
+      const data=doc.data();
+
+      const normalizeDate=value=>{
+        if(value?.toDate) return value.toDate().toISOString();
+        return value || null;
+      };
+
+      return {
+        id:doc.id,
+        ...data,
+        createdAt:normalizeDate(data.createdAt),
+        sentAt:normalizeDate(data.sentAt),
+        canceledAt:normalizeDate(data.canceledAt),
+        updatedAt:normalizeDate(data.updatedAt)
+      };
+    });
+
+    const byId=new Map(orders.map(o=>[String(o.id),o]));
+
+    firebaseOrders.forEach(remote=>{
+      const local=byId.get(String(remote.id));
+
+      byId.set(String(remote.id),{
+        ...(local||{}),
+        ...remote
+      });
+    });
+
+    orders=Array.from(byId.values());
+
+    save();
+
+    renderHistory();
+    renderClosure();
+
+  }catch(error){
+    console.error("Error sincronizando pedidos:",error);
+  }
+}
+  function logout(){
   firebaseAuth.signOut();
   localStorage.removeItem('NAA_USER');
   location.reload();
