@@ -138,6 +138,16 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   <input id="cWhatsapp" placeholder="376 123-4567" inputmode="tel" style="flex:1">
 </div>
 <div class="small">Ya está cargado +54 9. Escribí solamente el número del cliente.</div>
+  <label>Tipo de cliente</label>
+<select id="cPaymentType" onchange="document.getElementById('cCreditDaysBox').style.display=this.value==='cuenta_corriente'?'block':'none'">
+  <option value="contado">💵 Contado</option>
+  <option value="cuenta_corriente">🟠 Cuenta corriente</option>
+</select>
+
+<div id="cCreditDaysBox" style="display:none">
+  <label>Plazo de crédito (días)</label>
+  <input id="cCreditDays" type="number" min="1" step="1" value="7" placeholder="Ej.: 7">
+</div>
 <label>Referencia / observaciones de ubicación</label><textarea id="cObs" rows="2" placeholder="Ej.: casa verde, frente a la plaza, portón negro..."></textarea>
 <button class="primary" style="margin-top:10px" onclick="addClient()">➕ Agregar cliente</button>
 </div>
@@ -1039,10 +1049,15 @@ clients.push({
  phone:document.getElementById("cPhone").value.trim(),
  whatsapp:(function(v){let n=String(v||"").replace(/[^\d]/g,""); return n ? "+54 9 "+n.replace(/^549/,"").replace(/^54/,"").replace(/^9/,"") : "";})(document.getElementById("cWhatsapp").value),
  obs:document.getElementById("cObs").value.trim(),
- user
+paymentType:document.getElementById("cPaymentType").value,
+creditDays:Number(document.getElementById("cCreditDays").value||0),
+user
 });
 save();
 ["cName","cZone","cStreet","cHeight","cPhone","cWhatsapp","cObs"].forEach(id=>document.getElementById(id).value="");
+document.getElementById("cPaymentType").value="contado";
+document.getElementById("cCreditDays").value="7";
+document.getElementById("cCreditDaysBox").style.display="none";
 renderClients();showSelectedClient();
 alert("Cliente guardado");
 }
