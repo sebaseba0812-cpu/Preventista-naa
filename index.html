@@ -861,7 +861,7 @@ async function syncOrdersFromFirebase(){
   try{
     const snap=await firebaseDB
       .collection("orders")
-      .where("preventistaUid","==",user.uid)
+      .where("ownerUid","==",user.uid)
       .get();
 
     const firebaseOrders=snap.docs.map(doc=>{
