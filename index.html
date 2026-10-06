@@ -1849,7 +1849,7 @@ async function anularPedidoOficina(id){
     alert("No se pudo marcar como cobrada.");
   }
 }
-  function renderOfficeOrders(){
+ async function renderOfficeOrders(){
   const list = document.getElementById("officeOrdersList");
 
   if(!list) return;
