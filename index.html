@@ -1090,7 +1090,32 @@ document.getElementById("orderClient").innerHTML='<option value="">Seleccionar c
 document.getElementById("clientList").innerHTML=mine.length?mine.map(c=>'<div class="product"><b>'+esc(c.name)+'</b><div class="muted">'+esc(clientAddress(c))+" · "+esc(c.phone||"Sin teléfono")+(c.whatsapp?" · 📲 "+esc(c.whatsapp):"")+(c.obs?" · 📍 "+esc(c.obs):"")+'</div>'+purchaseStatus(c)+'</div>').join(""):'<div class="empty">Todavía no hay clientes.</div>';
 renderClientWhatsapp();
 }
+function toggleClientPaymentType(id){
+  let c=clients.find(x=>String(x.id)===String(id)&&x.user?.uid===user?.uid);
+  if(!c)return;
 
+  if(c.paymentType==="cuenta_corriente"){
+    c.paymentType="contado";
+    c.creditDays=0;
+  }else{
+    let days=prompt("Plazo de crédito en días:",c.creditDays||7);
+    if(days===null)return;
+
+    days=Number(days);
+
+    if(!Number.isFinite(days)||days<=0){
+      alert("Ingresá una cantidad de días válida.");
+      return;
+    }
+
+    c.paymentType="cuenta_corriente";
+    c.creditDays=days;
+  }
+
+  save();
+  renderClients();
+  showSelectedClient();
+}
 function normalizeWhatsappNumber(raw){
   let n=String(raw||"").replace(/[^\d]/g,"");
   if(!n)return "";
