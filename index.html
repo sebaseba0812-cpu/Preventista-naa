@@ -2088,7 +2088,7 @@ ${estado === "preparado"
 
 function renderClosure(){
 let d=closureData();
-document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pct+'%</b><div class="total">$'+money(d.comm)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
+document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pt+'%</b><div class="total">$'+money(d.comm)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
 renderCurrentAccounts();
 }
 function renderCurrentAccounts(){
@@ -2170,7 +2170,7 @@ save();renderHistory();showToast("📤 Pedido marcado como enviado");
 }
 function shareClosure(){
 let d=closureData();
-share("DISTRIBUIDORA N.A.A. S.A.S.\nCIERRE QUINCENAL\nPreventista: "+user+"\nDesde: "+document.getElementById("from").value+"\nHasta: "+document.getElementById("to").value+"\nVentas: $"+money(d.total)+"\nPedidos válidos: "+d.valid.length+"\nAnulados: "+d.can.length+"\nComisión "+d.pct+"%: $"+money(d.comm));
+share("DISTRIBUIDORA N.A.A. S.A.S.\nCIERRE QUINCENAL\nPreventista: "+user+"\nDesde: "+document.getElementById("from").value+"\nHasta: "+document.getElementById("to").value+"\nVentas: $"+money(d.total)+"\nPedidos válidos: "+d.valid.length+"\nAnulados: "+d.can.length+"\nComisión "+d.pt+"%: $"+money(d.comm));
 }
 async function share(text){
 if(navigator.share){
