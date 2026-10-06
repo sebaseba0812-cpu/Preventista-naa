@@ -1818,7 +1818,38 @@ async function anularPedidoOficina(id){
   }
 
 }
-async function renderOfficeOrders(){
+ async function marcarCobradoOficina(id){
+  let o=orders.find(x=>String(x.id)===String(id));
+  if(!o)return;
+
+  if(o.paymentStatus==="cobrado"){
+    alert("Este pedido ya figura como cobrado.");
+    return;
+  }
+
+  if(!confirm("¿Marcar esta cuenta corriente como COBRADA?"))return;
+
+  try{
+    o.paymentStatus="cobrado";
+    o.paymentDate=new Date().toISOString();
+    o.updatedAt=new Date().toISOString();
+
+    await firebaseDB.collection("orders").doc(o.id).update({
+      paymentStatus:"cobrado",
+      paymentDate:new Date(),
+      updatedAt:new Date()
+    });
+
+    save();
+    renderOfficeOrders();
+
+    alert("Cuenta corriente marcada como cobrada correctamente.");
+  }catch(error){
+    console.error("Error marcando cuenta como cobrada:",error);
+    alert("No se pudo marcar como cobrada.");
+  }
+}
+  function renderOfficeOrders(){
   const list = document.getElementById("officeOrdersList");
 
   if(!list) return;
