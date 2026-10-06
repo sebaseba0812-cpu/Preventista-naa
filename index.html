@@ -1976,6 +1976,14 @@ ${o.paymentType==="cuenta_corriente" ? '<div style="margin-top:10px;"><span clas
               Estado: ${esc(estado)}
             </span>
           </div>
+         ${o.paymentType==="cuenta_corriente" && o.paymentStatus!=="cobrado"
+? `
+<div style="margin-top:10px;">
+  <button class="primary" onclick="marcarCobradoOficina('${o.id}')">
+    💰 Marcar como cobrada
+  </button>
+</div>`
+: ""} 
 ${
   estado === "nuevo"
     ? `
