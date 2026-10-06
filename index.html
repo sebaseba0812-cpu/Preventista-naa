@@ -1087,7 +1087,7 @@ return '<span class="inactive">⏱️ Hace '+x.days+' días que no compra</span>
 function renderClients(){
 let mine=clients.filter(c=>c.user?.uid===user?.uid);
 document.getElementById("orderClient").innerHTML='<option value="">Seleccionar cliente...</option>'+mine.map(c=>'<option value="'+c.id+'">'+esc(c.name)+" · "+esc(c.zone||"")+"</option>").join("");
-document.getElementById("clientList").innerHTML=mine.length?mine.map(c=><div class="product"><b>${esc(c.name)}</b><div class="muted">${esc(clientAddress(c))} · ${esc(c.phone||"Sin teléfono")}${c.whatsapp?" · WhatsApp":""}${c.obs?" · "+esc(c.obs):""}</div>${purchaseStatus(c)}<div style="margin-top:8px;"><span class="small">${c.paymentType==="cuenta_corriente"?"🟠 Cuenta corriente · "+(c.creditDays||0)+" días":"💵 Contado"}</span> <button data-id="${c.id}" onclick="toggleClientPaymentType(this.dataset.id)">Cambiar condición</button></div></div>).join(""):'<div class="empty">Todavía no hay clientes.</div>';
+document.getElementById("clientList").innerHTML=mine.length?mine.map(c=>'<div class="product"><b>'+esc(c.name)+'</b><div class="muted">'+esc(clientAddress(c))+' · '+esc(c.phone||"Sin teléfono")+(c.whatsapp?' · WhatsApp':'')+(c.obs?' · '+esc(c.obs):'')+'</div>'+purchaseStatus(c)+'<div style="margin-top:8px;"><span class="small">'+(c.paymentType==="cuenta_corriente"?'🟠 Cuenta corriente · '+(c.creditDays||0)+' días':'💵 Contado')+'</span> <button data-id="'+c.id+'" onclick="toggleClientPaymentType(this.dataset.id)">Cambiar condición</button></div></div>').join(""):'<div class="empty">Todavía no hay clientes.</div>';
 renderClientWhatsapp();
 }
 function toggleClientPaymentType(id){
