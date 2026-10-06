@@ -1929,6 +1929,7 @@ async function renderOfficeOrders(){
             💰 Total:
             <b>$${money(o.total || 0)}</b>
           </div>
+${o.paymentType==="cuenta_corriente" ? '<div style="margin-top:10px;"><span class="badge">🟠 Cuenta corriente · '+(o.creditDays||0)+' días</span><div class="small" style="margin-top:5px;">💰 Estado de cobro: '+(o.paymentStatus==="cobrado"?"Cobrado":"Pendiente de cobro")+'</div></div>' : ''}
 
           ${
             o.obs
