@@ -1600,11 +1600,15 @@ async function sendDraftToOffice(){
               "Número de boleta inválido."
             );
           }
-
+const pedidoClient=clients.find(c=>String(c.id)===String(draft.clientId)&&c.user?.uid===user?.uid);
+          
           const pedido={
             ...draft,
 
             status:"nuevo",
+            paymentType:pedidoClient?.paymentType||"contado",
+creditDays:Number(pedidoClient?.creditDays||0),
+paymentStatus:pedidoClient?.paymentType==="cuenta_corriente"?"pendiente":"cobrado",
 
             boletaNumber:nextNumber,
 
