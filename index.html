@@ -2046,12 +2046,46 @@ ${estado === "preparado"
   }
 
 }
-  function closureData(){
-let a=new Date(document.getElementById("from").value+"T00:00:00"),b=new Date(document.getElementById("to").value+"T23:59:59");
-let mine=orders.filter(o=>o.user?.uid===user?.uid&&new Date(o.date)>=a&&new Date(o.date)<=b);
-let valid=mine.filter(o=>o.status!=="canceled"&&o.status!=="anulado"),can=mine.filter(o=>o.status==="canceled"||o.status==="anulado"),total=valid.reduce((s,o)=>s+o.total,0),pct=Number(document.getElementById("commission").value||4);
-return {valid,can,total,pct,comm:total*pct/100};
+ function closureData(){
+  let a=new Date(document.getElementById("from").value+"T00:00:00");
+  let b=new Date(document.getElementById("to").value+"T23:59:59");
+
+  let mine=orders.filter(o=>o.user?.uid===user?.uid);
+
+  let inRange=o=>{
+    let fecha;
+
+    if(o.paymentType==="cuenta_corriente" && o.paymentStatus==="cobrado"){
+      fecha=new Date(o.paymentDate||o.updatedAt||o.date);
+    }else{
+      fecha=new Date(o.date);
+    }
+
+    return fecha>=a&&fecha<=b;
+  };
+
+  let valid=mine.filter(o=>{
+    if(o.status==="canceled"||o.status==="anulado")return false;
+
+    if(o.paymentType==="cuenta_corriente" && o.paymentStatus!=="cobrado"){
+      return false;
+    }
+
+    return inRange(o);
+  });
+
+  let can=mine.filter(o=>{
+    if(o.status!=="canceled"&&o.status!=="anulado")return false;
+
+    return inRange(o);
+  });
+
+  let total=valid.reduce((s,o)=>s+Number(o.total||0),0);
+  let pt=Number(document.getElementById("commission").value||4);
+
+  return {mine,valid,can,total,pt,com:total*pt/100};
 }
+
 function renderClosure(){
 let d=closureData();
 document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pct+'%</b><div class="total">$'+money(d.comm)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
