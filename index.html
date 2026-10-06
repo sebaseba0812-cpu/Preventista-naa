@@ -1085,10 +1085,49 @@ if(x.days===1)return '<span class="activebuy">🟢 Última compra: ayer</span>';
 return '<span class="inactive">⏱️ Hace '+x.days+' días que no compra</span>';
 }
 function renderClients(){
-let mine=clients.filter(c=>c.user?.uid===user?.uid);
-document.getElementById("orderClient").innerHTML='<option value="">Seleccionar cliente...</option>'+mine.map(c=>'<option value="'+c.id+'">'+esc(c.name)+" · "+esc(c.zone||"")+"</option>").join("");
-document.getElementById("clientList").innerHTML=mine.length?mine.map(c=>'<div class="product"><b>'+esc(c.name)+'</b><div class="muted">'+esc(clientAddress(c))+' · '+esc(c.phone||"Sin teléfono")+(c.whatsapp?' · WhatsApp':'')+(c.obs?' · '+esc(c.obs):'')+'</div>'+purchaseStatus(c)+'<div style="margin-top:8px;"><span class="small">'+(c.paymentType==="cuenta_corriente"?'🟠 Cuenta corriente · '+(c.creditDays||0)+' días':'💵 Contado')+'</span> <button data-id="'+c.id+'" onclick="toggleClientPaymentType(this.dataset.id)">Cambiar condición</button></div></div>').join(""):'<div class="empty">Todavía no hay clientes.</div>';
-renderClientWhatsapp();
+  let mine=clients.filter(c=>c.user?.uid===user?.uid);
+
+  let options='<option value="">Seleccionar cliente...</option>';
+
+  mine.forEach(c=>{
+    options+='<option value="'+c.id+'">'+esc(c.name)+' · '+esc(c.zone||'')+'</option>';
+  });
+
+  document.getElementById("orderClient").innerHTML=options;
+
+  let html='';
+
+  mine.forEach(c=>{
+    html+='<div class="product">';
+    html+='<b>'+esc(c.name)+'</b>';
+    html+='<div class="muted">'+esc(clientAddress(c))+' · '+esc(c.phone||"Sin teléfono");
+
+    if(c.whatsapp){
+      html+=' · WhatsApp';
+    }
+
+    if(c.obs){
+      html+=' · '+esc(c.obs);
+    }
+
+    html+='</div>';
+    html+=purchaseStatus(c);
+
+    html+='<div style="margin-top:8px;"><span class="small">';
+
+    if(c.paymentType==="cuenta_corriente"){
+      html+='🟠 Cuenta corriente · '+(c.creditDays||0)+' días';
+    }else{
+      html+='💵 Contado';
+    }
+
+    html+='</span> <button data-id="'+c.id+'" onclick="toggleClientPaymentType(this.dataset.id)">Cambiar condición</button></div>';
+    html+='</div>';
+  });
+
+  document.getElementById("clientList").innerHTML=html||'<div class="empty">Todavía no hay clientes.</div>';
+
+  renderClientWhatsapp();
 }
 function toggleClientPaymentType(id){
   let c=clients.find(x=>String(x.id)===String(id)&&x.user?.uid===user?.uid);
