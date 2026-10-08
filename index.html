@@ -290,8 +290,29 @@ placeholder="Ej.: 10">
 </div>
 </div>
 
-<button class="secondary" style="width:100%;margin-top:10px" onclick="setDashboardToday()">
-📅 Ver hoy
+<div class="row" style="margin-top:10px">
+  <button class="secondary" onclick="setDashboardPeriod('today')">
+    📅 Hoy
+  </button>
+
+  <button class="secondary" onclick="setDashboardPeriod('week')">
+    📆 Esta semana
+  </button>
+</div>
+
+<div class="row" style="margin-top:8px">
+  <button class="secondary" onclick="setDashboardPeriod('month')">
+    🗓️ Este mes
+  </button>
+
+  <button class="secondary" onclick="setDashboardPeriod('quinzena')">
+    📊 Esta quincena
+  </button>
+</div>
+
+<button class="secondary" style="width:100%;margin-top:8px"
+  onclick="setDashboardPeriod('all')">
+  📚 Todo
 </button>
 
 </div>
@@ -1068,7 +1089,33 @@ async function renderDashboard(){
       (s,o)=>s+Number(o.total||0),
       0
     );
+    let totalUnits=0;
 
+valid.forEach(o=>{
+  if(!Array.isArray(o.lines))return;
+
+  o.lines.forEach(line=>{
+    totalUnits+=Number(line.qty||0);
+  });
+});
+const paymentTotals={
+  efectivo:0,
+  transferencia:0,
+  cuenta_corriente:0
+};
+
+valid.forEach(o=>{
+  const tipo=o.paymentType||"efectivo";
+
+  if(tipo==="transferencia"){
+    paymentTotals.transferencia+=Number(o.total||0);
+  }else if(tipo==="cuenta_corriente"){
+    paymentTotals.cuenta_corriente+=Number(o.total||0);
+  }else{
+    paymentTotals.efectivo+=Number(o.total||0);
+  }
+});
+    
     const today=new Date();
 
     const todayStart=new Date(
@@ -1125,6 +1172,10 @@ async function renderDashboard(){
             <div class="total">${valid.length}</div>
           </div>
         </div>
+        <div>
+  <div class="muted">Unidades vendidas</div>
+  <div class="total">${totalUnits}</div>
+</div>
 
         <hr>
 
@@ -1141,6 +1192,24 @@ async function renderDashboard(){
         </div>
 
         <hr>
+
+<div>
+  <h3>💳 Formas de pago</h3>
+
+  <div>💵 Efectivo:
+    <b>${dashboardMoney(paymentTotals.efectivo)}</b>
+  </div>
+
+  <div style="margin-top:5px">
+    🏦 Transferencia:
+    <b>${dashboardMoney(paymentTotals.transferencia)}</b>
+  </div>
+
+  <div style="margin-top:5px">
+    🟠 Cuenta corriente:
+    <b>${dashboardMoney(paymentTotals.cuenta_corriente)}</b>
+  </div>
+</div>
 
         <div>
           🚚 Entregados:
@@ -1175,13 +1244,15 @@ async function renderDashboard(){
 
       if(!bySeller[name]){
         bySeller[name]={
-          total:0,
-          orders:0
-        };
+  total:0,
+  orders:0,
+  commission:0
+};
       }
 
       bySeller[name].total+=Number(o.total||0);
-      bySeller[name].orders++;
+bySeller[name].orders++;
+bySeller[name].commission+=Number(o.total||0)*0.04;
     });
 
     const sellerRows=Object.entries(bySeller)
@@ -1202,6 +1273,10 @@ async function renderDashboard(){
                 <div class="price">
                   ${dashboardMoney(d.total)}
                 </div>
+                <div class="small">
+  💰 Comisión 4%:
+  <b>${dashboardMoney(d.commission)}</b>
+</div>
               </div>
             `).join("")
           : '<div class="empty">No hay ventas en este período.</div>'
@@ -1341,18 +1416,57 @@ async function renderDashboard(){
 
 }
 
-function setDashboardToday(){
+function setDashboardPeriod(type){
 
   const now=new Date();
 
-  const y=now.getFullYear();
-  const m=String(now.getMonth()+1).padStart(2,"0");
-  const d=String(now.getDate()).padStart(2,"0");
+  let from=new Date(now);
+  let to=new Date(now);
 
-  const value=y+"-"+m+"-"+d;
+  if(type==="today"){
+    // Hoy
+  }
 
-  document.getElementById("dashFrom").value=value;
-  document.getElementById("dashTo").value=value;
+  if(type==="week"){
+    const day=now.getDay();
+    const diff=day===0 ? 6 : day-1;
+
+    from=new Date(now);
+    from.setDate(now.getDate()-diff);
+
+    to=new Date(from);
+    to.setDate(from.getDate()+6);
+  }
+
+  if(type==="month"){
+    from=new Date(now.getFullYear(),now.getMonth(),1);
+    to=new Date(now.getFullYear(),now.getMonth()+1,0);
+  }
+
+  if(type==="quinzena"){
+    if(now.getDate()<=15){
+      from=new Date(now.getFullYear(),now.getMonth(),1);
+      to=new Date(now.getFullYear(),now.getMonth(),15);
+    }else{
+      from=new Date(now.getFullYear(),now.getMonth(),16);
+      to=new Date(now.getFullYear(),now.getMonth()+1,0);
+    }
+  }
+
+  const formatDate=d=>{
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,"0");
+    const day=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  };
+
+  if(type==="all"){
+    document.getElementById("dashFrom").value="";
+    document.getElementById("dashTo").value="";
+  }else{
+    document.getElementById("dashFrom").value=formatDate(from);
+    document.getElementById("dashTo").value=formatDate(to);
+  }
 
   renderDashboard();
 }
