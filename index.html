@@ -270,14 +270,77 @@ placeholder="Ej.: 10">
 
 </section>
 
-<section id="" class="screen">
-<div class="card"><h2>Cierre quincenal</h2>
-<div class="row"><div><label>Desde</label><input type="date" id="from"></div><div><label>Hasta</label><input type="date" id="to"></div></div>
-<label>Comisión</label><input id="commission" type="number" value="4" step=".1" oninput="renderClosure()">%
+<section id="cierre" class="screen">
+
+<div id="adminDashboardBox">
+
+<div class="card">
+<h2>📊 Dashboard general</h2>
+<p class="small">Resumen general de la distribuidora.</p>
+
+<div class="row">
+<div>
+<label>Desde</label>
+<input type="date" id="dashFrom" onchange="renderDashboard()">
 </div>
+
+<div>
+<label>Hasta</label>
+<input type="date" id="dashTo" onchange="renderDashboard()">
+</div>
+</div>
+
+<button class="secondary" style="width:100%;margin-top:10px" onclick="setDashboardToday()">
+📅 Ver hoy
+</button>
+
+</div>
+
+<div id="dashboardMetrics"></div>
+
+<div id="dashboardPreventistas"></div>
+
+<div id="dashboardProducts"></div>
+
+<div id="dashboardAccounts"></div>
+
+</div>
+
+
+<div id="preventistaClosureBox">
+
+<div class="card">
+<h2>📋 Cierre quincenal</h2>
+
+<div class="row">
+<div>
+<label>Desde</label>
+<input type="date" id="from">
+</div>
+
+<div>
+<label>Hasta</label>
+<input type="date" id="to">
+</div>
+</div>
+
+<label>Comisión</label>
+<input id="commission" type="number" value="4" step=".1" oninput="renderClosure()">%
+
+</div>
+
 <div id="closureMetrics"></div>
+
 <div id="currentAccountsBox"></div>
-  <div class="card"><button class="secondary" style="width:100%" onclick="shareClosure()">📤 Compartir cierre</button></div>
+
+<div class="card">
+<button class="secondary" style="width:100%" onclick="shareClosure()">
+📤 Compartir cierre
+</button>
+</div>
+
+</div>
+
 </section>
 </main></div>
 
@@ -922,7 +985,378 @@ async function syncOrdersFromFirebase(){
 }
   function updateNet(){document.getElementById("net").textContent=navigator.onLine?"🟢 Conectado":"🔴 Sin internet"}
 addEventListener("online",updateNet);addEventListener("offline",updateNet);
+function dashboardRange(){
+  const from=document.getElementById("dashFrom")?.value;
+  const to=document.getElementById("dashTo")?.value;
 
+  const a=from
+    ? new Date(from+"T00:00:00")
+    : new Date(2000,0,1);
+
+  const b=to
+    ? new Date(to+"T23:59:59")
+    : new Date(2999,11,31,23,59,59);
+
+  return {a,b};
+}
+
+function dashboardOrderDate(o){
+  if(o.createdAt?.toDate)return o.createdAt.toDate();
+  if(o.date)return new Date(o.date);
+  return null;
+}
+
+function dashboardIsValid(o){
+  if(o.status==="canceled"||o.status==="anulado")return false;
+
+  if(
+    o.paymentType==="cuenta_corriente" &&
+    o.paymentStatus!=="cobrado"
+  ){
+    return false;
+  }
+
+  return true;
+}
+
+function dashboardMoney(n){
+  return "$"+money(Number(n||0));
+}
+
+async function renderDashboard(){
+
+  const metrics=document.getElementById("dashboardMetrics");
+  const preventistas=document.getElementById("dashboardPreventistas");
+  const products=document.getElementById("dashboardProducts");
+  const accounts=document.getElementById("dashboardAccounts");
+
+  if(!metrics)return;
+
+  metrics.innerHTML='<div class="card"><div class="empty">📊 Cargando dashboard...</div></div>';
+
+  try{
+
+    const snap=await firebaseDB.collection("orders").get();
+
+    const all=[];
+
+    snap.forEach(doc=>{
+      const o=doc.data();
+
+      if(o.status==="borrador")return;
+
+      all.push({
+        id:doc.id,
+        ...o
+      });
+    });
+
+    const {a,b}=dashboardRange();
+
+    const rangeOrders=all.filter(o=>{
+      const d=dashboardOrderDate(o);
+      return d&&d>=a&&d<=b;
+    });
+
+    const valid=rangeOrders.filter(dashboardIsValid);
+
+    const canceled=rangeOrders.filter(o=>
+      o.status==="canceled"||o.status==="anulado"
+    );
+
+    const total=valid.reduce(
+      (s,o)=>s+Number(o.total||0),
+      0
+    );
+
+    const today=new Date();
+
+    const todayStart=new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+
+    const todayEnd=new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+      23,59,59
+    );
+
+    const todayOrders=all.filter(o=>{
+      const d=dashboardOrderDate(o);
+      return d&&d>=todayStart&&d<=todayEnd&&dashboardIsValid(o);
+    });
+
+    const todayTotal=todayOrders.reduce(
+      (s,o)=>s+Number(o.total||0),
+      0
+    );
+
+    const monthStart=new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      1
+    );
+
+    const monthOrders=all.filter(o=>{
+      const d=dashboardOrderDate(o);
+      return d&&d>=monthStart&&d<=todayEnd&&dashboardIsValid(o);
+    });
+
+    const monthTotal=monthOrders.reduce(
+      (s,o)=>s+Number(o.total||0),
+      0
+    );
+
+    metrics.innerHTML=`
+      <div class="card">
+        <h3>💰 Resumen de ventas</h3>
+
+        <div class="row">
+          <div>
+            <div class="muted">Período</div>
+            <div class="total">${dashboardMoney(total)}</div>
+          </div>
+
+          <div>
+            <div class="muted">Pedidos válidos</div>
+            <div class="total">${valid.length}</div>
+          </div>
+        </div>
+
+        <hr>
+
+        <div class="row">
+          <div>
+            <b>📅 Hoy</b>
+            <div class="price">${dashboardMoney(todayTotal)}</div>
+          </div>
+
+          <div>
+            <b>📆 Este mes</b>
+            <div class="price">${dashboardMoney(monthTotal)}</div>
+          </div>
+        </div>
+
+        <hr>
+
+        <div>
+          🚚 Entregados:
+          <b>${rangeOrders.filter(o=>o.status==="entregado").length}</b>
+        </div>
+
+        <div style="margin-top:5px">
+          ⏳ Pendientes:
+          <b>${rangeOrders.filter(o=>
+            o.status!=="entregado" &&
+            o.status!=="anulado" &&
+            o.status!=="canceled"
+          ).length}</b>
+        </div>
+
+        <div style="margin-top:5px">
+          ❌ Anulados:
+          <b>${canceled.length}</b>
+        </div>
+      </div>
+    `;
+
+
+    const bySeller={};
+
+    valid.forEach(o=>{
+      const name=
+        o.preventistaName ||
+        o.user?.name ||
+        o.user ||
+        "Sin preventista";
+
+      if(!bySeller[name]){
+        bySeller[name]={
+          total:0,
+          orders:0
+        };
+      }
+
+      bySeller[name].total+=Number(o.total||0);
+      bySeller[name].orders++;
+    });
+
+    const sellerRows=Object.entries(bySeller)
+      .sort((a,b)=>b[1].total-a[1].total);
+
+    preventistas.innerHTML=`
+      <div class="card">
+        <h3>👥 Ventas por preventista</h3>
+
+        ${
+          sellerRows.length
+          ? sellerRows.map(([name,d],i)=>`
+              <div class="product">
+                <b>${i+1}. ${esc(name)}</b>
+                <div class="muted">
+                  ${d.orders} pedido${d.orders===1?"":"s"}
+                </div>
+                <div class="price">
+                  ${dashboardMoney(d.total)}
+                </div>
+              </div>
+            `).join("")
+          : '<div class="empty">No hay ventas en este período.</div>'
+        }
+
+      </div>
+    `;
+
+
+    const productMap={};
+
+    valid.forEach(o=>{
+
+      if(!Array.isArray(o.lines))return;
+
+      o.lines.forEach(line=>{
+
+        const key=
+          (line.name||"Producto sin nombre")+
+          " · "+
+          (line.presentation||"");
+
+        if(!productMap[key]){
+          productMap[key]={
+            name:line.name||"Producto sin nombre",
+            presentation:line.presentation||"",
+            qty:0,
+            total:0
+          };
+        }
+
+        productMap[key].qty+=Number(line.qty||0);
+        productMap[key].total+=Number(line.total||0);
+
+      });
+
+    });
+
+    const topProducts=Object.values(productMap)
+      .sort((a,b)=>b.qty-a.qty)
+      .slice(0,10);
+
+    products.innerHTML=`
+      <div class="card">
+        <h3>🏆 Productos más vendidos</h3>
+
+        ${
+          topProducts.length
+          ? topProducts.map((p,i)=>`
+              <div class="product">
+                <b>${i+1}. ${esc(p.name)}</b>
+
+                <div class="muted">
+                  ${esc(p.presentation)}
+                </div>
+
+                <div style="margin-top:5px">
+                  📦 Unidades:
+                  <b>${p.qty}</b>
+                </div>
+
+                <div style="margin-top:3px">
+                  💰 Venta:
+                  <b>${dashboardMoney(p.total)}</b>
+                </div>
+              </div>
+            `).join("")
+          : '<div class="empty">No hay productos vendidos en este período.</div>'
+        }
+
+      </div>
+    `;
+
+
+    const pendingAccounts=all.filter(o=>
+      o.paymentType==="cuenta_corriente" &&
+      o.paymentStatus!=="cobrado" &&
+      o.status!=="canceled" &&
+      o.status!=="anulado"
+    );
+
+    const accountsTotal=pendingAccounts.reduce(
+      (s,o)=>s+Number(o.total||0),
+      0
+    );
+
+    accounts.innerHTML=`
+      <div class="card">
+        <h3>🟠 Cuentas corrientes a cobrar</h3>
+
+        <div class="total">
+          ${dashboardMoney(accountsTotal)}
+        </div>
+
+        <div class="muted">
+          ${pendingAccounts.length}
+          cuenta${pendingAccounts.length===1?"":"s"} pendiente${pendingAccounts.length===1?"":"s"} de cobro
+        </div>
+
+        ${
+          pendingAccounts.length
+          ? pendingAccounts
+              .sort((a,b)=>Number(b.total||0)-Number(a.total||0))
+              .slice(0,10)
+              .map(o=>`
+                <div class="product">
+                  <b>${esc(o.client||"Sin cliente")}</b>
+
+                  <div class="muted">
+                    Boleta Nº ${esc(o.boletaNumber||"Sin número")}
+                  </div>
+
+                  <div class="price">
+                    ${dashboardMoney(o.total)}
+                  </div>
+
+                  <div class="small">
+                    Plazo: ${o.creditDays||0} días ·
+                    Pendiente de cobro
+                  </div>
+                </div>
+              `).join("")
+          : '<div class="empty">No hay cuentas corrientes pendientes.</div>'
+        }
+
+      </div>
+    `;
+
+  }catch(error){
+
+    console.error("Error cargando Dashboard:",error);
+
+    metrics.innerHTML=
+      '<div class="card"><div class="empty">❌ No se pudo cargar el Dashboard.</div></div>';
+
+  }
+
+}
+
+function setDashboardToday(){
+
+  const now=new Date();
+
+  const y=now.getFullYear();
+  const m=String(now.getMonth()+1).padStart(2,"0");
+  const d=String(now.getDate()).padStart(2,"0");
+
+  const value=y+"-"+m+"-"+d;
+
+  document.getElementById("dashFrom").value=value;
+  document.getElementById("dashTo").value=value;
+
+  renderDashboard();
+}
+  
 function show(id,btn){
 document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
 document.getElementById(id).classList.add("active");
@@ -933,7 +1367,17 @@ if(id==="pedido"){renderClients();renderProducts()}
 if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
-if(id==="cierre")renderClosure();
+if(id==="cierre"){
+  if(user?.role==="admin"){
+    document.getElementById("adminDashboardBox").style.display="block";
+    document.getElementById("preventistaClosureBox").style.display="none";
+    renderDashboard();
+  }else{
+    document.getElementById("adminDashboardBox").style.display="none";
+    document.getElementById("preventistaClosureBox").style.display="block";
+    renderClosure();
+  }
+}
  if(id==="pedidosOficina")renderOfficeOrders(); 
 }
 
