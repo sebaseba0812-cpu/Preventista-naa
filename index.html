@@ -91,7 +91,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
   <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
-<button onclick="show('cierre',this)">📊 Cierre</button>
+<button onclick="show('cierre',this)">📊 Dashboard</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
 <main>
@@ -270,7 +270,7 @@ placeholder="Ej.: 10">
 
 </section>
 
-<section id="cierre" class="screen">
+<section id="" class="screen">
 <div class="card"><h2>Cierre quincenal</h2>
 <div class="row"><div><label>Desde</label><input type="date" id="from"></div><div><label>Hasta</label><input type="date" id="to"></div></div>
 <label>Comisión</label><input id="commission" type="number" value="4" step=".1" oninput="renderClosure()">%
