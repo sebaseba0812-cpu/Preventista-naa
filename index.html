@@ -91,7 +91,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
   <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
-<button onclick="show('cierre',this)">📊 Dashboard</button>
+<button id="dashboardNavBtn" onclick="show('cierre',this)">📊 Dashboard</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
 <main>
@@ -2532,7 +2532,7 @@ ${estado === "preparado"
 
 function renderClosure(){
 let d=closureData();
-document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pt+'%</b><div class="total">$'+money(d.comm)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
+document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pt+'%</b><div class="total">$'+money(d.com)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
 renderCurrentAccounts();
 }
 function renderCurrentAccounts(){
@@ -2624,6 +2624,10 @@ try{await navigator.clipboard.writeText(text);alert("Texto copiado. Pegalo en Wh
 }
 if(user){document.getElementById("loginScreen").classList.add("hidden");document.getElementById("app").classList.remove("hidden");document.getElementById("who").textContent=user.name || user.username;
 if(document.getElementById("roleLabel")) document.getElementById("roleLabel").textContent=(user.role === "admin" ? "Administrador" : "Preventista");
+         if(document.getElementById("dashboardNavBtn")){
+  document.getElementById("dashboardNavBtn").textContent =
+    user.role === "admin" ? "📊 Dashboard" : "📋 Cierre";
+}
 if(user.role === "admin" && document.getElementById("adminBanner")) document.getElementById("adminBanner").classList.remove("hidden");
  if(user.role==="admin" && document.getElementById("pedidosOficinaNavBtn"))
   document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";        
