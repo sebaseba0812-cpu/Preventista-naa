@@ -92,6 +92,11 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
   <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
 <button id="dashboardNavBtn" onclick="show('cierre',this)">📊 Dashboard</button>
+  <button id="cuentasCorrientesNavBtn"
+  style="display:none"
+  onclick="show('cuentasCorrientes',this)">
+  🟠 Cuentas corrientes
+</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
 <main>
@@ -267,6 +272,21 @@ placeholder="Ej.: 10">
 <div id="promotionsList"></div>
 
 </div>
+
+</section>
+  <section id="cuentasCorrientes" class="screen">
+
+  <div class="card">
+
+    <h2>🟠 Cuentas corrientes a cobrar</h2>
+
+    <p class="small">
+      Control de clientes pendientes de cobro.
+    </p>
+
+  </div>
+
+  <div id="currentAccountsAdmin"></div>
 
 </section>
 
@@ -1470,6 +1490,203 @@ function setDashboardPeriod(type){
 
   renderDashboard();
 }
+function renderCurrentAccounts(){
+
+  const box=document.getElementById("currentAccountsAdmin");
+
+  if(!box)return;
+
+  box.innerHTML=
+    '<div class="card"><div class="empty">🟠 Cargando cuentas corrientes...</div></div>';
+
+  firebaseDB.collection("orders").get()
+    .then(snap=>{
+
+      const accounts=[];
+
+      snap.forEach(doc=>{
+
+        const o=doc.data();
+
+        if(o.paymentType!=="cuenta_corriente")return;
+
+        if(o.paymentStatus==="cobrado")return;
+
+        if(o.status==="canceled"||o.status==="anulado")return;
+
+        const saleDate=o.createdAt?.toDate
+          ? o.createdAt.toDate()
+          : new Date(o.date||0);
+
+        if(!saleDate || isNaN(saleDate.getTime()))return;
+
+        const creditDays=Number(o.creditDays||0);
+
+        const dueDate=new Date(saleDate);
+        dueDate.setHours(0,0,0,0);
+        dueDate.setDate(dueDate.getDate()+creditDays);
+
+        const today=new Date();
+        today.setHours(0,0,0,0);
+
+        const diffMs=dueDate.getTime()-today.getTime();
+
+        const daysLeft=Math.ceil(
+          diffMs/(1000*60*60*24)
+        );
+
+        accounts.push({
+          id:doc.id,
+          ...o,
+          saleDate,
+          dueDate,
+          daysLeft
+        });
+
+      });
+
+      accounts.sort((a,b)=>a.daysLeft-b.daysLeft);
+
+      const total=accounts.reduce(
+        (s,o)=>s+Number(o.total||0),
+        0
+      );
+
+      box.innerHTML=`
+
+        <div class="card">
+
+          <h3>💰 Total pendiente</h3>
+
+          <div class="total">
+            ${dashboardMoney(total)}
+          </div>
+
+          <div class="muted">
+            ${accounts.length}
+            cuenta${accounts.length===1?"":"s"}
+            pendiente${accounts.length===1?"":"s"} de cobro
+          </div>
+
+        </div>
+
+        ${
+          accounts.length
+          ? accounts.map(o=>{
+
+              let estado="";
+              let clase="";
+
+              if(o.daysLeft<0){
+
+                estado=
+                  `🔴 Vencida hace ${Math.abs(o.daysLeft)} día${Math.abs(o.daysLeft)===1?"":"s"}`;
+
+                clase="color:#b91c1c;";
+
+              }else if(o.daysLeft===0){
+
+                estado="🟠 Vence hoy";
+
+                clase="color:#c2410c;";
+
+              }else{
+
+                estado=
+                  `🟢 Faltan ${o.daysLeft} día${o.daysLeft===1?"":"s"}`;
+
+                clase="color:#15803d;";
+
+              }
+
+              return `
+
+                <div class="card">
+
+                  <h3>
+                    🏪 ${esc(o.client||"Sin cliente")}
+                  </h3>
+
+                  <div class="muted">
+                    🧾 Boleta Nº
+                    ${esc(o.boletaNumber||"Sin número")}
+                  </div>
+
+                  <div class="muted">
+                    👤 Preventista:
+                    ${esc(
+                      o.preventistaName ||
+                      o.user?.name ||
+                      "Sin preventista"
+                    )}
+                  </div>
+
+                  <div class="price">
+                    ${dashboardMoney(o.total)}
+                  </div>
+
+                  <div style="margin-top:8px;${clase}">
+                    <b>${estado}</b>
+                  </div>
+
+                  <div class="small">
+                    Plazo otorgado:
+                    ${o.creditDays||0} días
+                  </div>
+
+                  <div class="small">
+                    Venta:
+                    ${o.saleDate.toLocaleDateString("es-AR")}
+                  </div>
+
+                  <div class="small">
+                    Vencimiento:
+                    ${o.dueDate.toLocaleDateString("es-AR")}
+                  </div>
+
+                  <button
+                    class="secondary"
+                    style="width:100%;margin-top:10px"
+                    onclick="marcarCobradoOficina('${o.id}')">
+
+                    💵 Marcar como cobrada
+
+                  </button>
+
+                </div>
+
+              `;
+
+          }).join("")
+          : `
+
+            <div class="card">
+
+              <div class="empty">
+                ✅ No hay cuentas corrientes pendientes de cobro.
+              </div>
+
+            </div>
+
+          `
+        }
+
+      `;
+
+    })
+    .catch(error=>{
+
+      console.error(
+        "Error cargando cuentas corrientes:",
+        error
+      );
+
+      box.innerHTML=
+        '<div class="card"><div class="empty">❌ No se pudieron cargar las cuentas corrientes.</div></div>';
+
+    });
+
+}
   
 function show(id,btn){
 document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
@@ -1480,6 +1697,7 @@ if(id==="pedido"){renderClients();renderProducts()}
   if(id==="stock") renderStock();
 if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
+ if(id==="cuentasCorrientes") renderCurrentAccounts(); 
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
 if(id==="cierre"){
   if(user?.role==="admin"){
@@ -2744,7 +2962,9 @@ if(document.getElementById("roleLabel")) document.getElementById("roleLabel").te
 }
 if(user.role === "admin" && document.getElementById("adminBanner")) document.getElementById("adminBanner").classList.remove("hidden");
  if(user.role==="admin" && document.getElementById("pedidosOficinaNavBtn"))
-  document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";        
+  document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";
+      if(user.role==="admin" && document.getElementById("cuentasCorrientesNavBtn"))
+  document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block";   
 setTimeout(init,0)}
 </script>
 
