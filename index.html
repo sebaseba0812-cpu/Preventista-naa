@@ -2867,61 +2867,177 @@ let d=closureData();
 document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pt+'%</b><div class="total">$'+money(d.com)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
 renderCurrentAccounts();
 }
-function renderCurrentAccounts(){
-  let box=document.getElementById("currentAccountsAdmin");
+
+async function renderCurrentAccounts(){
+
+  const box=document.getElementById("currentAccountsAdmin");
   if(!box)return;
 
-  let now=new Date();
+  box.innerHTML='<div class="card">🟠 Cargando cuentas corrientes...</div>';
 
-  let pending=orders.filter(o=>{
-    if(o.paymentType!=="cuenta_corriente")return false;
-    if(o.paymentStatus==="cobrado")return false;
-    if(o.status==="canceled"||o.status==="anulado")return false;
-    return true;
-  });
+  try{
 
-  pending=pending.map(o=>{
-    let fecha=o.createdAt?.toDate
-      ? o.createdAt.toDate()
-      : new Date(o.createdAt||o.date||now);
+    const snap=await firebaseDB.collection("orders").get();
+    const accounts=[];
 
-    let dias=Number(o.creditDays||0);
-    let vencimiento=new Date(fecha);
-    vencimiento.setDate(vencimiento.getDate()+dias);
+    snap.forEach(doc=>{
 
-    let hoy=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    let vence=new Date(vencimiento.getFullYear(),vencimiento.getMonth(),vencimiento.getDate());
+      const o=doc.data();
 
-    let diasRestantes=Math.ceil((vence-hoy)/86400000);
+      if(o.paymentType!=="cuenta_corriente")return;
+      if(o.paymentStatus==="cobrado")return;
+      if(o.status==="canceled"||o.status==="anulado")return;
+      if(o.status==="borrador")return;
 
-    return {...o,vencimiento,diasRestantes};
-  });
+      const saleDate=o.createdAt?.toDate
+        ? o.createdAt.toDate()
+        : new Date(o.date||0);
 
-  pending.sort((a,b)=>a.diasRestantes-b.diasRestantes);
+      if(isNaN(saleDate.getTime()))return;
 
-  if(!pending.length){
-    box.innerHTML='<div class="card"><b>🟢 CUENTAS CORRIENTES</b><div class="muted" style="margin-top:8px;">No hay cuentas corrientes pendientes de cobro.</div></div>';
-    return;
+      const creditDays=Number(o.creditDays||0);
+      const dueDate=new Date(saleDate);
+
+      dueDate.setHours(0,0,0,0);
+      dueDate.setDate(dueDate.getDate()+creditDays);
+
+      const today=new Date();
+      today.setHours(0,0,0,0);
+
+      const daysLeft=Math.ceil(
+        (dueDate.getTime()-today.getTime())/86400000
+      );
+
+      accounts.push({
+        id:doc.id,
+        ...o,
+        saleDate,
+        dueDate,
+        daysLeft
+      });
+
+    });
+
+    accounts.sort((a,b)=>a.daysLeft-b.daysLeft);
+
+    const total=accounts.reduce(
+      (sum,o)=>sum+Number(o.total||0),0
+    );
+
+    let html=`
+      <div class="card">
+        <h3>💰 Total pendiente de cobro</h3>
+        <div class="total">${dashboardMoney(total)}</div>
+        <div class="muted">
+          ${accounts.length} cuenta${accounts.length===1?"":"s"} pendiente${accounts.length===1?"":"s"}
+        </div>
+      </div>
+    `;
+
+    if(!accounts.length){
+
+      html+=`
+        <div class="card">
+          <div class="empty">
+            ✅ No hay cuentas corrientes pendientes de cobro.
+          </div>
+        </div>
+      `;
+
+    }else{
+
+      html+=accounts.map(o=>{
+
+        let aviso;
+        let color;
+
+        if(o.daysLeft<0){
+          const dias=Math.abs(o.daysLeft);
+          aviso=`🔴 Vencida hace ${dias} día${dias===1?"":"s"}`;
+          color="#b91c1c";
+        }else if(o.daysLeft===0){
+          aviso="🟠 Vence hoy";
+          color="#c2410c";
+        }else{
+          aviso=`🟢 Faltan ${o.daysLeft} día${o.daysLeft===1?"":"s"}`;
+          color="#15803d";
+        }
+
+        const preventista=
+          o.preventistaName ||
+          o.user?.name ||
+          o.user?.displayName ||
+          "Sin preventista";
+
+        return `
+          <div class="card">
+
+            <h3>🏪 ${esc(o.client||"Sin cliente")}</h3>
+
+            <div class="muted">
+              🧾 Boleta Nº ${esc(o.boletaNumber||"Sin número")}
+            </div>
+
+            <div class="muted">
+              👤 Preventista: ${esc(preventista)}
+            </div>
+
+            <div class="price">
+              ${dashboardMoney(o.total)}
+            </div>
+
+            <div style="margin-top:8px;color:${color}">
+              <b>${aviso}</b>
+            </div>
+
+            <div class="small">
+              Plazo otorgado: ${creditDaysText(o.creditDays)}
+            </div>
+
+            <div class="small">
+              Venta: ${o.saleDate.toLocaleDateString("es-AR")}
+            </div>
+
+            <div class="small">
+              Vencimiento: ${o.dueDate.toLocaleDateString("es-AR")}
+            </div>
+
+            <button
+              class="secondary"
+              style="width:100%;margin-top:10px"
+              onclick="marcarCobradoOficina('${o.id}')">
+              💵 Marcar como cobrada
+            </button>
+
+          </div>
+        `;
+
+      }).join("");
+
+    }
+
+    box.innerHTML=html;
+
+  }catch(error){
+
+    console.error("Error cargando cuentas corrientes:",error);
+
+    box.innerHTML=`
+      <div class="card">
+        <div class="empty">
+          ❌ No se pudieron cargar las cuentas corrientes.
+          Revisá la consola para ver el error.
+        </div>
+      </div>
+    `;
+
   }
 
-  box.innerHTML='<div class="card"><h3>🟠 CUENTAS CORRIENTES A COBRAR</h3>'+
-    pending.map(o=>{
-      let aviso=o.diasRestantes<0
-        ? '🔴 Vencida hace '+Math.abs(o.diasRestantes)+' días'
-        : o.diasRestantes===0
-          ? '🔴 Vence hoy'
-          : o.diasRestantes===1
-            ? '🟠 Falta 1 día'
-            : '🟢 Faltan '+o.diasRestantes+' días';
+}
 
-      return '<div class="product" style="margin-top:10px;">'+
-        '<b>'+esc(o.client||"Sin cliente")+'</b>'+
-        '<div class="muted">Boleta Nº '+esc(o.boletaNumber||"Sin número")+' · '+money(o.total||0)+'</div>'+
-        '<div style="margin-top:5px;"><b>'+aviso+'</b></div>'+
-        '<div class="small">Plazo: '+(o.creditDays||0)+' días · Estado: Pendiente de cobro</div>'+
-      '</div>';
-    }).join("")+
-  '</div>';
+function creditDaysText(days){
+  const n=Number(days||0);
+  return `${n} día${n===1?"":"s"}`;
 }
 
 async function shareOrder(id){
