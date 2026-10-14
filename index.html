@@ -2874,7 +2874,6 @@ function renderCurrentAccounts(){
   let now=new Date();
 
   let pending=orders.filter(o=>{
-    if(o.user?.uid!==user?.uid)return false;
     if(o.paymentType!=="cuenta_corriente")return false;
     if(o.paymentStatus==="cobrado")return false;
     if(o.status==="canceled"||o.status==="anulado")return false;
