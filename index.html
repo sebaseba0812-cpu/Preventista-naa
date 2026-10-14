@@ -2545,6 +2545,16 @@ function startOfficeBadgeListener(){
   },error=>console.error("Error actualizando en vivo el contador de Oficina:",error));
 }
 
+  function updateOfficeBadge(){
+  // Evita que la inicialización falle si no existe la función del indicador.
+}
+
+function setOfficePendingCount(count){
+  const badge = document.getElementById("officePendingCount");
+  if(badge){
+    badge.textContent = String(Number(count) || 0);
+  }
+}
 async function renderOfficeOrders(){
   const list = document.getElementById("officeOrdersList");
 
