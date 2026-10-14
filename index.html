@@ -2828,17 +2828,24 @@ ${estado === "preparado"
 
   let mine=orders.filter(o=>o.user?.uid===user?.uid);
 
-  let inRange=o=>{
-    let fecha;
+  
+let inRange=o=>{
+  let fecha;
+  let valorFecha;
 
-    if(o.paymentType==="cuenta_corriente" && o.paymentStatus==="cobrado"){
-      fecha=new Date(o.paymentDate||o.updatedAt||o.date);
-    }else{
-      fecha=new Date(o.date);
-    }
+  if(o.paymentType==="cuenta_corriente" && o.paymentStatus==="cobrado"){
+    valorFecha=o.paymentDate||o.updatedAt||o.date;
+  }else{
+    valorFecha=o.date;
+  }
 
-    return fecha>=a&&fecha<=b;
-  };
+  fecha=valorFecha?.toDate
+    ? valorFecha.toDate()
+    : new Date(valorFecha);
+
+  return !isNaN(fecha.getTime()) && fecha>=a && fecha<=b;
+};
+
 
   let valid=mine.filter(o=>{
     if(o.status==="canceled"||o.status==="anulado")return false;
