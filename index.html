@@ -1490,203 +1490,105 @@ function setDashboardPeriod(type){
 
   renderDashboard();
 }
-function renderCurrentAccounts(){
 
-  const box=document.getElementById("currentAccountsAdmin");
+async function renderCurrentAccounts(){
+  const box = document.getElementById("currentAccountsAdmin");
+  if (!box) return;
 
-  if(!box)return;
+  box.innerHTML = '<div class="card"><div class="empty">🟠 Cargando cuentas corrientes...</div></div>';
 
-  box.innerHTML=
-    '<div class="card"><div class="empty">🟠 Cargando cuentas corrientes...</div></div>';
+  try {
+    const snap = await firebaseDB.collection("orders").get();
+    const accounts = [];
 
-  firebaseDB.collection("orders").get()
-    .then(snap=>{
+    snap.forEach(doc => {
+      const o = doc.data();
 
-      const accounts=[];
+      if (o.paymentType !== "cuenta_corriente") return;
+      if (o.paymentStatus === "cobrado") return;
+      if (o.status === "canceled" || o.status === "anulado") return;
 
-      snap.forEach(doc=>{
+      const saleDate = o.createdAt?.toDate
+        ? o.createdAt.toDate()
+        : new Date(o.date || 0);
 
-        const o=doc.data();
+      if (isNaN(saleDate.getTime())) return;
 
-        if(o.paymentType!=="cuenta_corriente")return;
+      const creditDays = Number(o.creditDays || 0);
+      const dueDate = new Date(saleDate);
+      dueDate.setHours(0, 0, 0, 0);
+      dueDate.setDate(dueDate.getDate() + creditDays);
 
-        if(o.paymentStatus==="cobrado")return;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-        if(o.status==="canceled"||o.status==="anulado")return;
+      const daysLeft = Math.round((dueDate - today) / 86400000);
 
-        const saleDate=o.createdAt?.toDate
-          ? o.createdAt.toDate()
-          : new Date(o.date||0);
-
-        if(!saleDate || isNaN(saleDate.getTime()))return;
-
-        const creditDays=Number(o.creditDays||0);
-
-        const dueDate=new Date(saleDate);
-        dueDate.setHours(0,0,0,0);
-        dueDate.setDate(dueDate.getDate()+creditDays);
-
-        const today=new Date();
-        today.setHours(0,0,0,0);
-
-        const diffMs=dueDate.getTime()-today.getTime();
-
-        const daysLeft=Math.ceil(
-          diffMs/(1000*60*60*24)
-        );
-
-        accounts.push({
-          id:doc.id,
-          ...o,
-          saleDate,
-          dueDate,
-          daysLeft
-        });
-
+      accounts.push({
+        id: doc.id,
+        ...o,
+        saleDate,
+        dueDate,
+        daysLeft
       });
-
-      accounts.sort((a,b)=>a.daysLeft-b.daysLeft);
-
-      const total=accounts.reduce(
-        (s,o)=>s+Number(o.total||0),
-        0
-      );
-
-      box.innerHTML=`
-
-        <div class="card">
-
-          <h3>💰 Total pendiente</h3>
-
-          <div class="total">
-            ${dashboardMoney(total)}
-          </div>
-
-          <div class="muted">
-            ${accounts.length}
-            cuenta${accounts.length===1?"":"s"}
-            pendiente${accounts.length===1?"":"s"} de cobro
-          </div>
-
-        </div>
-
-        ${
-          accounts.length
-          ? accounts.map(o=>{
-
-              let estado="";
-              let clase="";
-
-              if(o.daysLeft<0){
-
-                estado=
-                  `🔴 Vencida hace ${Math.abs(o.daysLeft)} día${Math.abs(o.daysLeft)===1?"":"s"}`;
-
-                clase="color:#b91c1c;";
-
-              }else if(o.daysLeft===0){
-
-                estado="🟠 Vence hoy";
-
-                clase="color:#c2410c;";
-
-              }else{
-
-                estado=
-                  `🟢 Faltan ${o.daysLeft} día${o.daysLeft===1?"":"s"}`;
-
-                clase="color:#15803d;";
-
-              }
-
-              return `
-
-                <div class="card">
-
-                  <h3>
-                    🏪 ${esc(o.client||"Sin cliente")}
-                  </h3>
-
-                  <div class="muted">
-                    🧾 Boleta Nº
-                    ${esc(o.boletaNumber||"Sin número")}
-                  </div>
-
-                  <div class="muted">
-                    👤 Preventista:
-                    ${esc(
-                      o.preventistaName ||
-                      o.user?.name ||
-                      "Sin preventista"
-                    )}
-                  </div>
-
-                  <div class="price">
-                    ${dashboardMoney(o.total)}
-                  </div>
-
-                  <div style="margin-top:8px;${clase}">
-                    <b>${estado}</b>
-                  </div>
-
-                  <div class="small">
-                    Plazo otorgado:
-                    ${o.creditDays||0} días
-                  </div>
-
-                  <div class="small">
-                    Venta:
-                    ${o.saleDate.toLocaleDateString("es-AR")}
-                  </div>
-
-                  <div class="small">
-                    Vencimiento:
-                    ${o.dueDate.toLocaleDateString("es-AR")}
-                  </div>
-
-                  <button
-                    class="secondary"
-                    style="width:100%;margin-top:10px"
-                    onclick="marcarCobradoOficina('${o.id}')">
-
-                    💵 Marcar como cobrada
-
-                  </button>
-
-                </div>
-
-              `;
-
-          }).join("")
-          : `
-
-            <div class="card">
-
-              <div class="empty">
-                ✅ No hay cuentas corrientes pendientes de cobro.
-              </div>
-
-            </div>
-
-          `
-        }
-
-      `;
-
-    })
-    .catch(error=>{
-
-      console.error(
-        "Error cargando cuentas corrientes:",
-        error
-      );
-
-      box.innerHTML=
-        '<div class="card"><div class="empty">❌ No se pudieron cargar las cuentas corrientes.</div></div>';
-
     });
 
+    accounts.sort((a, b) => a.daysLeft - b.daysLeft);
+
+    const total = accounts.reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+    box.innerHTML = `
+      <div class="card">
+        <h3>💰 Total pendiente</h3>
+        <div class="total">${dashboardMoney(total)}</div>
+        <div class="muted">${accounts.length} cuenta(s) pendiente(s) de cobro</div>
+      </div>
+
+      ${accounts.length ? accounts.map(o => {
+        let estado;
+        let color;
+
+        if (o.daysLeft < 0) {
+          estado = `🔴 Vencida hace ${Math.abs(o.daysLeft)} día(s)`;
+          color = "#b91c1c";
+        } else if (o.daysLeft === 0) {
+          estado = "🟠 Vence hoy";
+          color = "#c2410c";
+        } else {
+          estado = `🟢 Faltan ${o.daysLeft} día(s)`;
+          color = "#15803d";
+        }
+
+        const fecha = d => d.toLocaleDateString("es-AR");
+
+        return `
+          <div class="card">
+            <h3>🏪 ${esc(o.client || "Sin cliente")}</h3>
+            <div class="muted">🧾 Boleta Nº ${esc(String(o.boletaNumber || "Sin número"))}</div>
+            <div class="muted">👤 Preventista: ${esc(o.preventistaName || o.user?.name || "Sin preventista")}</div>
+            <div class="price">${dashboardMoney(Number(o.total || 0))}</div>
+            <div style="margin-top:8px;color:${color}"><b>${estado}</b></div>
+            <div class="small">Plazo otorgado: ${o.creditDays || 0} días</div>
+            <div class="small">Venta: ${fecha(o.saleDate)}</div>
+            <div class="small">Vencimiento: ${fecha(o.dueDate)}</div>
+            <button class="secondary" style="width:100%;margin-top:10px"
+              onclick="marcarCobradoOficina('${o.id}')">
+              💵 Marcar como cobrada
+            </button>
+          </div>
+        `;
+      }).join("") : `
+        <div class="card">
+          <div class="empty">✅ No hay cuentas corrientes pendientes de cobro.</div>
+        </div>
+      `}
+    `;
+  } catch (error) {
+    console.error("Error cargando cuentas corrientes:", error);
+    box.innerHTML = '<div class="card"><div class="empty">❌ No se pudieron cargar las cuentas corrientes. Revisá la consola.</div></div>';
+  }
 }
+
   
 function show(id,btn){
 document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
