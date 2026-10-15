@@ -2546,7 +2546,23 @@ function startOfficeBadgeListener(){
 }
 
   function updateOfficeBadge(){
-  // Evita que la inicialización falle si no existe la función del indicador.
+  const badge = document.getElementById("officePendingCount");
+  if(!badge) return;
+
+  const lista = Array.isArray(orders) ? orders : [];
+
+  const pendientes = lista.filter(o => {
+    const estado = String(o.status || "").toLowerCase();
+
+    return estado !== "borrador" &&
+           estado !== "entregado" &&
+           estado !== "delivered" &&
+           estado !== "anulado" &&
+           estado !== "canceled" &&
+           estado !== "cancelado";
+  }).length;
+
+  setOfficePendingCount(pendientes);
 }
 
 function setOfficePendingCount(count){
