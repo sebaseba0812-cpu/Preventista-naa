@@ -2379,39 +2379,95 @@ paymentStatus:pedidoClient?.paymentType==="cuenta_corriente"?"pendiente":"cobrad
 function anularPedidoOficina(id){
   cancelOrder(id);
 }
-function renderHistory(){
-  const mine=orders.filter(o=>o.user?.uid===user?.uid);
-  let html=mine.map(o=>{
-    const canceled=o.status==="canceled" || o.status==="anulado";
-    const status=canceled?"❌ Anulado: "+esc(o.cancelReason||""):"✅ Válido";
-    const sent=o.sentAt
-      ? '<span class="sentbadge">📤 Ya enviado '+new Date(o.sentAt).toLocaleString("es-AR")+'</span>'
-      : '<span class="small">📥 Pendiente de enviar</span>';
-    const officeStatus=canceled?"Anulado":o.status==="nuevo"?"Nuevo":o.status==="preparando"?"Preparando":o.status==="preparado"?"Preparado":o.status==="entregado"?"Entregado":"Válido";
-    const actions=canceled
-      ? '<span class="small" style="display:block;margin-top:8px;color:#b91c1c;font-weight:700;">🚫 Pedido anulado · No se puede enviar a oficina</span>'
-      : '<button class="danger" type="button" onclick="cancelOrder('+JSON.stringify(String(o.id))+')">❌ Anular</button><button class="wa-office-btn" type="button" onclick="sendOrderToOfficeWhatsApp('+JSON.stringify(String(o.id))+')">📲 '+(o.sentAt?"Reenviar a WhatsApp oficina":"Enviar a WhatsApp oficina")+'</button>';
-    const fecha=o.date?.toDate?o.date.toDate():new Date(o.date||o.createdAt||Date.now());
-    return '<div class="product"><b>'+fecha.toLocaleString("es-AR")+'</b><div><b>'+esc(o.client||"Sin cliente")+'</b> · <b>$'+money(o.total||0)+'</b></div><div class="muted">'+status+'</div><div class="small" style="margin-top:6px;">🧾 Boleta Nº '+(o.boletaNumber||"Sin número")+' · Estado: '+esc(officeStatus)+'</div>'+sent+'<div class="row" style="margin-top:8px">'+actions+'</div></div>';
-  }).join("");
+async function renderHistory(){
+  const cont = document.getElementById("historyList");
+  if(!cont) return;
 
-  // Guardar borrador almacena una copia local; mostrarla aquí permite recuperarla o enviarla sin rehacer el pedido.
-  try{
-    const raw=localStorage.getItem("NAA_DRAFT_ORDER");
-    if(raw){
-      const draft=JSON.parse(raw);
-      const owner=draft.ownerUid||draft.preventistaUid||draft.user?.uid;
-      if(!owner || owner===user?.uid){
-        const fecha=new Date(draft.date||Date.now());
-        html+='<div class="product" style="margin-top:12px;border:2px solid #f59e0b;background:#fffbeb">'+
-          '<b>📝 BORRADOR GUARDADO</b><div style="margin-top:6px"><b>'+esc(draft.client||"Sin cliente")+'</b> · <b>$'+money(draft.total||0)+'</b></div>'+
-          '<div class="small">'+fecha.toLocaleString("es-AR")+' · '+(draft.lines||[]).length+' productos distintos</div>'+
-          '<div class="small" style="margin-top:5px">Todavía no tiene número de boleta. Al enviarlo se asignará uno automáticamente.</div>'+
-          '<div class="row" style="margin-top:8px"><button class="secondary" type="button" onclick="loadDraftToEditor()">✏️ Recuperar borrador</button><button class="primary" type="button" onclick="sendDraftToOffice()">📤 Enviar a oficina</button></div></div>';
-      }
+  cont.innerHTML = '<div class="empty">Cargando historial...</div>';
+
+  try {
+    let lista = Array.isArray(orders) ? [...orders] : [];
+
+    if(typeof firebaseDB !== "undefined" && user?.uid){
+      const snap = await firebaseDB.collection("orders").get();
+
+      const remotos = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      const mapa = new Map(lista.map(o => [String(o.id), o]));
+
+      remotos.forEach(o => {
+        const anterior = mapa.get(String(o.id)) || {};
+        mapa.set(String(o.id), {...anterior, ...o});
+      });
+
+      lista = [...mapa.values()];
+      orders = lista;
     }
-  }catch(error){console.error("No se pudo mostrar el borrador guardado:",error);}
 
+    const esAdmin = user?.role === "admin";
+
+    lista = lista.filter(o => {
+      if(esAdmin) return true;
+
+      const uid = o.user?.uid || o.ownerUid || o.preventistaUid;
+      return uid === user?.uid;
+    });
+
+    lista.sort((a,b) => {
+      const fecha = o => {
+        const f = o.createdAt || o.date;
+        return f?.toDate ? f.toDate().getTime() : new Date(f || 0).getTime();
+      };
+      return fecha(b) - fecha(a);
+    });
+
+    let html = lista.map(o => {
+      const estado = String(o.status || "nuevo").toLowerCase();
+      const anulado = ["canceled","anulado","anulada","cancelado"].includes(estado);
+
+      const fechaValor = o.createdAt || o.date;
+      const fecha = fechaValor?.toDate
+        ? fechaValor.toDate()
+        : new Date(fechaValor || Date.now());
+
+      const nombre = o.client || o.clientName || "Sin cliente";
+      const numero = o.boletaNumber || o.boleta || "Sin número";
+      const preventista = o.preventistaName || o.user?.name || "Sin nombre";
+
+      const productos = Array.isArray(o.lines)
+        ? o.lines.map(p =>
+            `<div>• ${esc(p.name || "Producto")} · Cant. ${Number(p.qty || 0)}</div>`
+          ).join("")
+        : "";
+
+      const cobro = o.paymentType === "cuenta_corriente"
+        ? `<div>Cuenta corriente · ${o.paymentStatus === "cobrado" ? "Cobrado" : "Pendiente de cobro"}</div>`
+        : "";
+
+      return `
+        <div class="product" style="margin-top:10px">
+          <b>Boleta Nº ${esc(String(numero))}</b>
+          <div class="small">${fecha.toLocaleString("es-AR")}</div>
+          <div>Cliente: <b>${esc(String(nombre))}</b></div>
+          <div>Preventista: ${esc(String(preventista))}</div>
+          <div style="margin-top:6px">${productos}</div>
+          <div style="margin-top:6px">Total: <b>$${money(o.total || 0)}</b></div>
+          <div style="margin-top:6px">Estado: <b>${esc(estado)}</b></div>
+          ${cobro}
+          ${anulado ? '<div style="color:#b91c1c">Pedido anulado</div>' : ""}
+        </div>`;
+    }).join("");
+
+    cont.innerHTML = html || '<div class="empty">No hay pedidos para mostrar.</div>';
+
+  } catch(error) {
+    console.error("Error cargando historial:", error);
+    cont.innerHTML = '<div class="empty">No se pudo cargar el historial. Revisá la consola.</div>';
+  }
+}
   document.getElementById("history").innerHTML=html||'<div class="empty">No hay pedidos ni borradores guardados.</div>';
 }
 
