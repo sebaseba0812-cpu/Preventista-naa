@@ -2387,24 +2387,37 @@ async function renderHistory(){
   try {
     let lista = Array.isArray(orders) ? [...orders] : [];
 
-    if(typeof firebaseDB !== "undefined" && user?.uid){
-      const snap = await firebaseDB.collection("orders").get();
+   if(typeof firebaseDB !== "undefined" && user?.uid){
+  let snap;
 
-      const remotos = snap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+  if(user.role === "admin"){
+    snap = await firebaseDB
+      .collection("orders")
+      .get();
+  }else{
+    snap = await firebaseDB
+      .collection("orders")
+      .where("ownerUid", "==", user.uid)
+      .get();
+  }
 
-      const mapa = new Map(lista.map(o => [String(o.id), o]));
+  const remotos = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
 
-      remotos.forEach(o => {
-        const anterior = mapa.get(String(o.id)) || {};
-        mapa.set(String(o.id), {...anterior, ...o});
-      });
+  const mapa = new Map(
+    lista.map(o => [String(o.id), o])
+  );
 
-      lista = [...mapa.values()];
-      orders = lista;
-    }
+  remotos.forEach(o => {
+    const anterior = mapa.get(String(o.id)) || {};
+    mapa.set(String(o.id), {...anterior, ...o});
+  });
+
+  lista = Array.from(mapa.values());
+  orders = lista;
+}
 
     const esAdmin = user?.role === "admin";
 
