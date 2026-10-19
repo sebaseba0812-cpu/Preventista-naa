@@ -2380,11 +2380,9 @@ function anularPedidoOficina(id){
   cancelOrder(id);
 }
 async function renderHistory(){
-  const cont = document.getElementById("history") || document.getElementById("historyList");
-
-  const destino = document.getElementById("history");
-if (destino) destino.innerHTML = html || '<div class="empty">No hay pedidos para mostrar.</div>';
-else cont.innerHTML = html || '<div class="empty">No hay pedidos para mostrar.</div>';
+  const cont = document.getElementById("history");
+  if(!cont) return;
+  cont.innerHTML = '<div class="empty">Cargando historial...</div>';
 
   try {
     let lista = Array.isArray(orders) ? [...orders] : [];
