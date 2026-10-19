@@ -2637,6 +2637,9 @@ function setOfficePendingCount(count){
     badge.textContent = String(Number(count) || 0);
   }
 }
+
+    
+  
 async function renderOfficeOrders(){
   const list = document.getElementById("officeOrdersList");
   if(!list) return;
@@ -2658,7 +2661,10 @@ async function renderOfficeOrders(){
 
     snap.forEach(doc => {
       const o = doc.data();
-      if(o.status === "borrador") return;
+
+      if(String(o.status || "").toLowerCase() === "borrador"){
+        return;
+      }
 
       pedidos.push({
         id: doc.id,
@@ -2678,24 +2684,23 @@ async function renderOfficeOrders(){
       return fechaB - fechaA;
     });
 
-    const preparar = pedidos.filter(o =>
-      ["nuevo","preparando"].includes(
-        String(o.status || "nuevo").toLowerCase()
-      )
-    );
+    const preparar = pedidos.filter(o => {
+      const estado = String(o.status || "nuevo").toLowerCase();
+      return ["nuevo", "preparando"].includes(estado);
+    });
 
     const preparados = pedidos.filter(o =>
       String(o.status || "").toLowerCase() === "preparado"
     );
 
     const entregados = pedidos.filter(o =>
-      ["entregado","delivered"].includes(
+      ["entregado", "delivered"].includes(
         String(o.status || "").toLowerCase()
       )
     );
 
     const anulados = pedidos.filter(o =>
-      ["anulado","anulada","cancelado","canceled"].includes(
+      ["anulado", "anulada", "cancelado", "canceled"].includes(
         String(o.status || "").toLowerCase()
       )
     );
@@ -2758,7 +2763,14 @@ async function renderOfficeOrders(){
       }
 
       if(
-        !["entregado","delivered","anulado","anulada","cancelado","canceled"].includes(estado)
+        ![
+          "entregado",
+          "delivered",
+          "anulado",
+          "anulada",
+          "cancelado",
+          "canceled"
+        ].includes(estado)
       ){
         acciones += `
           <button class="secondary"
@@ -2866,6 +2878,7 @@ async function renderOfficeOrders(){
       '<div class="empty">No se pudieron cargar los pedidos.</div>';
   }
 }
+
  function closureData(){
   let a=new Date(document.getElementById("from").value+"T00:00:00");
   let b=new Date(document.getElementById("to").value+"T23:59:59");
