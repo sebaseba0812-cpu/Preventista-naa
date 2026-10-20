@@ -3157,7 +3157,9 @@ if(user.role === "admin" && document.getElementById("adminBanner")) document.get
  if(user.role==="admin" && document.getElementById("pedidosOficinaNavBtn"))
   document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";
       if(user.role==="admin" && document.getElementById("cuentasCorrientesNavBtn"))
-  document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block";   
+  document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block"; 
+    if(user.role === "admin" && document.getElementById("repartoNavBtn"))
+  document.getElementById("repartoNavBtn").style.display="inline-block";     
 setTimeout(init,0)}
 </script>
 
