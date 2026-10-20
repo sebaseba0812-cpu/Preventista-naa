@@ -2948,7 +2948,7 @@ async function renderReparto(){
       </div>
       ${preparados.map(p => {
         const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
-        const boleta = p.invoiceNumber || p.boleta || p.invoice || "Sin número";
+        const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
         const total = Number(p.total || 0).toLocaleString("es-AR", {
           style: "currency",
           currency: "ARS"
