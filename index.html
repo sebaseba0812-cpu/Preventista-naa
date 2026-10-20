@@ -180,6 +180,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   onclick="show('cuentasCorrientes',this)">
   🟠 Cuentas corrientes
 </button>
+  <button id="repartoNavBtn" style="display:inline-block" onclick="show('reparto',this)">🚚 Reparto</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
 <main>
@@ -372,6 +373,15 @@ placeholder="Ej.: 10">
   <div id="currentAccountsAdmin"></div>
 
 </section>
+ <section id="reparto" class="screen">
+  <div class="card">
+    <h2>🚚 Reparto</h2>
+    <p class="small">Gestión de pedidos preparados para entregar.</p>
+    <div id="repartoLista">
+      <p class="small">Todavía no hay pedidos cargados para reparto.</p>
+    </div>
+  </div>
+</section> 
 
 <section id="cierre" class="screen">
 
