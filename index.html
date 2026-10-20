@@ -9,7 +9,7 @@
 *{box-sizing:border-box}body{margin:0;font-family:Arial;background:#f3f4f6;color:#111827}
 header{background:#111827;color:white;padding:16px;position:sticky;top:0;z-index:5}
 h1{font-size:19px;margin:0 0 4px}.sub{font-size:12px;opacity:.8}
-nav{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:8px;background:white;position:sticky;top:67px;z-index:4}
+nav{display:flex;flex-direction:column;gap:8px;padding:12px;background:#fff;border-radius:14px;position:static;min-width:220px}
 nav button{border:0;border-radius:9px;padding:11px 3px;background:#e5e7eb;font-weight:bold;font-size:10px}
 nav button.active{background:#111827;color:#fff}
 main{padding:12px;max-width:700px;margin:auto}.screen{display:none}.screen.active{display:block}
@@ -31,6 +31,88 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#16a34a;color:white;padding:13px 20px;border-radius:12px;font-weight:bold;box-shadow:0 6px 20px #0003;opacity:0;pointer-events:none;z-index:99;transition:.2s;white-space:nowrap}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}.inactive{display:inline-block;margin-top:6px;padding:5px 8px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:bold;font-size:12px}.activebuy{display:inline-block;margin-top:6px;padding:5px 8px;border-radius:8px;background:#ecfdf5;color:#166534;font-weight:bold;font-size:12px}.sentbadge{display:inline-block;margin-top:6px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-weight:bold;font-size:12px}
 .nav-count{display:inline-block;margin-left:4px;min-width:20px;padding:2px 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;text-align:center;line-height:1.5;vertical-align:middle}
+
+/* DISTRIBUCIÓN DEL PANEL: PC */
+@media (min-width: 900px) {
+  #app {
+    display: grid;
+    grid-template-columns: 235px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+  }
+
+  #app > header {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-radius: 12px;
+  }
+
+  #app > nav {
+    grid-column: 1;
+    grid-row: 2;
+    position: sticky;
+    top: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px #0001;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+
+  #app > nav button {
+    width: 100%;
+    text-align: left;
+    font-size: 13px;
+    padding: 12px;
+  }
+
+  #app > main {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+    padding: 0 8px 20px;
+  }
+}
+
+/* CELULAR Y TABLET */
+@media (max-width: 899px) {
+  #app {
+    display: block;
+    padding: 8px;
+  }
+
+  #app > nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px;
+    position: static;
+    max-height: none;
+  }
+
+  #app > nav button {
+    width: 100%;
+    font-size: 12px;
+    padding: 10px 6px;
+  }
+
+  #app > main {
+    max-width: 100%;
+    padding: 10px 0;
+  }
+}
+
 </style>
 
 <style>
