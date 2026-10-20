@@ -377,6 +377,16 @@ placeholder="Ej.: 10">
   <div class="card">
     <h2>🚚 Reparto</h2>
     <p class="small">Gestión de pedidos preparados para entregar.</p>
+    <div class="card">
+  <h3>🚚 Organización del reparto</h3>
+  <p class="small">Seleccioná el vehículo para organizar las entregas de esta salida.</p>
+  <label for="vehiculoReparto">Vehículo de esta salida</label>
+  <select id="vehiculoReparto">
+    <option value="1">Vehículo 1</option>
+    <option value="2">Vehículo 2</option>
+  </select>
+  <p class="small">Los pedidos se asignarán al vehículo cuando preparemos la hoja de ruta.</p>
+</div>
     <div id="repartoLista">
       <p class="small">Todavía no hay pedidos cargados para reparto.</p>
     </div>
@@ -2895,6 +2905,7 @@ async function renderOfficeOrders(){
     list.innerHTML = '<div class="empty">No se pudieron cargar los pedidos.</div>';
   }
 }
+
 async function renderReparto(){
   const box = document.getElementById("repartoLista");
   if(!box) return;
@@ -2903,44 +2914,112 @@ async function renderReparto(){
 
   try{
     const snap = await firebaseDB.collection("orders").get();
+
     const pedidos = snap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
 
     const preparados = pedidos.filter(p => {
-  const estado = String(p.status || p.estado || "").toLowerCase().trim();
-  return ["preparado", "preparada", "preparados", "preparadas"].includes(estado);
-});
+      const estado = String(p.status || p.estado || "")
+        .toLowerCase().trim();
+
+      return [
+        "preparado",
+        "preparada",
+        "preparados",
+        "preparadas"
+      ].includes(estado);
+    });
 
     if(!preparados.length){
-      box.innerHTML = '<p class="small">No hay pedidos preparados para reparto.</p>';
+      box.innerHTML =
+        '<p class="small">No hay pedidos preparados para reparto.</p>';
       return;
     }
 
-    box.innerHTML = preparados.map(p => {
-      const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
-      const boleta = p.invoiceNumber || p.boleta || p.invoice || "Sin número";
-      const total = Number(p.total || 0).toLocaleString("es-AR", {
-        style: "currency",
-        currency: "ARS"
-      });
+    box.innerHTML = `
+      <div class="card">
+        <h3>🚚 Organización del reparto</h3>
+        <p class="small">
+          Asigná cada pedido al vehículo que realizará la entrega.
+          La asignación se guarda en Firebase.
+        </p>
+      </div>
+      ${preparados.map(p => {
+        const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
+        const boleta = p.invoiceNumber || p.boleta || p.invoice || "Sin número";
+        const total = Number(p.total || 0).toLocaleString("es-AR", {
+          style: "currency",
+          currency: "ARS"
+        });
 
-      return `
-        <div class="card">
-          <h3>Boleta N.º ${boleta}</h3>
-          <p><b>Cliente:</b> ${cliente}</p>
-          <p><b>Total:</b> ${total}</p>
-          <p><b>Estado:</b> Preparado para reparto</p>
-        </div>
-      `;
-    }).join("");
+        const vehiculo = String(p.vehiculoReparto || "");
+
+        return `
+          <div class="card">
+            <h3>Boleta N.º ${esc(String(boleta))}</h3>
+            <p><b>Cliente:</b> ${esc(String(cliente))}</p>
+            <p><b>Total:</b> ${total}</p>
+            <p><b>Estado:</b> Preparado para reparto</p>
+
+            <label for="vehiculo-${esc(String(p.id))}">
+              Vehículo asignado
+            </label>
+            <select id="vehiculo-${esc(String(p.id))}">
+              <option value="" ${vehiculo === "" ? "selected" : ""}>
+                Sin asignar
+              </option>
+              <option value="1" ${vehiculo === "1" ? "selected" : ""}>
+                Vehículo 1
+              </option>
+              <option value="2" ${vehiculo === "2" ? "selected" : ""}>
+                Vehículo 2
+              </option>
+            </select>
+
+            <button class="primary"
+              onclick="guardarVehiculoReparto('${esc(String(p.id))}')">
+              Guardar vehículo
+            </button>
+          </div>
+        `;
+      }).join("")}
+    `;
 
   }catch(error){
     console.error("Error cargando reparto:", error);
-    box.innerHTML = '<p class="small">No se pudieron cargar los pedidos para reparto.</p>';
+    box.innerHTML =
+      '<p class="small">No se pudieron cargar los pedidos para reparto.</p>';
   }
 }
+
+async function guardarVehiculoReparto(id){
+  const selector = document.getElementById("vehiculo-" + id);
+  if(!selector) return;
+
+  const vehiculo = selector.value;
+
+  try{
+    await firebaseDB.collection("orders").doc(id).update({
+      vehiculoReparto: vehiculo,
+      updatedAt: new Date()
+    });
+
+    alert(
+      vehiculo
+        ? "Pedido asignado al Vehículo " + vehiculo + "."
+        : "Se quitó la asignación del vehículo."
+    );
+
+    await renderReparto();
+
+  }catch(error){
+    console.error("Error guardando vehículo:", error);
+    alert("No se pudo guardar el vehículo. Revisá los permisos de Firebase.");
+  }
+}
+
   function closureData(){
   let a=new Date(document.getElementById("from").value+"T00:00:00");
   let b=new Date(document.getElementById("to").value+"T23:59:59");
