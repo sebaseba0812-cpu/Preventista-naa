@@ -1695,6 +1695,7 @@ if(id==="pedido"){renderClients();renderProducts()}
 if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
+  if(id==="reparto") renderReparto();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
 if(id==="cierre"){
   if(user?.role==="admin"){
@@ -2894,7 +2895,52 @@ async function renderOfficeOrders(){
     list.innerHTML = '<div class="empty">No se pudieron cargar los pedidos.</div>';
   }
 }
- function closureData(){
+async function renderReparto(){
+  const box = document.getElementById("repartoLista");
+  if(!box) return;
+
+  box.innerHTML = '<p class="small">Cargando pedidos preparados...</p>';
+
+  try{
+    const snap = await firebaseDB.collection("orders").get();
+    const pedidos = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    const preparados = pedidos.filter(p =>
+      String(p.status || p.estado || "").toLowerCase() === "preparado"
+    );
+
+    if(!preparados.length){
+      box.innerHTML = '<p class="small">No hay pedidos preparados para reparto.</p>';
+      return;
+    }
+
+    box.innerHTML = preparados.map(p => {
+      const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
+      const boleta = p.invoiceNumber || p.boleta || p.invoice || "Sin número";
+      const total = Number(p.total || 0).toLocaleString("es-AR", {
+        style: "currency",
+        currency: "ARS"
+      });
+
+      return `
+        <div class="card">
+          <h3>Boleta N.º ${boleta}</h3>
+          <p><b>Cliente:</b> ${cliente}</p>
+          <p><b>Total:</b> ${total}</p>
+          <p><b>Estado:</b> Preparado para reparto</p>
+        </div>
+      `;
+    }).join("");
+
+  }catch(error){
+    console.error("Error cargando reparto:", error);
+    box.innerHTML = '<p class="small">No se pudieron cargar los pedidos para reparto.</p>';
+  }
+}
+  function closureData(){
   let a=new Date(document.getElementById("from").value+"T00:00:00");
   let b=new Date(document.getElementById("to").value+"T23:59:59");
 
