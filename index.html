@@ -2908,9 +2908,10 @@ async function renderReparto(){
       ...doc.data()
     }));
 
-    const preparados = pedidos.filter(p =>
-      String(p.status || p.estado || "").toLowerCase() === "preparado"
-    );
+    const preparados = pedidos.filter(p => {
+  const estado = String(p.status || p.estado || "").toLowerCase().trim();
+  return ["preparado", "preparada", "preparados", "preparadas"].includes(estado);
+});
 
     if(!preparados.length){
       box.innerHTML = '<p class="small">No hay pedidos preparados para reparto.</p>';
