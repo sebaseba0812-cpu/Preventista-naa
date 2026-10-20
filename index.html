@@ -2726,7 +2726,7 @@ async function renderOfficeOrders(){
   const list = document.getElementById("officeOrdersList");
   if(!list) return;
 
-  list.innerHTML = '<div class="empty">Cargando pedidos recibidos...</div>';
+  list.innerHTML = '<div class="empty">Cargando pedidos...</div>';
 
   try {
     const currentUser = JSON.parse(
@@ -2743,58 +2743,38 @@ async function renderOfficeOrders(){
 
     snap.forEach(doc => {
       const o = doc.data();
-
-      if(String(o.status || "").toLowerCase() === "borrador"){
-        return;
-      }
-
-      pedidos.push({
-        id: doc.id,
-        ...o
-      });
+      if(String(o.status || "").toLowerCase() === "borrador") return;
+      pedidos.push({id:doc.id,...o});
     });
 
     pedidos.sort((a,b) => {
       const fechaA = a.createdAt?.toDate
         ? a.createdAt.toDate()
         : new Date(a.date || 0);
-
       const fechaB = b.createdAt?.toDate
         ? b.createdAt.toDate()
         : new Date(b.date || 0);
-
       return fechaB - fechaA;
     });
 
-    const preparar = pedidos.filter(o => {
-      const estado = String(o.status || "nuevo").toLowerCase();
-      return ["nuevo", "preparando"].includes(estado);
-    });
+    const estadoDe = o => String(o.status || "nuevo").toLowerCase();
 
-    const preparados = pedidos.filter(o =>
-      String(o.status || "").toLowerCase() === "preparado"
+    const preparar = pedidos.filter(o =>
+      ["nuevo","preparando"].includes(estadoDe(o))
     );
-
+    const preparados = pedidos.filter(o => estadoDe(o) === "preparado");
     const entregados = pedidos.filter(o =>
-      ["entregado", "delivered"].includes(
-        String(o.status || "").toLowerCase()
-      )
+      ["entregado","delivered"].includes(estadoDe(o))
     );
-
     const anulados = pedidos.filter(o =>
-      ["anulado", "anulada", "cancelado", "canceled"].includes(
-        String(o.status || "").toLowerCase()
-      )
+      ["anulado","anulada","cancelado","canceled"].includes(estadoDe(o))
     );
 
     function tarjetaPedido(o){
-      const estado = String(o.status || "nuevo").toLowerCase();
-
+      const estado = estadoDe(o);
       const fecha = o.createdAt?.toDate
         ? o.createdAt.toDate().toLocaleString("es-AR")
-        : (o.date
-          ? new Date(o.date).toLocaleString("es-AR")
-          : "Sin fecha");
+        : (o.date ? new Date(o.date).toLocaleString("es-AR") : "Sin fecha");
 
       const lineas = Array.isArray(o.lines)
         ? o.lines.map(line => `
@@ -2810,157 +2790,100 @@ async function renderOfficeOrders(){
       let acciones = "";
 
       if(estado === "nuevo"){
-        acciones += `
-          <button class="primary"
-            onclick="cambiarEstadoPedidoOficina('${o.id}','preparando')">
-            ⚙️ Aceptar y preparar
-          </button>`;
+        acciones += `<button class="primary" onclick="cambiarEstadoPedidoOficina('${o.id}','preparando')">⚙️ Aceptar y preparar</button>`;
       }
-
       if(estado === "preparando"){
-        acciones += `
-          <button class="primary"
-            onclick="cambiarEstadoPedidoOficina('${o.id}','preparado')">
-            📦 Marcar como preparado
-          </button>`;
+        acciones += `<button class="primary" onclick="cambiarEstadoPedidoOficina('${o.id}','preparado')">📦 Marcar como preparado</button>`;
       }
-
       if(estado === "preparado"){
-        acciones += `
-          <button class="primary"
-            onclick="cambiarEstadoPedidoOficina('${o.id}','entregado')">
-            🚚 Marcar como entregado
-          </button>`;
+        acciones += `<button class="primary" onclick="cambiarEstadoPedidoOficina('${o.id}','entregado')">🚚 Marcar como entregado</button>`;
       }
-
       if(
         o.paymentType === "cuenta_corriente" &&
         o.paymentStatus !== "cobrado"
       ){
-        acciones += `
-          <button class="primary"
-            onclick="marcarCobradoOficina('${o.id}')">
-            💰 Marcar como cobrada
-          </button>`;
+        acciones += `<button class="primary" onclick="marcarCobradoOficina('${o.id}')">💰 Marcar como cobrada</button>`;
       }
-
-      if(
-        ![
-          "entregado",
-          "delivered",
-          "anulado",
-          "anulada",
-          "cancelado",
-          "canceled"
-        ].includes(estado)
-      ){
-        acciones += `
-          <button class="secondary"
-            onclick="anularPedidoOficina('${o.id}')">
-            🚫 Anular pedido
-          </button>`;
+      if(!["entregado","delivered","anulado","anulada","cancelado","canceled"].includes(estado)){
+        acciones += `<button class="secondary" onclick="anularPedidoOficina('${o.id}')">🚫 Anular pedido</button>`;
       }
 
       return `
         <div class="product" style="margin-top:10px">
           <b>Boleta Nº ${esc(String(o.boletaNumber || "Sin número"))}</b>
-
           <div class="small" style="margin-top:4px">📅 ${fecha}</div>
-
-          <div style="margin-top:8px">
-            👤 Preventista:
-            <b>${esc(o.preventistaName || o.user || "Sin nombre")}</b>
-          </div>
-
-          <div style="margin-top:5px">
-            🏪 Cliente: <b>${esc(o.client || "Sin cliente")}</b>
-          </div>
-
-          <div style="margin-top:8px">
-            <b>Productos:</b>
-            ${lineas || '<div class="small">Sin productos</div>'}
-          </div>
-
-          <div style="margin-top:10px">
-            💰 Total: <b>$${money(o.total || 0)}</b>
-          </div>
-
-          ${
-            o.paymentType === "cuenta_corriente"
-              ? `<div style="margin-top:8px">
-                   <span class="badge">🟠 Cuenta corriente</span>
-                   <div class="small" style="margin-top:5px">
-                     Estado de cobro:
-                     <b>${o.paymentStatus === "cobrado" ? "Cobrado" : "Pendiente de cobro"}</b>
-                   </div>
-                 </div>`
-              : ""
-          }
-
-          ${
-            o.obs
-              ? `<div class="small" style="margin-top:8px">
-                   📝 Observaciones: ${esc(o.obs)}
-                 </div>`
-              : ""
-          }
-
-          <div style="margin-top:10px">
-            <span class="badge">Estado: ${esc(estado)}</span>
-          </div>
-
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
-            ${acciones}
-          </div>
+          <div style="margin-top:8px">👤 Preventista: <b>${esc(o.preventistaName || o.user || "Sin nombre")}</b></div>
+          <div style="margin-top:5px">🏪 Cliente: <b>${esc(o.client || "Sin cliente")}</b></div>
+          <div style="margin-top:8px"><b>Productos:</b>${lineas || '<div class="small">Sin productos</div>'}</div>
+          <div style="margin-top:10px">💰 Total: <b>$${money(o.total || 0)}</b></div>
+          ${o.paymentType === "cuenta_corriente" ? `
+            <div style="margin-top:8px">
+              <span class="badge">🟠 Cuenta corriente</span>
+              <div class="small" style="margin-top:5px">Estado de cobro: <b>${o.paymentStatus === "cobrado" ? "Cobrado" : "Pendiente de cobro"}</b></div>
+            </div>` : ""}
+          ${o.obs ? `<div class="small" style="margin-top:8px">📝 Observaciones: ${esc(o.obs)}</div>` : ""}
+          <div style="margin-top:10px"><span class="badge">Estado: ${esc(estado)}</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">${acciones}</div>
         </div>`;
     }
 
-    function seccion(titulo, descripcion, listaPedidos){
-      return `
-        <div class="card" style="margin-top:16px">
-          <h2>${titulo} (${listaPedidos.length})</h2>
-          <div class="small">${descripcion}</div>
-          ${
-            listaPedidos.length
-              ? listaPedidos.map(tarjetaPedido).join("")
-              : '<div class="empty" style="margin-top:10px">No hay pedidos en esta sección.</div>'
-          }
-        </div>`;
+    const pestañas = [
+      {id:"recibidos",titulo:"📥 Recibidos",lista:preparar},
+      {id:"preparados",titulo:"📦 Preparados",lista:preparados},
+      {id:"entregados",titulo:"🚚 Entregados y rendidos",lista:entregados},
+      {id:"anulados",titulo:"🚫 Anulados",lista:anulados}
+    ];
+
+    let pestañaActiva = "recibidos";
+
+    function mostrarPestaña(id){
+      pestañaActiva = id;
+      const seleccionada = pestañas.find(p => p.id === id) || pestañas[0];
+
+      const botones = list.querySelectorAll("[data-office-tab]");
+      botones.forEach(b => {
+        const activa = b.dataset.officeTab === id;
+        b.style.background = activa ? "#111827" : "#e5e7eb";
+        b.style.color = activa ? "#ffffff" : "#111827";
+      });
+
+      const contenido = list.querySelector("#officeTabContent");
+      if(!contenido) return;
+
+      contenido.innerHTML = seleccionada.lista.length
+        ? seleccionada.lista.map(tarjetaPedido).join("")
+        : '<div class="empty" style="margin-top:12px">No hay pedidos en esta sección.</div>';
     }
 
     list.innerHTML = `
-      ${seccion(
-        "🟠 A preparar",
-        "Pedidos nuevos o que están en preparación.",
-        preparar
-      )}
-
-      ${seccion(
-        "📦 Preparados para reparto",
-        "Pedidos listos para cargar y salir a entregar.",
-        preparados
-      )}
-
-      ${seccion(
-        "🚚 Entregados y rendidos",
-        "Pedidos que ya figuran como entregados. Revisá el estado de cobro de cada cuenta corriente.",
-        entregados
-      )}
-
-      ${seccion(
-        "🚫 Pedidos anulados",
-        "Registro de pedidos cancelados; no se pueden volver a entregar desde esta sección.",
-        anulados
-      )}
+      <div class="card" style="margin-bottom:14px">
+        <h2>📋 Etapas de pedidos</h2>
+        <div class="small">Elegí una etapa para ver sus pedidos.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+          ${pestañas.map(p => `
+            <button type="button" data-office-tab="${p.id}"
+              style="border:0;border-radius:9px;padding:10px 12px;background:#e5e7eb;color:#111827;font-weight:bold">
+              ${p.titulo} (${p.lista.length})
+            </button>
+          `).join("")}
+        </div>
+      </div>
+      <div class="card">
+        <div id="officeTabContent"></div>
+      </div>
     `;
+
+    list.querySelectorAll("[data-office-tab]").forEach(b => {
+      b.addEventListener("click", () => mostrarPestaña(b.dataset.officeTab));
+    });
+
+    mostrarPestaña(pestañaActiva);
 
   } catch(error) {
     console.error("Error cargando pedidos de oficina:", error);
-    list.innerHTML =
-      '<div class="empty">No se pudieron cargar los pedidos.</div>';
+    list.innerHTML = '<div class="empty">No se pudieron cargar los pedidos.</div>';
   }
 }
-
  function closureData(){
   let a=new Date(document.getElementById("from").value+"T00:00:00");
   let b=new Date(document.getElementById("to").value+"T23:59:59");
