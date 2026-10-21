@@ -181,6 +181,11 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   🟠 Cuentas corrientes
 </button>
   <button id="repartoNavBtn" style="display:inline-block" onclick="show('reparto',this)">🚚 Reparto</button>
+  <button id="personalNavBtn"
+  style="display:none"
+  onclick="show('personal',this)">
+  👥 Personal y usuarios
+</button>
   <button onclick="logout()">🚪 Cerrar sesión</button>
 </nav>
 <main>
@@ -389,6 +394,55 @@ placeholder="Ej.: 10">
 </div>
     <div id="repartoLista">
       <p class="small">Todavía no hay pedidos cargados para reparto.</p>
+    </div>
+  </div>
+</section> 
+
+  <section id="personal" class="screen">
+  <div class="card">
+    <h2>👥 Personal y usuarios</h2>
+    <p class="small">
+      Administración de preventistas y repartidores.
+    </p>
+
+    <div class="card">
+      <h3>➕ Nuevo usuario</h3>
+
+      <label for="personalNombre">Nombre y apellido</label>
+      <input id="personalNombre" type="text"
+        placeholder="Nombre completo">
+
+      <label for="personalCorreo">Correo electrónico personal</label>
+      <input id="personalCorreo" type="email"
+        placeholder="nombre@correo.com">
+
+      <label for="personalTelefono">Teléfono</label>
+      <input id="personalTelefono" type="tel"
+        placeholder="Teléfono de contacto">
+
+      <label for="personalRol">Tipo de usuario</label>
+      <select id="personalRol">
+        <option value="preventista">Preventista</option>
+        <option value="repartidor">Repartidor</option>
+      </select>
+
+      <label for="personalContrasena">Contraseña inicial</label>
+      <input id="personalContrasena" type="password"
+        placeholder="Contraseña inicial">
+
+      <p class="small">
+        Las cuentas se habilitarán cuando conectemos este formulario
+        con el proceso seguro de creación de usuarios de Firebase.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>📋 Personal registrado</h3>
+      <div id="personalLista">
+        <p class="small">
+          Todavía no se cargó el listado de personal.
+        </p>
+      </div>
     </div>
   </div>
 </section> 
