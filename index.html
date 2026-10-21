@@ -1760,6 +1760,7 @@ if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
   if(id==="reparto") renderReparto();
+  if(id==="personal") renderPersonal();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
 if(id==="cierre"){
   if(user?.role==="admin"){
@@ -3048,7 +3049,53 @@ async function renderReparto(){
   }
 }
 
-async function guardarVehiculoReparto(id){
+async function renderPersonal() {
+  const lista = document.getElementById("personalLista");
+  if (!lista) return;
+
+  lista.innerHTML = '<p class="small">Cargando personal...</p>';
+
+  try {
+    const snapshot = await firebaseDB.collection("users").get();
+
+    const personal = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(u =>
+        ["preventista", "repartidor"].includes(
+          String(u.role || "").toLowerCase()
+        )
+      );
+
+    if (personal.length === 0) {
+      lista.innerHTML =
+        '<p class="small">Todavía no hay preventistas ni repartidores registrados.</p>';
+      return;
+    }
+
+    lista.innerHTML = personal.map(u => {
+      const nombre = String(u.name || u.username || "Sin nombre");
+      const correo = String(u.authEmail || "Sin correo");
+      const rol = String(u.role || "Sin rol");
+      const estado = u.active === false ? "Inactivo" : "Activo";
+
+      return `
+        <div class="card">
+          <strong>${nombre}</strong>
+          <p class="small">Correo: ${correo}</p>
+          <p class="small">Tipo: ${rol}</p>
+          <p class="small">Estado: ${estado}</p>
+        </div>
+      `;
+    }).join("");
+
+  } catch (error) {
+    console.error("Error cargando personal:", error);
+    lista.innerHTML =
+      '<p class="small">No se pudo cargar el personal. Revisá los permisos de Firebase.</p>';
+  }
+}
+  
+  async function guardarVehiculoReparto(id){
   const selector = document.getElementById("vehiculo-" + id);
   if(!selector) return;
 
