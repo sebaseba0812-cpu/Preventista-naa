@@ -3387,7 +3387,9 @@ if(user.role === "admin" && document.getElementById("adminBanner")) document.get
   document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block"; 
     if(user.role === "admin" && document.getElementById("repartoNavBtn"))
   document.getElementById("repartoNavBtn").style.display="inline-block";     
-setTimeout(init,0)}
+if(user.role === "admin" && document.getElementById("personalNavBtn"))
+    document.getElementById("personalNavBtn").style.display="inline-block";
+         setTimeout(init,0)}
 </script>
 
 <style>
