@@ -2997,14 +2997,18 @@ async function renderReparto(){
     }
 
     box.innerHTML = `
-      <div class="card">
-        <h3>🚚 Organización del reparto</h3>
+      
         <p class="small">
           Asigná cada pedido al vehículo que realizará la entrega.
           La asignación se guarda en Firebase.
         </p>
+
+        <button class="primary" onclick="imprimirHojaRuta()">
+          Imprimir hoja de ruta por vehículo
+        </button>
       </div>
       ${preparados.map(p => {
+
         const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
         const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
         const total = Number(p.total || 0).toLocaleString("es-AR", {
@@ -3052,7 +3056,114 @@ async function renderReparto(){
   }
 }
 
-async function renderPersonal() {
+
+async function generarHojaRutaReparto() {
+  const selector = document.getElementById("vehiculoReparto");
+  if (!selector) {
+    alert("No se encontró el selector del vehículo.");
+    return;
+  }
+
+  const vehiculo = selector.value;
+  if (!vehiculo) {
+    alert("Seleccioná un vehículo.");
+    return;
+  }
+
+  try {
+    const snap = await firebaseDB.collection("orders").get();
+
+    const pedidos = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => {
+        const estado = String(p.status || p.estado || "")
+          .toLowerCase().trim();
+
+        return [
+          "preparado",
+          "preparada",
+          "preparados",
+          "preparadas"
+        ].includes(estado) &&
+          String(p.vehiculoReparto || "") === vehiculo;
+      });
+
+    if (!pedidos.length) {
+      alert("No hay pedidos asignados al Vehículo " + vehiculo + ".");
+      return;
+    }
+
+    const filas = pedidos.map(p => {
+      const boleta = p.boletaNumber || p.invoiceNumber ||
+        p.boleta || p.invoice || "Sin número";
+      const cliente = p.clientName || p.client ||
+        p.cliente || "Sin cliente";
+      const total = Number(p.total || 0).toLocaleString("es-AR", {
+        style: "currency",
+        currency: "ARS"
+      });
+
+      return `<tr>
+        <td>${esc(String(boleta))}</td>
+        <td>${esc(String(cliente))}</td>
+        <td>${total}</td>
+        <td>________________</td>
+      </tr>`;
+    }).join("");
+
+    const ventana = window.open("", "_blank");
+    if (!ventana) {
+      alert("Permití las ventanas emergentes para imprimir la hoja de ruta.");
+      return;
+    }
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Hoja de ruta - Vehículo ${vehiculo}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #000;
+                 background: #fff; padding: 20px; }
+          h1, p { margin-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #000; padding: 8px;
+                   text-align: left; }
+          th { background: #eee; }
+          @media print { button { display: none; } }
+        </style>
+      </head>
+      <body>
+        <h1>DISTRIBUIDORA N.A.A. S.A.S.</h1>
+        <h2>Hoja de ruta — Vehículo ${vehiculo}</h2>
+        <p>Fecha: ${new Date().toLocaleDateString("es-AR")}</p>
+        <p>Total de entregas: ${pedidos.length}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Boleta N.º</th>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>Entregado / Firma</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+        <br>
+        <button onclick="window.print()">Imprimir hoja de ruta</button>
+      </body>
+      </html>
+    `);
+    ventana.document.close();
+
+  } catch (error) {
+    console.error("Error generando hoja de ruta:", error);
+    alert("No se pudo generar la hoja de ruta.");
+  }
+}
+
+  async function renderPersonal() {
   const lista = document.getElementById("personalLista");
   if (!lista) return;
 
@@ -3097,6 +3208,9 @@ async function renderPersonal() {
       '<p class="small">No se pudo cargar el personal. Revisá los permisos de Firebase.</p>';
   }
 }
+
+  
+
   
   async function guardarVehiculoReparto(id){
   const selector = document.getElementById("vehiculo-" + id);
@@ -3123,6 +3237,106 @@ async function renderPersonal() {
     alert("No se pudo guardar el vehículo. Revisá los permisos de Firebase.");
   }
 }
+
+  
+async function imprimirHojaRuta() {
+  const vehiculo = prompt("Ingresá el número de vehículo (1 o 2):");
+
+  if (!["1", "2"].includes(vehiculo)) {
+    alert("Ingresá un vehículo válido: 1 o 2.");
+    return;
+  }
+
+  try {
+    const snap = await firebaseDB.collection("orders").get();
+
+    const pedidos = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })).filter(p => {
+      const estado = String(p.status || p.estado || "")
+        .toLowerCase().trim();
+
+      return String(p.vehiculoReparto || "") === vehiculo &&
+        ["preparado", "preparada", "preparados", "preparadas"]
+          .includes(estado);
+    });
+
+    if (!pedidos.length) {
+      alert("No hay pedidos preparados asignados al Vehículo " + vehiculo + ".");
+      return;
+    }
+
+    const filas = pedidos.map(p => {
+      const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
+      const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
+      const direccion = p.address || p.street || p.direccion || "Sin dirección";
+      const zona = p.zone || p.zona || "";
+      const altura = p.height || p.altura || "";
+      const telefono = p.phone || p.telefono || "";
+      const observaciones = p.obs || p.observaciones || "";
+
+      return `
+        <tr>
+          <td>${esc(String(boleta))}</td>
+          <td>${esc(String(cliente))}</td>
+          <td>${esc([zona, direccion, altura].filter(Boolean).join(" "))}</td>
+          <td>${esc(String(telefono))}</td>
+          <td>${esc(String(observaciones))}</td>
+          <td class="check"></td>
+        </tr>`;
+    }).join("");
+
+    const ventana = window.open("", "_blank");
+
+    if (!ventana) {
+      alert("El navegador bloqueó la ventana. Permití las ventanas emergentes e intentá de nuevo.");
+      return;
+    }
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Hoja de ruta - Vehículo ${vehiculo}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #000; background: #fff; padding: 18px; }
+          h1, p { margin-bottom: 8px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #000; padding: 7px; text-align: left; }
+          th { background: #fff; }
+          .check { width: 45px; height: 28px; }
+          @media print { button { display: none; } }
+        </style>
+      </head>
+      <body>
+        <h1>DISTRIBUIDORA N.A.A. S.A.S.</h1>
+        <h2>Hoja de ruta — Vehículo ${vehiculo}</h2>
+        <p>Fecha: ${new Date().toLocaleDateString("es-AR")}</p>
+        <p>Pedidos: ${pedidos.length}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Boleta</th><th>Cliente</th><th>Dirección</th>
+              <th>Teléfono</th><th>Observaciones</th><th>Entregado</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+        <p><button onclick="window.print()">Imprimir hoja de ruta</button></p>
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+
+  } catch (error) {
+    console.error("Error generando hoja de ruta:", error);
+    alert("No se pudo generar la hoja de ruta. Revisá la conexión con Firebase.");
+  }
+}
+
 
   function closureData(){
   let a=new Date(document.getElementById("from").value+"T00:00:00");
