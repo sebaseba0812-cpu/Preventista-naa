@@ -3270,7 +3270,10 @@ async function imprimirHojaRuta() {
     const filas = pedidos.map(p => {
       const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
       const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
-      const direccion = p.address || p.street || p.direccion || "Sin dirección";
+      const clienteDatos = clients.find(c => String(c.id) === String(p.clientId));
+const direccion = clienteDatos
+  ? clientAddress(clienteDatos)
+  : (p.address || p.street || p.direccion || "Sin dirección");
       const zona = p.zone || p.zona || "";
       const altura = p.height || p.altura || "";
       const telefono = p.phone || p.telefono || "";
