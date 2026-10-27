@@ -175,6 +175,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
   <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
 <button id="dashboardNavBtn" onclick="show('cierre',this)">📊 Dashboard</button>
+<button id="proveedoresNavBtn" onclick="show('proveedores',this)">🏭 Proveedores</button>
   <button id="cuentasCorrientesNavBtn"
   style="display:none"
   onclick="show('cuentasCorrientes',this)">
@@ -378,6 +379,68 @@ placeholder="Ej.: 10">
   <div id="currentAccountsAdmin"></div>
 
 </section>
+  
+<section id="proveedores" class="screen">
+  <div class="card">
+    <h2>🏭 Proveedores</h2>
+    <p class="small">Registro de proveedores y control de pagos.</p>
+
+    <h3>Registrar proveedor</h3>
+    <div class="row">
+      <label>Nombre o razón social
+        <input id="provNombre" placeholder="Nombre del proveedor">
+      </label>
+      <label>CUIT
+        <input id="provCuit" placeholder="CUIT (opcional)">
+      </label>
+    </div>
+    <div class="row">
+      <label>Teléfono
+        <input id="provTelefono" placeholder="Teléfono">
+      </label>
+      <label>Observaciones
+        <input id="provObservaciones" placeholder="Observaciones">
+      </label>
+    </div>
+    <button class="primary" onclick="guardarProveedor()">Guardar proveedor</button>
+  </div>
+
+  <div class="card">
+    <h3>Registrar pago</h3>
+    <label>Proveedor
+      <select id="pagoProveedor"></select>
+    </label>
+    <div class="row">
+      <label>Importe ($)
+        <input id="pagoImporte" type="number" min="0.01" step="0.01" placeholder="0">
+      </label>
+      <label>Fecha
+        <input id="pagoFecha" type="date">
+      </label>
+    </div>
+    <label>Medio de pago
+      <select id="pagoMedio">
+        <option value="efectivo">Efectivo</option>
+        <option value="transferencia">Transferencia</option>
+      </select>
+    </label>
+    <label>Observaciones del pago
+      <input id="pagoObservaciones" placeholder="Factura, comprobante u otros datos">
+    </label>
+    <button class="primary" onclick="guardarPagoProveedor()">Guardar pago</button>
+  </div>
+
+  <div class="card">
+    <h3>Proveedores registrados</h3>
+    <div id="proveedoresLista">Cargando proveedores...</div>
+  </div>
+
+  <div class="card">
+    <h3>Historial de pagos</h3>
+    <div id="proveedoresPagosLista">Cargando pagos...</div>
+  </div>
+</section>
+
  <section id="reparto" class="screen">
   <div class="card">
     <h2>🚚 Reparto</h2>
@@ -792,7 +855,173 @@ div.appendChild(actions);
 
   }
 }
- async function stockEntrada(id){
+ // ===== PROVEEDORES Y PAGOS =====
+
+async function guardarProveedor(){
+  const nombre = document.getElementById("provNombre")?.value.trim();
+  const cuit = document.getElementById("provCuit")?.value.trim() || "";
+  const telefono = document.getElementById("provTelefono")?.value.trim() || "";
+  const observaciones = document.getElementById("provObservaciones")?.value.trim() || "";
+
+  if(!nombre){
+    alert("Ingresá el nombre del proveedor.");
+    return;
+  }
+
+  try{
+    await firebaseDB.collection("proveedores").add({
+      nombre,
+      cuit,
+      telefono,
+      observaciones,
+      creadoEn: new Date().toISOString()
+    });
+
+    document.getElementById("provNombre").value = "";
+    document.getElementById("provCuit").value = "";
+    document.getElementById("provTelefono").value = "";
+    document.getElementById("provObservaciones").value = "";
+
+    alert("Proveedor guardado correctamente.");
+    await renderProveedores();
+
+  }catch(error){
+    console.error("Error guardando proveedor:", error);
+    alert("No se pudo guardar el proveedor. Revisá los permisos de Firebase.");
+  }
+}
+
+async function guardarPagoProveedor(){
+  const proveedorId = document.getElementById("pagoProveedor")?.value || "";
+  const importe = Number(document.getElementById("pagoImporte")?.value || 0);
+  const fecha = document.getElementById("pagoFecha")?.value || "";
+  const medio = document.getElementById("pagoMedio")?.value || "efectivo";
+  const observaciones = document.getElementById("pagoObservaciones")?.value.trim() || "";
+
+  if(!proveedorId){
+    alert("Seleccioná un proveedor.");
+    return;
+  }
+
+  if(!Number.isFinite(importe) || importe <= 0){
+    alert("Ingresá un importe válido.");
+    return;
+  }
+
+  if(!fecha){
+    alert("Seleccioná la fecha del pago.");
+    return;
+  }
+
+  try{
+    const proveedorDoc = await firebaseDB
+      .collection("proveedores")
+      .doc(proveedorId)
+      .get();
+
+    if(!proveedorDoc.exists){
+      alert("El proveedor seleccionado no existe.");
+      return;
+    }
+
+    await firebaseDB.collection("proveedoresPagos").add({
+      proveedorId,
+      proveedorNombre: proveedorDoc.data().nombre || "",
+      importe,
+      fecha,
+      medio,
+      observaciones,
+      creadoEn: new Date().toISOString()
+    });
+
+    document.getElementById("pagoImporte").value = "";
+    document.getElementById("pagoObservaciones").value = "";
+
+    alert("Pago registrado correctamente.");
+    await renderProveedores();
+
+  }catch(error){
+    console.error("Error guardando pago:", error);
+    alert("No se pudo registrar el pago. Revisá los permisos de Firebase.");
+  }
+}
+
+async function renderProveedores(){
+  const lista = document.getElementById("proveedoresLista");
+  const pagosLista = document.getElementById("proveedoresPagosLista");
+  const selector = document.getElementById("pagoProveedor");
+
+  try{
+    const [proveedoresSnap, pagosSnap] = await Promise.all([
+      firebaseDB.collection("proveedores").get(),
+      firebaseDB.collection("proveedoresPagos").get()
+    ]);
+
+    const proveedores = proveedoresSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    const pagos = pagosSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    if(selector){
+      const seleccionado = selector.value;
+      selector.innerHTML =
+        '<option value="">Seleccionar proveedor</option>' +
+        proveedores.map(p =>
+          `<option value="${esc(p.id)}">${esc(p.nombre || "Sin nombre")}</option>`
+        ).join("");
+      if(proveedores.some(p => p.id === seleccionado)){
+        selector.value = seleccionado;
+      }
+    }
+
+    if(lista){
+      lista.innerHTML = proveedores.length
+        ? proveedores.map(p => {
+            const totalPagado = pagos
+              .filter(pg => pg.proveedorId === p.id)
+              .reduce((s, pg) => s + Number(pg.importe || 0), 0);
+
+            return `
+              <div class="card">
+                <b>${esc(p.nombre || "Sin nombre")}</b>
+                <p>CUIT: ${esc(p.cuit || "-")}</p>
+                <p>Teléfono: ${esc(p.telefono || "-")}</p>
+                <p>Observaciones: ${esc(p.observaciones || "-")}</p>
+                <p><b>Total pagado registrado:</b> ${money(totalPagado)}</p>
+              </div>
+            `;
+          }).join("")
+        : '<p class="small">Todavía no hay proveedores registrados.</p>';
+    }
+
+    if(pagosLista){
+      pagos.sort((a,b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+
+      pagosLista.innerHTML = pagos.length
+        ? pagos.map(p => `
+            <div class="card">
+              <b>${esc(p.proveedorNombre || "Proveedor")}</b>
+              <p>Fecha: ${esc(p.fecha || "-")}</p>
+              <p>Importe: ${money(Number(p.importe || 0))}</p>
+              <p>Medio: ${esc(p.medio || "-")}</p>
+              <p>Observaciones: ${esc(p.observaciones || "-")}</p>
+            </div>
+          `).join("")
+        : '<p class="small">Todavía no hay pagos registrados.</p>';
+    }
+
+  }catch(error){
+    console.error("Error cargando proveedores:", error);
+    if(lista) lista.innerHTML = '<p class="small">No se pudieron cargar los proveedores.</p>';
+    if(pagosLista) pagosLista.innerHTML = '<p class="small">No se pudieron cargar los pagos.</p>';
+  }
+}
+  async function stockEntrada(id){
 
   const ref = firebaseDB.collection("stock").doc(id);
   const snap = await ref.get();
@@ -1763,6 +1992,7 @@ if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
   if(id==="reparto") renderReparto();
+  if(id==="proveedores") renderProveedores();
   if(id==="personal") renderPersonal();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
 if(id==="cierre"){
