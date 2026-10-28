@@ -176,6 +176,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
 <button id="dashboardNavBtn" onclick="show('cierre',this)">📊 Dashboard</button>
 <button id="proveedoresNavBtn" onclick="show('proveedores',this)">🏭 Proveedores</button>
+ <button id="cajaNavBtn" onclick="show('caja',this)">💰 Caja</button> 
   <button id="cuentasCorrientesNavBtn"
   style="display:none"
   onclick="show('cuentasCorrientes',this)">
@@ -380,7 +381,57 @@ placeholder="Ej.: 10">
 
 </section>
   
-<section id="proveedores" class="screen">
+<section id="caja" class="screen">
+  <div class="card">
+    <h2>💰 Caja</h2>
+    <p class="small">Control de apertura, ingresos y cierre de caja.</p>
+
+    <h3>Apertura de caja</h3>
+    <div class="row">
+      <label>Dinero inicial en efectivo ($)
+        <input id="cajaInicialEfectivo" type="number" min="0" step="0.01" placeholder="0">
+      </label>
+      <label>Dinero inicial por transferencia ($)
+        <input id="cajaInicialTransferencia" type="number" min="0" step="0.01" placeholder="0">
+      </label>
+    </div>
+
+    <button class="primary" onclick="abrirCaja()">Abrir caja</button>
+
+    <h3>Registrar movimiento</h3>
+    <div class="row">
+      <label>Tipo de movimiento
+        <select id="cajaTipo">
+          <option value="ingreso">Ingreso</option>
+          <option value="egreso">Egreso</option>
+        </select>
+      </label>
+      <label>Medio de pago
+        <select id="cajaMedio">
+          <option value="efectivo">Efectivo</option>
+          <option value="transferencia">Transferencia</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label>Importe ($)
+        <input id="cajaImporte" type="number" min="0.01" step="0.01" placeholder="0">
+      </label>
+      <label>Descripción
+        <input id="cajaDescripcion" placeholder="Motivo del movimiento">
+      </label>
+    </div>
+
+    <button class="primary" onclick="registrarMovimientoCaja()">Guardar movimiento</button>
+
+    <h3>Estado de caja</h3>
+    <div id="cajaEstado">Cargando estado de caja...</div>
+
+    <button class="primary" onclick="cerrarCaja()">Cerrar caja</button>
+  </div>
+</section>
+  <section id="proveedores" class="screen">
   <div class="card">
     <h2>🏭 Proveedores</h2>
     <p class="small">Registro de proveedores y control de pagos.</p>
@@ -629,7 +680,7 @@ let cart={};
 let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]");
 
 let productOverrides=JSON.parse(localStorage.getItem("NAA_PRODUCT_OVERRIDES")||"{}");
-function getProducts(){
+ getProducts(){
   return PRODUCTS.map(p=>{
     const key=p[0]+"|"+p[1], o=productOverrides[key];
     return o ? [o.name,o.pres,o.unit,o.prices] : p;
@@ -3856,7 +3907,93 @@ document.addEventListener('DOMContentLoaded',()=>{
     login.appendChild(d);
   }
 });
-</script>
+
+  async function renderCaja(){
+  const estado = document.getElementById("cajaEstado");
+  if(!estado) return;
+
+  estado.innerHTML = "Cargando estado de caja...";
+
+  try{
+    const snap = await firebaseDB.collection("caja").get();
+
+    const movimientos = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    if(!movimientos.length){
+      estado.innerHTML = `
+        <p>La caja todavía no tiene movimientos registrados.</p>
+        <p>Podés abrirla desde el formulario de arriba.</p>
+      `;
+      return;
+    }
+
+    movimientos.sort((a,b) => {
+      const fechaA = a.fecha?.toDate
+        ? a.fecha.toDate().getTime() : 0;
+      const fechaB = b.fecha?.toDate
+        ? b.fecha.toDate().getTime() : 0;
+      return fechaB - fechaA;
+    });
+
+    let efectivo = 0;
+    let transferencia = 0;
+    let abierta = false;
+
+    movimientos.forEach(m => {
+      const tipo = String(m.tipo || "").toLowerCase();
+      const medio = String(m.medio || "").toLowerCase();
+      const importe = Number(m.importe || 0);
+
+      if(tipo === "apertura"){
+        abierta = true;
+        efectivo += Number(m.efectivo || 0);
+        transferencia += Number(m.transferencia || 0);
+      }else if(tipo === "ingreso"){
+        if(medio === "transferencia"){
+          transferencia += importe;
+        }else{
+          efectivo += importe;
+        }
+      }else if(tipo === "egreso"){
+        if(medio === "transferencia"){
+          transferencia -= importe;
+        }else{
+          efectivo -= importe;
+        }
+      }else if(tipo === "cierre"){
+        abierta = false;
+      }
+    });
+
+    estado.innerHTML = `
+      <div class="card">
+        <h3>${abierta ? "🟢 Caja abierta" : "🔴 Caja cerrada"}</h3>
+        <p><b>Saldo en efectivo:</b>
+          ${efectivo.toLocaleString("es-AR",{
+            style:"currency",currency:"ARS"
+          })}
+        </p>
+        <p><b>Saldo por transferencia:</b>
+          ${transferencia.toLocaleString("es-AR",{
+            style:"currency",currency:"ARS"
+          })}
+        </p>
+        <p><b>Saldo total:</b>
+          ${(efectivo + transferencia).toLocaleString("es-AR",{
+            style:"currency",currency:"ARS"
+          })}
+        </p>
+      </div>
+    `;
+  }catch(error){
+    console.error("Error consultando caja:",error);
+    estado.innerHTML =
+      "No se pudo consultar la caja. Revisá la conexión con Firebase.";
+  }
+}
 
 
 
@@ -3968,3 +4105,6 @@ body {
   }
 }
 </style>
+
+</script>
+  
