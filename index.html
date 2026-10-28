@@ -680,7 +680,7 @@ let cart={};
 let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]");
 
 let productOverrides=JSON.parse(localStorage.getItem("NAA_PRODUCT_OVERRIDES")||"{}");
- getProducts(){
+function getProducts(){
   return PRODUCTS.map(p=>{
     const key=p[0]+"|"+p[1], o=productOverrides[key];
     return o ? [o.name,o.pres,o.unit,o.prices] : p;
