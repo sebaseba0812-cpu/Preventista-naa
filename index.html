@@ -1298,6 +1298,7 @@ async function abrirCaja(){
 
     alert("Caja abierta correctamente.");
     await renderCaja();
+    await actualizarMenuPorCaja();
 
   }catch(error){
     console.error("Error al abrir caja:",error);
@@ -1743,74 +1744,97 @@ async function login(){
     alert('Usuario o contraseña incorrectos.');
   }
 }
-function init(){
-  const user = JSON.parse(localStorage.getItem('NAA_USER') || '{}');
-if(user.role !== 'admin'){
+  let NAA_CAJA_ABIERTA = false;
+
+async function actualizarMenuPorCaja(){
+  const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+  const esAdmin = usuario.role === "admin";
+
+  try {
+    const estado = await obtenerEstadoCajaActual();
+    NAA_CAJA_ABIERTA = !!estado.abierta;
+  } catch(error) {
+    console.error("Error verificando caja:", error);
+    NAA_CAJA_ABIERTA = false;
+  }
+
+  const seccionesOperativas = [
+    "pedido",
+    "pedidosOficina",
+    "clientes",
+    "productos",
+    "stock",
+    "promociones",
+    "proveedores",
+    "cuentasCorrientes",
+    "reparto",
+    "personal"
+  ];
+
+  const soloAdmin = [
+    "productos",
+    "proveedores",
+    "caja",
+    "cuentasCorrientes",
+    "reparto",
+    "personal",
+    "cierre"
+  ];
+
+  document.querySelectorAll("nav button").forEach(boton => {
+    const onclick = boton.getAttribute("onclick") || "";
+    const coincidencia = onclick.match(/show\(['"]([^'"]+)['"]/);
+
+    if(!coincidencia) return;
+
+    const seccion = coincidencia[1];
+    let ocultar = false;
+
+    if(esAdmin && !NAA_CAJA_ABIERTA && seccionesOperativas.includes(seccion)){
+  ocultar = true;
+}
+    }
+
+    if(!esAdmin && soloAdmin.includes(seccion)){
+      ocultar = true;
+    }
+
+    boton.classList.toggle("hidden", ocultar);
+  });
+
   [
-    'productosNavBtn',
-    'dashboardNavBtn',
-    'proveedoresNavBtn',
-    'cajaNavBtn',
-    'cuentasCorrientesNavBtn',
-    'repartoNavBtn',
-    'personalNavBtn'
-  ].forEach(id => {
-    document.getElementById(id)?.classList.add('hidden');
+    ["productosNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["dashboardNavBtn", !esAdmin],
+    ["proveedoresNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["cajaNavBtn", !esAdmin],
+    ["cuentasCorrientesNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["repartoNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["personalNavBtn", !esAdmin || !NAA_CAJA_ABIERTA]
+  ].forEach(([id, ocultar]) => {
+    document.getElementById(id)?.classList.toggle("hidden", ocultar);
   });
 }
-let d=new Date(),ds=d.toISOString().slice(0,10);
-document.getElementById("from").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
-document.getElementById("to").value=ds;
-updateNet();renderClients();showSelectedClient();renderProducts();renderHistory();renderManualProducts();renderCatalogEditor();renderClosure();syncOrdersFromFirebase();updateOfficeBadge();if(user?.role==="admin")startOfficeBadgeListener();
-}
-async function syncOrdersFromFirebase(){
-  if(!user?.uid) return;
+function init(){
+  const user = JSON.parse(localStorage.getItem('NAA_USER') || '{}');
 
-  try{
-    const snap=await firebaseDB
-      .collection("orders")
-      .where("ownerUid","==",user.uid)
-      .get();
+  let d=new Date(),ds=d.toISOString().slice(0,10);
+  document.getElementById("from").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
+  document.getElementById("to").value=ds;
 
-    const firebaseOrders=snap.docs.map(doc=>{
-      const data=doc.data();
+  updateNet();
+  renderClients();
+  showSelectedClient();
+  renderProducts();
+  renderHistory();
+  renderManualProducts();
+  renderCatalogEditor();
+  renderClosure();
+  syncOrdersFromFirebase();
+  updateOfficeBadge();
 
-      const normalizeDate=value=>{
-        if(value?.toDate) return value.toDate().toISOString();
-        return value || null;
-      };
+  if(user?.role==="admin")startOfficeBadgeListener();
 
-      return {
-        id:doc.id,
-        ...data,
-        createdAt:normalizeDate(data.createdAt),
-        sentAt:normalizeDate(data.sentAt),
-        canceledAt:normalizeDate(data.canceledAt),
-        updatedAt:normalizeDate(data.updatedAt)
-      };
-    });
-
-    const byId=new Map(orders.map(o=>[String(o.id),o]));
-
-    firebaseOrders.forEach(remote=>{
-      const local=byId.get(String(remote.id));
-
-      byId.set(String(remote.id),{
-        ...(local||{}),
-        ...remote
-      });
-    });
-
-    orders=Array.from(byId.values());
-
-    save();
-
-    renderHistory();
-    renderClosure();
-
-  }catch(error){
-    console.error("Error sincronizando pedidos:",error);
-  }
+  actualizarMenuPorCaja();
 }
   function logout(){
   firebaseAuth.signOut();
@@ -2386,6 +2410,27 @@ async function renderCurrentAccounts(){
 
   
 function show(id,btn){
+  const usuarioActual = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+if(
+  usuarioActual.role === "admin" &&
+  !NAA_CAJA_ABIERTA &&
+  [
+    "pedido",
+    "pedidosOficina",
+    "clientes",
+    "productos",
+    "stock",
+    "promociones",
+    "proveedores",
+    "cuentasCorrientes",
+    "reparto",
+    "personal"
+  ].includes(id)
+){
+  alert("La caja está cerrada. Primero debe abrirla el administrador.");
+  return;
+}
 document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
 document.getElementById(id).classList.add("active");
 document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
