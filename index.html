@@ -145,6 +145,65 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   const firebaseAuth = firebase.auth();
   const firebaseDB = firebase.firestore();
 </script>
+<style>
+/* Personalización visual Distribuidora N.A.A. */
+
+body {
+  background-color: #f1f4fa;
+  background-image: radial-gradient(
+    circle at center,
+    rgba(255,255,255,0.94),
+    rgba(235,240,250,0.97)
+  );
+  background-attachment: fixed;
+}
+
+#login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.loginbox {
+  width: min(430px, 100%);
+  margin: auto;
+}
+
+.screen.active {
+  position: relative;
+  isolation: isolate;
+}
+
+.screen.active::before {
+  content: "DISTRIBUIDORA N.A.A. S.A.S.";
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(24px, 5vw, 64px);
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: rgba(22, 58, 74, 0.045);
+  pointer-events: none;
+  z-index: -1;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  #login {
+    padding: 14px;
+  }
+
+  .screen.active::before {
+    font-size: 26px;
+    letter-spacing: 1px;
+  }
+}
+</style> 
 </head>
 <body><div id="toast" class="toast">✅ Produto carregado</div>
 
@@ -3908,6 +3967,128 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
+ async function abrirCaja(){
+  try {
+    const efectivo = Number(document.getElementById("cajaInicialEfectivo").value || 0);
+    const transferencia = Number(document.getElementById("cajaInicialTransferencia").value || 0);
+
+    if(efectivo < 0 || transferencia < 0){
+      alert("Los importes no pueden ser negativos.");
+      return;
+    }
+
+    const snap = await firebaseDB.collection("caja").get();
+    const movimientos = snap.docs.map(doc => doc.data());
+
+    movimientos.sort((a,b) => {
+      const fechaA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
+      const fechaB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
+      return fechaB - fechaA;
+    });
+
+    if(movimientos.length && movimientos[0].tipo !== "cierre"){
+      alert("La caja ya está abierta.");
+      return;
+    }
+
+    await firebaseDB.collection("caja").add({
+      tipo: "apertura",
+      efectivo: efectivo,
+      transferencia: transferencia,
+      fecha: new Date()
+    });
+
+    document.getElementById("cajaInicialEfectivo").value = "";
+    document.getElementById("cajaInicialTransferencia").value = "";
+
+    alert("Caja abierta correctamente.");
+    await renderCaja();
+
+  } catch(error) {
+    console.error(error);
+    alert("No se pudo abrir la caja.");
+  }
+}
+
+async function registrarMovimientoCaja(){
+  try {
+    const tipo = document.getElementById("cajaTipo").value;
+    const medio = document.getElementById("cajaMedio").value;
+    const importe = Number(document.getElementById("cajaImporte").value);
+    const descripcion = document.getElementById("cajaDescripcion").value.trim();
+
+    if(!Number.isFinite(importe) || importe <= 0){
+      alert("Ingresá un importe válido.");
+      return;
+    }
+
+    const snap = await firebaseDB.collection("caja").get();
+    const movimientos = snap.docs.map(doc => doc.data());
+
+    movimientos.sort((a,b) => {
+      const fechaA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
+      const fechaB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
+      return fechaB - fechaA;
+    });
+
+    if(!movimientos.length || movimientos[0].tipo === "cierre"){
+      alert("Primero tenés que abrir la caja.");
+      return;
+    }
+
+    await firebaseDB.collection("caja").add({
+      tipo: tipo,
+      medio: medio,
+      importe: importe,
+      descripcion: descripcion,
+      fecha: new Date()
+    });
+
+    document.getElementById("cajaImporte").value = "";
+    document.getElementById("cajaDescripcion").value = "";
+
+    alert("Movimiento registrado correctamente.");
+    await renderCaja();
+
+  } catch(error) {
+    console.error(error);
+    alert("No se pudo registrar el movimiento.");
+  }
+}
+
+async function cerrarCaja(){
+  try {
+    const snap = await firebaseDB.collection("caja").get();
+    const movimientos = snap.docs.map(doc => doc.data());
+
+    movimientos.sort((a,b) => {
+      const fechaA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
+      const fechaB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
+      return fechaB - fechaA;
+    });
+
+    if(!movimientos.length || movimientos[0].tipo === "cierre"){
+      alert("La caja ya está cerrada.");
+      return;
+    }
+
+    if(!confirm("¿Confirmás el cierre de caja?")){
+      return;
+    }
+
+    await firebaseDB.collection("caja").add({
+      tipo: "cierre",
+      fecha: new Date()
+    });
+
+    alert("Caja cerrada correctamente.");
+    await renderCaja();
+
+  } catch(error) {
+    console.error(error);
+    alert("No se pudo cerrar la caja.");
+  }
+} 
   async function renderCaja(){
   const estado = document.getElementById("cajaEstado");
   if(!estado) return;
@@ -3935,7 +4116,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         ? a.fecha.toDate().getTime() : 0;
       const fechaB = b.fecha?.toDate
         ? b.fecha.toDate().getTime() : 0;
-      return fechaB - fechaA;
+      return fechaA - fechaB;
     });
 
     let efectivo = 0;
@@ -3949,8 +4130,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 
       if(tipo === "apertura"){
         abierta = true;
-        efectivo += Number(m.efectivo || 0);
-        transferencia += Number(m.transferencia || 0);
+        efectivo = Number(m.efectivo || 0);
+        transferencia = Number(m.transferencia || 0);
       }else if(tipo === "ingreso"){
         if(medio === "transferencia"){
           transferencia += importe;
@@ -3994,7 +4175,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       "No se pudo consultar la caja. Revisá la conexión con Firebase.";
   }
 }
-
+</script>
 
 
 
@@ -4045,66 +4226,6 @@ function sendOrderToOfficeWhatsApp(id){
 }
 </script>
 
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script></body></html>
-<style>
-/* Personalización visual Distribuidora N.A.A. */
-body {
-  background-color: #f1f4fa;
-  background-image:
-    radial-gradient(
-      circle at center,
-      rgba(255,255,255,0.94),
-      rgba(235,240,250,0.97)
-    );
-  background-attachment: fixed;
-}
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script>
 
-#login {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  box-sizing: border-box;
-}
-
-.loginbox {
-  width: min(430px, 100%);
-  margin: auto;
-}
-
-.screen.active {
-  position: relative;
-  isolation: isolate;
-}
-
-.screen.active::before {
-  content: "DISTRIBUIDORA N.A.A. S.A.S.";
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(24px, 5vw, 64px);
-  font-weight: 800;
-  letter-spacing: 3px;
-  color: rgba(22, 58, 74, 0.045);
-  pointer-events: none;
-  z-index: -1;
-  text-align: center;
-}
-
-@media (max-width: 600px) {
-  #login {
-    padding: 14px;
-  }
-
-  .screen.active::before {
-    font-size: 26px;
-    letter-spacing: 1px;
-  }
-}
-</style>
-
-</script>
   
