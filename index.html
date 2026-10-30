@@ -774,7 +774,9 @@ function getProducts(){
     console.error(error);
     alert('No se pudieron sincronizar los productos.');
   }
-}async function createPromotion(){
+}
+  
+  async function createPromotion(){
   const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
 
   if(user.role !== "admin"){
