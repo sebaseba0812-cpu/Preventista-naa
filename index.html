@@ -877,7 +877,8 @@ if (esAdmin) {
   `;
   div.appendChild(actions);
 }
-  }catch(error){
+  });
+} catch(error) {
     console.error(error);
     list.innerHTML = "<p class='small'>No se pudieron cargar las promociones.</p>";
   }
@@ -4260,7 +4261,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 
  
-}
+
 </script>
 
 
