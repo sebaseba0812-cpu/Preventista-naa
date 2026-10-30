@@ -868,14 +868,15 @@ async function renderPromotions(){
       const actions = document.createElement("div");
 actions.style.marginTop = "10px";
 
-actions.innerHTML = `
-  <button class="secondary" onclick="editPromotion('${doc.id}')">✏️ Editar</button>
-  <button class="danger" onclick="cancelPromotion('${doc.id}')">🚫 Anular</button>
-`;
+const esAdmin = JSON.parse(localStorage.getItem("NAA_USER") || "{}").role === "admin";
 
-div.appendChild(actions);
-    });
-
+if (esAdmin) {
+  actions.innerHTML = `
+    <button class="secondary" onclick="editPromotion('${doc.id}')">✏️ Editar</button>
+    <button class="danger" onclick="cancelPromotion('${doc.id}')">🚫 Anular</button>
+  `;
+  div.appendChild(actions);
+}
   }catch(error){
     console.error(error);
     list.innerHTML = "<p class='small'>No se pudieron cargar las promociones.</p>";
@@ -1131,6 +1132,274 @@ async function renderProveedores(){
     if(pagosLista) pagosLista.innerHTML = '<p class="small">No se pudieron cargar los pagos.</p>';
   }
 }
+  // =====================================
+// CAJA - DISTRIBUIDORA N.A.A.
+// =====================================
+
+async function obtenerEventosCaja(){
+  const snap = await firebaseDB.collection("caja").get();
+
+  const eventos = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  eventos.sort((a,b) => {
+    const fechaA = a.createdAt?.toDate
+      ? a.createdAt.toDate().getTime() : 0;
+    const fechaB = b.createdAt?.toDate
+      ? b.createdAt.toDate().getTime() : 0;
+    return fechaA - fechaB;
+  });
+
+  return eventos;
+}
+
+function calcularSaldoCaja(eventos){
+  let efectivo = 0;
+  let transferencia = 0;
+
+  eventos.forEach(e => {
+    const importe = Number(e.importe || 0);
+
+    if(e.tipo === "apertura"){
+      efectivo = Number(e.efectivoInicial || 0);
+      transferencia = Number(e.transferenciaInicial || 0);
+    }
+
+    if(e.tipo === "movimiento"){
+      const signo = e.movimiento === "ingreso" ? 1 : -1;
+
+      if(e.medio === "efectivo"){
+        efectivo += signo * importe;
+      }
+
+      if(e.medio === "transferencia"){
+        transferencia += signo * importe;
+      }
+    }
+  });
+
+  return { efectivo, transferencia };
+}
+
+async function obtenerEstadoCajaActual(){
+  const eventos = await obtenerEventosCaja();
+
+  let sesion = null;
+
+  eventos.forEach(e => {
+    if(e.tipo === "apertura"){
+      sesion = e.sesionId;
+    }
+
+    if(e.tipo === "cierre" && sesion === e.sesionId){
+      sesion = null;
+    }
+  });
+
+  return {
+    eventos,
+    sesion,
+    abierta: !!sesion,
+    movimientos: sesion
+      ? eventos.filter(e => e.sesionId === sesion)
+      : []
+  };
+}
+
+async function renderCaja(){
+  const contenedor = document.getElementById("cajaEstado");
+  if(!contenedor) return;
+
+  try{
+    const estado = await obtenerEstadoCajaActual();
+
+    if(!estado.abierta){
+      contenedor.innerHTML = `
+        <p><strong>Estado:</strong> Caja cerrada</p>
+        <p class="small">No hay una caja abierta actualmente.</p>
+      `;
+      return;
+    }
+
+    const saldo = calcularSaldoCaja(estado.movimientos);
+
+    const movimientos = estado.movimientos
+      .filter(e => e.tipo === "movimiento")
+      .map(e => `
+        <p class="small">
+          ${e.movimiento === "ingreso" ? "🟢 Ingreso" : "🔴 Egreso"}
+          - ${esc(e.medio)}
+          - ${money(e.importe)}
+          - ${esc(e.descripcion || "")}
+        </p>
+      `).join("");
+
+    contenedor.innerHTML = `
+      <h3>🟢 Caja abierta</h3>
+      <p>Efectivo disponible: <strong>${money(saldo.efectivo)}</strong></p>
+      <p>Transferencias: <strong>${money(saldo.transferencia)}</strong></p>
+      <p>Total disponible:
+        <strong>${money(saldo.efectivo + saldo.transferencia)}</strong>
+      </p>
+      <hr>
+      <h3>Movimientos de esta caja</h3>
+      ${movimientos || "<p class='small'>Todavía no hay movimientos.</p>"}
+    `;
+
+  }catch(error){
+    console.error("Error al cargar caja:",error);
+    contenedor.innerHTML = "No se pudo cargar el estado de caja.";
+  }
+}
+
+async function abrirCaja(){
+  try{
+    const estado = await obtenerEstadoCajaActual();
+
+    if(estado.abierta){
+      alert("Ya hay una caja abierta. Primero debés cerrarla.");
+      return;
+    }
+
+    const efectivo = Number(
+      document.getElementById("cajaInicialEfectivo").value || 0
+    );
+
+    const transferencia = Number(
+      document.getElementById("cajaInicialTransferencia").value || 0
+    );
+
+    if(efectivo < 0 || transferencia < 0){
+      alert("Los importes no pueden ser negativos.");
+      return;
+    }
+
+    if(!confirm("¿Confirmás la apertura de caja?")) return;
+
+    const referencia = firebaseDB.collection("caja").doc();
+    const sesionId = referencia.id;
+
+    await referencia.set({
+      tipo: "apertura",
+      sesionId: sesionId,
+      efectivoInicial: efectivo,
+      transferenciaInicial: transferencia,
+      usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    document.getElementById("cajaInicialEfectivo").value = "";
+    document.getElementById("cajaInicialTransferencia").value = "";
+
+    alert("Caja abierta correctamente.");
+    await renderCaja();
+
+  }catch(error){
+    console.error("Error al abrir caja:",error);
+    alert("No se pudo abrir la caja. Revisá los permisos de Firebase.");
+  }
+}
+
+async function registrarMovimientoCaja(){
+  try{
+    const estado = await obtenerEstadoCajaActual();
+
+    if(!estado.abierta){
+      alert("Primero tenés que abrir la caja.");
+      return;
+    }
+
+    const movimiento = document.getElementById("cajaTipo").value;
+    const medio = document.getElementById("cajaMedio").value;
+    const importe = Number(document.getElementById("cajaImporte").value);
+    const descripcion = document.getElementById("cajaDescripcion").value.trim();
+
+    if(!importe || importe <= 0){
+      alert("Ingresá un importe válido.");
+      return;
+    }
+
+    if(!descripcion){
+      alert("Ingresá una descripción del movimiento.");
+      return;
+    }
+
+    const saldo = calcularSaldoCaja(estado.movimientos);
+
+    if(movimiento === "egreso"){
+      const disponible = medio === "efectivo"
+        ? saldo.efectivo : saldo.transferencia;
+
+      if(importe > disponible){
+        alert("No hay saldo suficiente en ese medio de pago.");
+        return;
+      }
+    }
+
+    if(!confirm("¿Confirmás este movimiento?")) return;
+
+    await firebaseDB.collection("caja").add({
+      tipo: "movimiento",
+      sesionId: estado.sesion,
+      movimiento: movimiento,
+      medio: medio,
+      importe: importe,
+      descripcion: descripcion,
+      usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    document.getElementById("cajaImporte").value = "";
+    document.getElementById("cajaDescripcion").value = "";
+
+    alert("Movimiento registrado correctamente.");
+    await renderCaja();
+
+  }catch(error){
+    console.error("Error al registrar movimiento:",error);
+    alert("No se pudo registrar el movimiento. Revisá los permisos de Firebase.");
+  }
+}
+
+async function cerrarCaja(){
+  try{
+    const estado = await obtenerEstadoCajaActual();
+
+    if(!estado.abierta){
+      alert("No hay una caja abierta para cerrar.");
+      return;
+    }
+
+    const saldo = calcularSaldoCaja(estado.movimientos);
+
+    const mensaje =
+      "¿Confirmás el cierre de caja?\n\n" +
+      "Efectivo: " + money(saldo.efectivo) + "\n" +
+      "Transferencias: " + money(saldo.transferencia) + "\n" +
+      "Total: " + money(saldo.efectivo + saldo.transferencia);
+
+    if(!confirm(mensaje)) return;
+
+    await firebaseDB.collection("caja").add({
+      tipo: "cierre",
+      sesionId: estado.sesion,
+      efectivoFinal: saldo.efectivo,
+      transferenciaFinal: saldo.transferencia,
+      totalFinal: saldo.efectivo + saldo.transferencia,
+      usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("Caja cerrada correctamente.");
+    await renderCaja();
+
+  }catch(error){
+    console.error("Error al cerrar caja:",error);
+    alert("No se pudo cerrar la caja. Revisá los permisos de Firebase.");
+  }
+}
   async function stockEntrada(id){
 
   const ref = firebaseDB.collection("stock").doc(id);
@@ -1326,6 +1595,12 @@ if(cantidad === null) return;
 }
 
 async function editPromotion(id){
+  const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+if(user.role !== "admin"){
+  alert("Solo el administrador puede editar promociones.");
+  return;
+}
   const ref = firebaseDB.collection("promotions").doc(id);
   const snap = await ref.get();
 
@@ -1366,6 +1641,12 @@ async function editPromotion(id){
 }
 
 async function cancelPromotion(id){
+  const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+if(user.role !== "admin"){
+  alert("Solo el administrador puede anular promociones.");
+  return;
+}
   if(!confirm("¿Querés anular esta promoción?")) return;
 
   try{
@@ -1375,7 +1656,7 @@ async function cancelPromotion(id){
     });
 
     alert("Promoción anulada correctamente.");
-    loadPromotions();
+    renderPromotions();
   }catch(error){
     console.error(error);
     alert("No se pudo anular la promoción.");
@@ -1462,7 +1743,17 @@ async function login(){
 function init(){
   const user = JSON.parse(localStorage.getItem('NAA_USER') || '{}');
 if(user.role !== 'admin'){
-  document.getElementById('productosNavBtn')?.classList.add('hidden');
+  [
+    'productosNavBtn',
+    'dashboardNavBtn',
+    'proveedoresNavBtn',
+    'cajaNavBtn',
+    'cuentasCorrientesNavBtn',
+    'repartoNavBtn',
+    'personalNavBtn'
+  ].forEach(id => {
+    document.getElementById(id)?.classList.add('hidden');
+  });
 }
 let d=new Date(),ds=d.toISOString().slice(0,10);
 document.getElementById("from").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
@@ -2103,6 +2394,7 @@ if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
   if(id==="reparto") renderReparto();
   if(id==="proveedores") renderProveedores();
+  if(id==="caja") renderCaja();
   if(id==="personal") renderPersonal();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
 if(id==="cierre"){
@@ -3967,213 +4259,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
- async function abrirCaja(){
-  try {
-    const efectivo = Number(document.getElementById("cajaInicialEfectivo").value || 0);
-    const transferencia = Number(document.getElementById("cajaInicialTransferencia").value || 0);
-
-    if(efectivo < 0 || transferencia < 0){
-      alert("Los importes no pueden ser negativos.");
-      return;
-    }
-
-    const snap = await firebaseDB.collection("caja").get();
-    const movimientos = snap.docs.map(doc => doc.data());
-
-    movimientos.sort((a,b) => {
-      const fechaA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
-      const fechaB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
-      return fechaB - fechaA;
-    });
-
-    if(movimientos.length && movimientos[0].tipo !== "cierre"){
-      alert("La caja ya está abierta.");
-      return;
-    }
-
-    await firebaseDB.collection("caja").add({
-      tipo: "apertura",
-      efectivo: efectivo,
-      transferencia: transferencia,
-      fecha: new Date()
-    });
-
-    document.getElementById("cajaInicialEfectivo").value = "";
-    document.getElementById("cajaInicialTransferencia").value = "";
-
-    alert("Caja abierta correctamente.");
-    await renderCaja();
-
-  } catch(error) {
-    console.error(error);
-    alert("No se pudo abrir la caja.");
-  }
-}
-
-async function registrarMovimientoCaja(){
-  try {
-    const tipo = document.getElementById("cajaTipo").value;
-    const medio = document.getElementById("cajaMedio").value;
-    const importe = Number(document.getElementById("cajaImporte").value);
-    const descripcion = document.getElementById("cajaDescripcion").value.trim();
-
-    if(!Number.isFinite(importe) || importe <= 0){
-      alert("Ingresá un importe válido.");
-      return;
-    }
-
-    const snap = await firebaseDB.collection("caja").get();
-    const movimientos = snap.docs.map(doc => doc.data());
-
-    movimientos.sort((a,b) => {
-      const fechaA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
-      const fechaB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
-      return fechaB - fechaA;
-    });
-
-    if(!movimientos.length || movimientos[0].tipo === "cierre"){
-      alert("Primero tenés que abrir la caja.");
-      return;
-    }
-
-    await firebaseDB.collection("caja").add({
-      tipo: tipo,
-      medio: medio,
-      importe: importe,
-      descripcion: descripcion,
-      fecha: new Date()
-    });
-
-    document.getElementById("cajaImporte").value = "";
-    document.getElementById("cajaDescripcion").value = "";
-
-    alert("Movimiento registrado correctamente.");
-    await renderCaja();
-
-  } catch(error) {
-    console.error(error);
-    alert("No se pudo registrar el movimiento.");
-  }
-}
-
-async function cerrarCaja(){
-  try {
-    const snap = await firebaseDB.collection("caja").get();
-    const movimientos = snap.docs.map(doc => doc.data());
-
-    movimientos.sort((a,b) => {
-      const fechaA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
-      const fechaB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
-      return fechaB - fechaA;
-    });
-
-    if(!movimientos.length || movimientos[0].tipo === "cierre"){
-      alert("La caja ya está cerrada.");
-      return;
-    }
-
-    if(!confirm("¿Confirmás el cierre de caja?")){
-      return;
-    }
-
-    await firebaseDB.collection("caja").add({
-      tipo: "cierre",
-      fecha: new Date()
-    });
-
-    alert("Caja cerrada correctamente.");
-    await renderCaja();
-
-  } catch(error) {
-    console.error(error);
-    alert("No se pudo cerrar la caja.");
-  }
-} 
-  async function renderCaja(){
-  const estado = document.getElementById("cajaEstado");
-  if(!estado) return;
-
-  estado.innerHTML = "Cargando estado de caja...";
-
-  try{
-    const snap = await firebaseDB.collection("caja").get();
-
-    const movimientos = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    if(!movimientos.length){
-      estado.innerHTML = `
-        <p>La caja todavía no tiene movimientos registrados.</p>
-        <p>Podés abrirla desde el formulario de arriba.</p>
-      `;
-      return;
-    }
-
-    movimientos.sort((a,b) => {
-      const fechaA = a.fecha?.toDate
-        ? a.fecha.toDate().getTime() : 0;
-      const fechaB = b.fecha?.toDate
-        ? b.fecha.toDate().getTime() : 0;
-      return fechaA - fechaB;
-    });
-
-    let efectivo = 0;
-    let transferencia = 0;
-    let abierta = false;
-
-    movimientos.forEach(m => {
-      const tipo = String(m.tipo || "").toLowerCase();
-      const medio = String(m.medio || "").toLowerCase();
-      const importe = Number(m.importe || 0);
-
-      if(tipo === "apertura"){
-        abierta = true;
-        efectivo = Number(m.efectivo || 0);
-        transferencia = Number(m.transferencia || 0);
-      }else if(tipo === "ingreso"){
-        if(medio === "transferencia"){
-          transferencia += importe;
-        }else{
-          efectivo += importe;
-        }
-      }else if(tipo === "egreso"){
-        if(medio === "transferencia"){
-          transferencia -= importe;
-        }else{
-          efectivo -= importe;
-        }
-      }else if(tipo === "cierre"){
-        abierta = false;
-      }
-    });
-
-    estado.innerHTML = `
-      <div class="card">
-        <h3>${abierta ? "🟢 Caja abierta" : "🔴 Caja cerrada"}</h3>
-        <p><b>Saldo en efectivo:</b>
-          ${efectivo.toLocaleString("es-AR",{
-            style:"currency",currency:"ARS"
-          })}
-        </p>
-        <p><b>Saldo por transferencia:</b>
-          ${transferencia.toLocaleString("es-AR",{
-            style:"currency",currency:"ARS"
-          })}
-        </p>
-        <p><b>Saldo total:</b>
-          ${(efectivo + transferencia).toLocaleString("es-AR",{
-            style:"currency",currency:"ARS"
-          })}
-        </p>
-      </div>
-    `;
-  }catch(error){
-    console.error("Error consultando caja:",error);
-    estado.innerHTML =
-      "No se pudo consultar la caja. Revisá la conexión con Firebase.";
-  }
+ 
 }
 </script>
 
