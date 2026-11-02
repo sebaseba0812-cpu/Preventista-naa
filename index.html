@@ -1783,7 +1783,7 @@ async function actualizarMenuPorCaja(){
 
   document.querySelectorAll("nav button").forEach(boton => {
     const onclick = boton.getAttribute("onclick") || "";
-    const coincidencia = onclick.match(/show\(['"]([^'"]+)['"]\)/);
+   const coincidencia = onclick.match(/show\(['"]([^'"]+)['"]/);
     if(!coincidencia) return;
 
     const seccion = coincidencia[1];
