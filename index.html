@@ -3301,7 +3301,12 @@ async function renderHistory(){
       const cobro = o.paymentType === "cuenta_corriente"
         ? `<div>Cuenta corriente · ${o.paymentStatus === "cobrado" ? "Cobrado" : "Pendiente de cobro"}</div>`
         : "";
-
+const rendicion = user?.role === "admin" && estado === "entregado"
+  ? (o.rendido
+      ? '<div style="color:green;font-weight:bold">✓ Rendido</div>'
+      : `DIL0`)
+  : "";
+      
       return `
         <div class="product" style="margin-top:10px">
           <b>Boleta Nº ${esc(String(numero))}</b>
@@ -3311,6 +3316,7 @@ async function renderHistory(){
           <div style="margin-top:6px">${productos}</div>
           <div style="margin-top:6px">Total: <b>$${money(o.total || 0)}</b></div>
           <div style="margin-top:6px">Estado: <b>${esc(estado)}</b></div>
+          ${rendicion}
           ${cobro}
           ${anulado ? '<div style="color:#b91c1c">Pedido anulado</div>' : ""}
         </div>`;
