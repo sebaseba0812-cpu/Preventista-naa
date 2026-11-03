@@ -1148,12 +1148,16 @@ async function obtenerEventosCaja(){
   }));
 
   eventos.sort((a,b) => {
-    const fechaA = a.createdAt?.toDate
-      ? a.createdAt.toDate().getTime() : 0;
-    const fechaB = b.createdAt?.toDate
-      ? b.createdAt.toDate().getTime() : 0;
-    return fechaA - fechaB;
-  });
+  const fechaA = a.createdAt?.toDate
+    ? a.createdAt.toDate().getTime() : 0;
+  const fechaB = b.createdAt?.toDate
+    ? b.createdAt.toDate().getTime() : 0;
+
+  if(fechaA === 0 && fechaB !== 0) return 1;
+  if(fechaB === 0 && fechaA !== 0) return -1;
+
+  return fechaA - fechaB;
+});
 
   return eventos;
 }
