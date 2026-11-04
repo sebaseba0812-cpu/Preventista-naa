@@ -1193,21 +1193,39 @@ function calcularSaldoCaja(eventos){
 async function obtenerEstadoCajaActual(){
   const eventos = await obtenerEventosCaja();
 
-  const aperturas = eventos.filter(e => e.tipo === "apertura");
+  const aperturas = eventos
+    .filter(e => e.tipo === "apertura")
+    .sort((a, b) => {
+      const fechaA = a.createdAt?.toDate
+        ? a.createdAt.toDate().getTime() : 0;
+      const fechaB = b.createdAt?.toDate
+        ? b.createdAt.toDate().getTime() : 0;
 
-const cierres = eventos.filter(e => e.tipo === "cierre");
+      return fechaA - fechaB;
+    });
 
-let sesion = null;
+  const cierres = eventos.filter(e => e.tipo === "cierre");
 
-for(const apertura of aperturas){
+  const ultimaApertura = aperturas.length
+    ? aperturas[aperturas.length - 1]
+    : null;
+
+  if(!ultimaApertura){
+    return {
+      eventos,
+      sesion: null,
+      abierta: false,
+      movimientos: []
+    };
+  }
+
   const tieneCierre = cierres.some(
-    cierre => cierre.sesionId === apertura.sesionId
+    cierre => cierre.sesionId === ultimaApertura.sesionId
   );
 
-  if(!tieneCierre){
-    sesion = apertura.sesionId;
-  }
-}
+  const sesion = tieneCierre
+    ? null
+    : ultimaApertura.sesionId;
 
   return {
     eventos,
@@ -1218,7 +1236,6 @@ for(const apertura of aperturas){
       : []
   };
 }
-
 async function renderCaja(){
   const contenedor = document.getElementById("cajaEstado");
   if(!contenedor) return;
