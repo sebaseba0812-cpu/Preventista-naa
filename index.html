@@ -1405,7 +1405,8 @@ async function cerrarCaja(){
     });
 
     alert("Caja cerrada correctamente.");
-    await renderCaja();
+await renderCaja();
+await actualizarMenuPorCaja();
 
   }catch(error){
     console.error("Error al cerrar caja:",error);
