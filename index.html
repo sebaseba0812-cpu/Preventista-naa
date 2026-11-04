@@ -1375,6 +1375,138 @@ async function registrarMovimientoCaja(){
   }
 }
 
+async function marcarPedidoRendido(id){
+  try{
+    const estadoCaja = await obtenerEstadoCajaActual();
+
+    if(!estadoCaja.abierta){
+      alert("La caja está cerrada. Primero debe abrirla el administrador.");
+      return;
+    }
+
+    const pedidoRef = firebaseDB
+      .collection("orders")
+      .doc(String(id));
+
+    const pedidoSnap = await pedidoRef.get();
+
+    if(!pedidoSnap.exists){
+      alert("No se encontró el pedido.");
+      return;
+    }
+
+    const pedido = pedidoSnap.data();
+
+    if(pedido.rendido){
+      alert("Este pedido ya fue rendido.");
+      return;
+    }
+
+    if(String(pedido.status || "").toLowerCase() !== "entregado"){
+      alert("El pedido debe estar entregado para poder rendirlo.");
+      return;
+    }
+
+    if(
+      pedido.paymentType === "cuenta_corriente" &&
+      pedido.paymentStatus !== "cobrado"
+    ){
+      alert("Este pedido es cuenta corriente y todavía está pendiente de cobro.");
+      return;
+    }
+
+    const total = Number(pedido.total || 0);
+
+    const efectivo = Number(
+      prompt("¿Cuánto entregó el repartidor en EFECTIVO?", total) || 0
+    );
+
+    if(efectivo < 0){
+      alert("El importe en efectivo no puede ser negativo.");
+      return;
+    }
+
+    const transferencia = Number(
+      prompt("¿Cuánto entregó el repartidor por TRANSFERENCIA?", 0) || 0
+    );
+
+    if(transferencia < 0){
+      alert("El importe de transferencia no puede ser negativo.");
+      return;
+    }
+
+    if(Math.abs(efectivo + transferencia - total) > 0.01){
+      alert(
+        "Los importes deben coincidir con el total del pedido: $" +
+        money(total)
+      );
+      return;
+    }
+
+    if(!confirm(
+      "¿Confirmás la rendición?\n\n" +
+      "Efectivo: $" + money(efectivo) + "\n" +
+      "Transferencia: $" + money(transferencia) + "\n" +
+      "Total: $" + money(total)
+    )){
+      return;
+    }
+
+    const batch = firebaseDB.batch();
+
+    if(efectivo > 0){
+      const refEfectivo = firebaseDB.collection("caja").doc();
+
+      batch.set(refEfectivo,{
+        tipo: "movimiento",
+        sesionId: estadoCaja.sesion,
+        movimiento: "ingreso",
+        medio: "efectivo",
+        importe: efectivo,
+        descripcion: "Rendición pedido " + (pedido.boletaNumber || id),
+        pedidoId: String(id),
+        usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    if(transferencia > 0){
+      const refTransferencia = firebaseDB.collection("caja").doc();
+
+      batch.set(refTransferencia,{
+        tipo: "movimiento",
+        sesionId: estadoCaja.sesion,
+        movimiento: "ingreso",
+        medio: "transferencia",
+        importe: transferencia,
+        descripcion: "Rendición pedido " + (pedido.boletaNumber || id),
+        pedidoId: String(id),
+        usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    batch.update(pedidoRef,{
+      rendido: true,
+      rendidoAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rendidoPor: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+      rendicionEfectivo: efectivo,
+      rendicionTransferencia: transferencia
+    });
+
+    await batch.commit();
+
+    alert("Pedido rendido correctamente.");
+
+    await renderHistory();
+    await renderCaja();
+
+  }catch(error){
+    console.error("Error al rendir pedido:",error);
+    alert("No se pudo registrar la rendición.");
+  }
+}
+  
 async function cerrarCaja(){
   try{
     const estado = await obtenerEstadoCajaActual();
@@ -3309,7 +3441,7 @@ async function renderHistory(){
 const rendicion = user?.role === "admin" && estado === "entregado"
   ? (o.rendido
       ? '<div style="color:green;font-weight:bold">✓ Rendido</div>'
-      : `DIL0`)
+      : `<button class="primary" onclick="marcarPedidoRendido('${esc(String(o.id))}')">💵 Marcar como rendido</button>`)
   : "";
       
       return `
