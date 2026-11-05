@@ -2578,16 +2578,23 @@ async function actualizarSaldoLiquidacion() {
       } else {
         historial.innerHTML = `
           <h3>Historial de adelantos</h3>
-          ${resumen.adelantos.map(a => `
-            <div style="border-bottom:1px solid #ccc;padding:8px 0">
-              <strong>${liqMoney(a.importe)}</strong>
-              <br>
-              <span class="small">
-                ${esc(a.medio || "")} -
-                ${esc(a.descripcion || "Sin descripción")}
-              </span>
-            </div>
-          `).join("")}
+         ${resumen.adelantos.map(a => `
+  <div style="border-bottom:1px solid #ccc;padding:10px 0">
+    <strong>${liqMoney(a.importe)}</strong>
+    <br>
+    <span class="small">
+      ${esc(a.medio || "")} -
+      ${esc(a.descripcion || "Sin descripción")}
+    </span>
+    <br>
+    <button
+      type="button"
+      style="margin-top:8px"
+      onclick="imprimirComprobanteAdelanto('${a.id}')">
+      🖨️ Imprimir comprobante
+    </button>
+  </div>
+`).join("")}
         `;
       }
     }
@@ -2682,6 +2689,259 @@ async function actualizarSaldoLiquidacion() {
   } catch (error) {
     console.error("Error guardando liquidación:", error);
     alert("No se pudo guardar. Revisá los permisos de Firebase.");
+  }
+}
+  // ===== REGISTRAR ADELANTO DE LIQUIDACION =====
+
+async function registrarAdelantoLiquidacion() {
+  const uid = document.getElementById("liqPreventista")?.value;
+  const importe = Number(
+    document.getElementById("liqAdelantoImporte")?.value || 0
+  );
+  const medio = document.getElementById("liqAdelantoMedio")?.value;
+  const descripcion =
+    document.getElementById("liqAdelantoDescripcion")?.value.trim() ||
+    "Adelanto de liquidación";
+
+  if (!uid) {
+    alert("Primero seleccioná un preventista.");
+    return;
+  }
+
+  if (!Number.isFinite(importe) || importe <= 0) {
+    alert("Ingresá un importe válido para el adelanto.");
+    return;
+  }
+
+  if (!["efectivo", "transferencia"].includes(medio)) {
+    alert("Seleccioná un medio de pago válido.");
+    return;
+  }
+
+  try {
+    const resumen = await liqObtenerResumen(uid);
+
+    if (importe > resumen.saldoDisponible) {
+      alert(
+        "El adelanto supera el saldo disponible del preventista.\n" +
+        "Saldo disponible: " + liqMoney(resumen.saldoDisponible)
+      );
+      return;
+    }
+
+    const estadoCaja = await obtenerEstadoCajaActual();
+
+    if (!estadoCaja.abierta) {
+      alert("No se puede registrar el adelanto porque la caja está cerrada.");
+      return;
+    }
+
+    const saldoCaja = calcularSaldoCaja(estadoCaja.movimientos);
+    const disponibleCaja = Number(saldoCaja[medio] || 0);
+
+    if (importe > disponibleCaja) {
+      alert(
+        "No hay saldo suficiente en " + medio + ".\n" +
+        "Disponible en caja: " + liqMoney(disponibleCaja)
+      );
+      return;
+    }
+
+    const selectPreventista =
+      document.getElementById("liqPreventista");
+
+    const nombrePreventista =
+      selectPreventista.options[selectPreventista.selectedIndex]?.text || "";
+
+    if (!confirm(
+      "¿Confirmás el adelanto para " + nombrePreventista +
+      " por " + liqMoney(importe) + "?"
+    )) return;
+
+    const usuarioActual = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    const adelantoRef = firebaseDB
+      .collection("liquidationPayments")
+      .doc();
+
+    const cajaRef = firebaseDB
+      .collection("caja")
+      .doc();
+
+    const batch = firebaseDB.batch();
+
+    batch.set(adelantoRef, {
+      preventistaUid: uid,
+      preventistaNombre: nombrePreventista,
+      importe: importe,
+      medio: medio,
+      descripcion: descripcion,
+      usuario: usuarioActual.name || "Administrador",
+      cajaSesionId: estadoCaja.sesion,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    batch.set(cajaRef, {
+      tipo: "movimiento",
+      sesionId: estadoCaja.sesion,
+      movimiento: "egreso",
+      medio: medio,
+      importe: importe,
+      descripcion:
+        "Adelanto a " + nombrePreventista + " - " + descripcion,
+      usuario: usuarioActual.name || "Administrador",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
+
+    alert("Adelanto registrado correctamente.");
+
+    document.getElementById("liqAdelantoImporte").value = "";
+    document.getElementById("liqAdelantoDescripcion").value = "";
+
+    await actualizarSaldoLiquidacion();
+    await renderCaja();
+
+  } catch (error) {
+    console.error("Error registrando adelanto:", error);
+    alert("No se pudo registrar el adelanto. Revisá Firebase.");
+  }
+}
+
+// ===== FIN DE REGISTRO DE ADELANTO =====
+  async function imprimirComprobanteAdelanto(id) {
+  const ventana = window.open("", "_blank");
+
+  if (!ventana) {
+    alert("Permití las ventanas emergentes para imprimir el comprobante.");
+    return;
+  }
+
+  try {
+    const doc = await firebaseDB
+      .collection("liquidationPayments")
+      .doc(id)
+      .get();
+
+    if (!doc.exists) {
+      ventana.close();
+      alert("No se encontró el adelanto.");
+      return;
+    }
+
+    const a = doc.data() || {};
+    const fecha = liqDate(a.createdAt);
+
+    const fechaTexto = fecha
+      ? fecha.toLocaleString("es-AR")
+      : "Fecha no disponible";
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Comprobante de adelanto</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            color: #000;
+            padding: 30px;
+            max-width: 700px;
+            margin: auto;
+          }
+
+          .comprobante {
+            border: 2px solid #000;
+            padding: 25px;
+          }
+
+          h2 {
+            text-align: center;
+            margin-bottom: 5px;
+          }
+
+          .subtitulo {
+            text-align: center;
+            margin-bottom: 25px;
+          }
+
+          .dato {
+            border-bottom: 1px solid #ccc;
+            padding: 12px 0;
+          }
+
+          .total {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: right;
+            margin-top: 25px;
+          }
+
+          .firma {
+            margin-top: 65px;
+            display: flex;
+            justify-content: space-between;
+          }
+
+          @media print {
+            body { padding: 0; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="comprobante">
+          <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+          <div class="subtitulo">
+            COMPROBANTE DE ADELANTO
+          </div>
+
+          <div class="dato">
+            <strong>Preventista:</strong>
+            ${esc(a.preventistaNombre || "")}
+          </div>
+
+          <div class="dato">
+            <strong>Fecha:</strong>
+            ${esc(fechaTexto)}
+          </div>
+
+          <div class="dato">
+            <strong>Medio de pago:</strong>
+            ${esc(a.medio || "")}
+          </div>
+
+          <div class="dato">
+            <strong>Descripción:</strong>
+            ${esc(a.descripcion || "Adelanto de liquidación")}
+          </div>
+
+          <div class="total">
+            Importe: ${liqMoney(a.importe)}
+          </div>
+
+          <div class="firma">
+            <div>____________________<br>Firma del preventista</div>
+            <div>____________________<br>Firma de administración</div>
+          </div>
+        </div>
+
+        <br>
+        <button onclick="window.print()">Imprimir comprobante</button>
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+
+  } catch (error) {
+    console.error("Error imprimiendo comprobante:", error);
+    ventana.close();
+    alert("No se pudo generar el comprobante.");
   }
 }
 
