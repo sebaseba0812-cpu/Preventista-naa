@@ -3379,45 +3379,46 @@ function anularPedidoOficina(id){
 async function renderHistory(){
   const cont = document.getElementById("history");
   if(!cont) return;
+
   cont.innerHTML = '<div class="empty">Cargando historial...</div>';
 
   try {
     let lista = Array.isArray(orders) ? [...orders] : [];
 
-   if(typeof firebaseDB !== "undefined" && user?.uid){
-  let snap;
+    // Cargar pedidos desde Firebase
+    if(typeof firebaseDB !== "undefined" && user?.uid){
+      let snap;
 
-  if(user.role === "admin"){
-    snap = await firebaseDB
-      .collection("orders")
-      .get();
-  }else{
-    snap = await firebaseDB
-      .collection("orders")
-      .where("ownerUid", "==", user.uid)
-      .get();
-  }
+      if(user.role === "admin"){
+        snap = await firebaseDB.collection("orders").get();
+      }else{
+        snap = await firebaseDB
+          .collection("orders")
+          .where("ownerUid", "==", user.uid)
+          .get();
+      }
 
-  const remotos = snap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
+      const remotos = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-  const mapa = new Map(
-    lista.map(o => [String(o.id), o])
-  );
+      const mapa = new Map(
+        lista.map(o => [String(o.id), o])
+      );
 
-  remotos.forEach(o => {
-    const anterior = mapa.get(String(o.id)) || {};
-    mapa.set(String(o.id), {...anterior, ...o});
-  });
+      remotos.forEach(o => {
+        const anterior = mapa.get(String(o.id)) || {};
+        mapa.set(String(o.id), {...anterior, ...o});
+      });
 
-  lista = Array.from(mapa.values());
-  orders = lista;
-}
+      lista = Array.from(mapa.values());
+      orders = lista;
+    }
 
     const esAdmin = user?.role === "admin";
 
+    // Filtrar pedidos del preventista
     lista = lista.filter(o => {
       if(esAdmin) return true;
 
@@ -3425,17 +3426,80 @@ async function renderHistory(){
       return uid === user?.uid;
     });
 
+    // Ordenar por fecha, del más reciente al más antiguo
     lista.sort((a,b) => {
       const fecha = o => {
         const f = o.createdAt || o.date;
-        return f?.toDate ? f.toDate().getTime() : new Date(f || 0).getTime();
+        return f?.toDate
+          ? f.toDate().getTime()
+          : new Date(f || 0).getTime();
       };
+
       return fecha(b) - fecha(a);
     });
 
-    let html = lista.map(o => {
+    // Detectar pestaña activa
+    const filtro = cont.dataset.filtro || "todas";
+
+    const esAnulado = o => {
+      const estado = String(o.status || "").toLowerCase();
+      return [
+        "anulado",
+        "anulada",
+        "cancelado",
+        "canceled"
+      ].includes(estado);
+    };
+
+    // Aplicar filtro de pestaña
+    const listaFiltrada = lista.filter(o => {
+      if(filtro === "anuladas"){
+        return esAnulado(o);
+      }
+
+      if(filtro === "rendidas"){
+        return o.rendido === true && !esAnulado(o);
+      }
+
+      if(filtro === "pendientes"){
+        return o.rendido !== true && !esAnulado(o);
+      }
+
+      return true;
+    });
+
+    // Crear pestañas
+    const pestañas = [
+      {id:"todas", texto:"Todas"},
+      {id:"pendientes", texto:"Pendientes"},
+      {id:"rendidas", texto:"Rendidas"},
+      {id:"anuladas", texto:"Anuladas"}
+    ];
+
+    const botones = pestañas.map(p => {
+      const activo = filtro === p.id;
+
+      return `
+        <button
+          type="button"
+          onclick="cambiarFiltroHistorial('${p.id}')"
+          style="
+            padding:8px 12px;
+            margin:3px;
+            border:1px solid ${activo ? "#2563eb" : "#ccc"};
+            border-radius:8px;
+            background:${activo ? "#2563eb" : "#fff"};
+            color:${activo ? "#fff" : "#222"};
+            font-weight:${activo ? "bold" : "normal"};
+            cursor:pointer;
+          "
+        >${p.texto}</button>
+      `;
+    }).join("");
+
+    const htmlPedidos = listaFiltrada.map(o => {
       const estado = String(o.status || "nuevo").toLowerCase();
-      const anulado = ["canceled","anulado","anulada","cancelado"].includes(estado);
+      const anulado = esAnulado(o);
 
       const fechaValor = o.createdAt || o.date;
       const fecha = fechaValor?.toDate
@@ -3455,12 +3519,15 @@ async function renderHistory(){
       const cobro = o.paymentType === "cuenta_corriente"
         ? `<div>Cuenta corriente · ${o.paymentStatus === "cobrado" ? "Cobrado" : "Pendiente de cobro"}</div>`
         : "";
-const rendicion = user?.role === "admin" && estado === "entregado"
-  ? (o.rendido
-      ? '<div style="color:green;font-weight:bold">✓ Rendido</div>'
-      : `<button class="primary" onclick="marcarPedidoRendido('${esc(String(o.id))}')">💵 Marcar como rendido</button>`)
-  : "";
-      
+
+      const rendicion = user?.role === "admin" && estado === "entregado"
+        ? (
+            o.rendido
+              ? '<div style="color:green;font-weight:bold">✓ Rendido</div>'
+              : `<button class="primary" onclick="marcarPedidoRendido('${esc(String(o.id))}')">💵 Marcar como rendido</button>`
+          )
+        : "";
+
       return `
         <div class="product" style="margin-top:10px">
           <b>Boleta Nº ${esc(String(numero))}</b>
@@ -3472,11 +3539,19 @@ const rendicion = user?.role === "admin" && estado === "entregado"
           <div style="margin-top:6px">Estado: <b>${esc(estado)}</b></div>
           ${rendicion}
           ${cobro}
-          ${anulado ? '<div style="color:#b91c1c">Pedido anulado</div>' : ""}
-        </div>`;
+          ${anulado ? '<div style="color:#b91c1c;font-weight:bold">Pedido anulado</div>' : ""}
+        </div>
+      `;
     }).join("");
 
-    cont.innerHTML = html || '<div class="empty">No hay pedidos para mostrar.</div>';
+    cont.innerHTML = `
+      <div style="margin-bottom:12px">
+        ${botones}
+      </div>
+      <div>
+        ${htmlPedidos || '<div class="empty">No hay pedidos en esta sección.</div>'}
+      </div>
+    `;
 
   } catch(error) {
     console.error("Error cargando historial:", error);
@@ -3484,6 +3559,15 @@ const rendicion = user?.role === "admin" && estado === "entregado"
   }
 }
 
+
+// Esta función cambia la pestaña seleccionada
+function cambiarFiltroHistorial(filtro){
+  const cont = document.getElementById("history");
+  if(!cont) return;
+
+  cont.dataset.filtro = filtro;
+  renderHistory();
+}
 function loadDraftToEditor(){
   try{
     const raw=localStorage.getItem("NAA_DRAFT_ORDER");
