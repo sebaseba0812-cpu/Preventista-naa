@@ -1904,6 +1904,7 @@ async function login(){
 }
   let NAA_CAJA_ABIERTA = false;
 
+// VERSIÓN 1100
 async function actualizarMenuPorCaja(){
   const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
   const esAdmin = usuario.role === "admin";
@@ -1916,7 +1917,7 @@ async function actualizarMenuPorCaja(){
     NAA_CAJA_ABIERTA = false;
   }
 
-  // Secciones que el administrador necesita tener abierta la caja para usar
+  // Secciones que el administrador necesita tener abierta la caja
   const seccionesOperativas = [
     "pedido",
     "pedidosOficina",
@@ -1931,10 +1932,10 @@ async function actualizarMenuPorCaja(){
   ];
 
   // Secciones exclusivas del administrador
+  // Promociones NO está acá: el preventista puede verlas
   const soloAdmin = [
     "productos",
     "stock",
-    "promociones",
     "proveedores",
     "caja",
     "cuentasCorrientes",
@@ -1973,7 +1974,10 @@ async function actualizarMenuPorCaja(){
   [
     ["productosNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
     ["stockNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
-    ["promocionesNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+
+    // Promociones visibles para administrador y preventista
+    ["promocionesNavBtn", esAdmin && !NAA_CAJA_ABIERTA ? true : false],
+
     ["dashboardNavBtn", !esAdmin],
     ["proveedoresNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
     ["cajaNavBtn", !esAdmin],
