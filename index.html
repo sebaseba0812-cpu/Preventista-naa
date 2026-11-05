@@ -2842,22 +2842,32 @@ async function imprimirComprobanteAdelanto(id) {
 
     const numero = doc.id.slice(0, 8).toUpperCase();
 
-    const camionSvg = `
-      <svg viewBox="0 0 180 85" xmlns="http://www.w3.org/2000/svg">
-        <g fill="none" stroke="currentColor" stroke-width="4"
-           stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 18h91v43H12z"/>
-          <path d="M103 32h35l27 24v5h-62z"/>
-          <path d="M116 38h19l18 18h-37z"/>
-          <path d="M12 61h153"/>
-          <circle cx="43" cy="65" r="11" fill="white"/>
-          <circle cx="43" cy="65" r="4"/>
-          <circle cx="137" cy="65" r="11" fill="white"/>
-          <circle cx="137" cy="65" r="4"/>
-          <path d="M25 30h65M25 40h65"/>
-        </g>
-      </svg>
-    `;
+   
+
+const camionSvg = `
+  <svg viewBox="0 0 240 125" xmlns="http://www.w3.org/2000/svg">
+    <g fill="none" stroke="#0876c9" stroke-width="5"
+       stroke-linecap="round">
+      <path d="M15 79 C25 22 176 3 218 48"/>
+      <path d="M10 91 C55 119 184 117 228 78"/>
+    </g>
+
+    <g fill="#123b79" stroke="#123b79" stroke-linejoin="round">
+      <path d="M35 35 H145 V84 H35 Z"/>
+      <path d="M145 49 H177 L205 76 V84 H145 Z"/>
+      <path d="M158 55 H174 L193 75 H158 Z" fill="#fff"/>
+      <path d="M45 45 H135 V53 H45 Z" fill="#fff"/>
+      <path d="M45 59 H135 V66 H45 Z" fill="#fff"/>
+      <path d="M45 72 H135 V78 H45 Z" fill="#fff"/>
+      <circle cx="68" cy="88" r="16"/>
+      <circle cx="68" cy="88" r="7" fill="#fff"/>
+      <circle cx="174" cy="88" r="16"/>
+      <circle cx="174" cy="88" r="7" fill="#fff"/>
+    </g>
+  </svg>
+`;
+
+
 
     function ejemplar(tipo) {
       return `
@@ -2983,36 +2993,41 @@ async function imprimirComprobanteAdelanto(id) {
             flex-direction: column;
           }
 
-          .marca-agua {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 88%;
-            text-align: center;
-            color: #24518b;
-            opacity: 0.13;
-            z-index: 1;
-            pointer-events: none;
-          }
+       
+.marca-agua {
+  position: absolute;
+  top: 48%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 88%;
+  text-align: center;
+  color: #0876c9;
+  opacity: 0.17;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
 
-          .marca-agua svg {
-            width: 75%;
-            height: 75px;
-            display: block;
-            margin: auto;
-          }
+.marca-agua svg {
+  display: block;
+  width: 210px;
+  height: 110px;
+  margin: 0 auto 2px;
+  overflow: visible;
+}
 
-          .marca-agua div {
-            font-size: 25px;
-            font-weight: 900;
-            letter-spacing: 3px;
-          }
+.marca-agua div {
+  font-size: 23px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
 
-          .marca-agua strong {
-            font-size: 29px;
-            letter-spacing: 3px;
-          }
+.marca-agua strong {
+  display: block;
+  font-size: 27px;
+  letter-spacing: 2px;
+}
+
 
           .encabezado {
             display: flex;
