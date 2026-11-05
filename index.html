@@ -234,6 +234,7 @@ body {
   <button id="stockNavBtn" onclick="show('stock',this)">📦 Stock</button>
   <button id="promocionesNavBtn" onclick="show('promociones',this)">🔥 Promociones</button>
 <button id="dashboardNavBtn" onclick="show('cierre',this)">📊 Dashboard</button>
+  <button id="liquidacionesNavBtn" onclick="show('liquidaciones',this)">💵 Liquidaciones</button>
 <button id="proveedoresNavBtn" onclick="show('proveedores',this)">🏭 Proveedores</button>
  <button id="cajaNavBtn" onclick="show('caja',this)">💰 Caja</button> 
   <button id="cuentasCorrientesNavBtn"
@@ -716,6 +717,20 @@ placeholder="Ej.: 10">
 </div>
 
 </section>
+ <section id="liquidaciones" class="screen">
+  <div class="card">
+    <h2>💵 Liquidaciones de preventistas</h2>
+    <p class="small">
+      Desde acá el administrador podrá calcular y registrar los pagos de cada preventista.
+    </p>
+
+    <div id="liquidacionesContenido">
+      <p class="small">
+        Próximamente: cálculo por bultos, comisión, período y registro de pago.
+      </p>
+    </div>
+  </div>
+</section> 
 </main></div>
 
 <script>
@@ -1947,6 +1962,7 @@ if(promoForm){
     "reparto",
     "personal",
     "cierre"
+    "liquidaciones",
   ];
 
   document.querySelectorAll("nav button").forEach(boton => {
