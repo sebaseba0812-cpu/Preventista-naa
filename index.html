@@ -725,9 +725,44 @@ placeholder="Ej.: 10">
     </p>
 
     <div id="liquidacionesContenido">
-      <p class="small">
-        Próximamente: cálculo por bultos, comisión, período y registro de pago.
-      </p>
+     <div class="grid">
+  <label>
+    Preventista
+    <select id="liqPreventista">
+      <option value="">Seleccionar preventista</option>
+    </select>
+  </label>
+
+  <label>
+    Período
+    <select id="liqPeriodo">
+      <option value="quincena">Quincena</option>
+      <option value="mes">Mes completo</option>
+    </select>
+  </label>
+
+  <label>
+    Desde
+    <input type="date" id="liqDesde">
+  </label>
+
+  <label>
+    Hasta
+    <input type="date" id="liqHasta">
+  </label>
+
+  <label>
+    Modalidad de pago
+    <select id="liqModalidad">
+      <option value="bulto">Por bulto</option>
+      <option value="comision">Por comisión</option>
+    </select>
+  </label>
+</div>
+
+<p class="small">
+  Elegí el preventista, el período y la modalidad para preparar el cálculo.
+</p>
     </div>
   </div>
 </section> 
