@@ -1916,6 +1916,7 @@ async function actualizarMenuPorCaja(){
     NAA_CAJA_ABIERTA = false;
   }
 
+  // Secciones que el administrador necesita tener abierta la caja para usar
   const seccionesOperativas = [
     "pedido",
     "pedidosOficina",
@@ -1929,8 +1930,11 @@ async function actualizarMenuPorCaja(){
     "personal"
   ];
 
+  // Secciones exclusivas del administrador
   const soloAdmin = [
     "productos",
+    "stock",
+    "promociones",
     "proveedores",
     "caja",
     "cuentasCorrientes",
@@ -1941,17 +1945,24 @@ async function actualizarMenuPorCaja(){
 
   document.querySelectorAll("nav button").forEach(boton => {
     const onclick = boton.getAttribute("onclick") || "";
-   const coincidencia = onclick.match(/show\(['"]([^'"]+)['"]/);
+    const coincidencia = onclick.match(/show\(['"]([^'"]+)['"]/);
+
     if(!coincidencia) return;
 
     const seccion = coincidencia[1];
     let ocultar = false;
 
-    if(esAdmin && !NAA_CAJA_ABIERTA && seccionesOperativas.includes(seccion)){
-  ocultar = true;
-}
-    
+    // Al administrador se le ocultan las secciones operativas
+    // cuando la caja está cerrada
+    if(
+      esAdmin &&
+      !NAA_CAJA_ABIERTA &&
+      seccionesOperativas.includes(seccion)
+    ){
+      ocultar = true;
+    }
 
+    // Al preventista se le ocultan las secciones administrativas
     if(!esAdmin && soloAdmin.includes(seccion)){
       ocultar = true;
     }
@@ -1961,12 +1972,15 @@ async function actualizarMenuPorCaja(){
 
   [
     ["productosNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["stockNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["promocionesNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
     ["dashboardNavBtn", !esAdmin],
     ["proveedoresNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
     ["cajaNavBtn", !esAdmin],
     ["cuentasCorrientesNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
     ["repartoNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
-    ["personalNavBtn", !esAdmin || !NAA_CAJA_ABIERTA]
+    ["personalNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+    ["pedidosOficinaNavBtn", !esAdmin]
   ].forEach(([id, ocultar]) => {
     document.getElementById(id)?.classList.toggle("hidden", ocultar);
   });
@@ -2567,6 +2581,25 @@ async function renderCurrentAccounts(){
   
 function show(id,btn){
   const usuarioActual = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+    const seccionesSoloAdmin = [
+    "productos",
+    "stock",
+    "promociones",
+    "proveedores",
+    "caja",
+    "cuentasCorrientes",
+    "reparto",
+    "personal",
+    "pedidosOficina"
+  ];
+
+  if(
+    usuarioActual.role !== "admin" &&
+    seccionesSoloAdmin.includes(id)
+  ){
+    alert("Esta sección es exclusiva del administrador.");
+    return;
+  }
 
 if(
   usuarioActual.role === "admin" &&
@@ -2590,7 +2623,7 @@ if(
 document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
 document.getElementById(id).classList.add("active");
 document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
-btn.classList.add("active");
+if(btn) btn.classList.add("active");
 if(id==="pedido"){renderClients();renderProducts()}
   if(id==="stock") renderStock();
 if(id==="clientes"){renderClients()}
