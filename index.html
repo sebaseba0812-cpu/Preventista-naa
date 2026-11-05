@@ -717,56 +717,62 @@ placeholder="Ej.: 10">
 </div>
 
 </section>
- <section id="liquidaciones" class="screen">
+<section id="liquidaciones" class="screen">
   <div class="card">
     <h2>💵 Liquidaciones de preventistas</h2>
-    <p class="small">
-      Desde acá el administrador podrá calcular y registrar los pagos de cada preventista.
-    </p>
+    <p class="small">Configuración individual de pago mensual.</p>
 
-    <div id="liquidacionesContenido">
-     <div class="grid">
-  <label>
-    Preventista
-    <select id="liqPreventista">
+    <label>Preventista</label>
+    <select id="liqPreventista" onchange="cargarConfiguracionLiquidacion()">
       <option value="">Seleccionar preventista</option>
     </select>
-  </label>
 
-  <label>
-    Período
-    <select id="liqPeriodo">
-      <option value="quincena">Quincena</option>
-      <option value="mes">Mes completo</option>
-    </select>
-  </label>
+    <div class="grid">
+      <label>Modalidad de pago
+        <select id="liqModalidad" onchange="actualizarCamposLiquidacion()">
+          <option value="bulto">Por bultos + excedente</option>
+          <option value="comision">Por comisión desde la primera venta</option>
+        </select>
+      </label>
 
-  <label>
-    Desde
-    <input type="date" id="liqDesde">
-  </label>
-
-  <label>
-    Hasta
-    <input type="date" id="liqHasta">
-  </label>
-
-  <label>
-    Modalidad de pago
-    <select id="liqModalidad">
-      <option value="bulto">Por bulto</option>
-      <option value="comision">Por comisión</option>
-    </select>
-  </label>
-</div>
-
-<p class="small">
-  Elegí el preventista, el período y la modalidad para preparar el cálculo.
-</p>
-
+      <label>Mes a liquidar
+        <input type="month" id="liqMes">
+      </label>
     </div>
+
+    <div id="liqCamposBulto">
+      <div class="grid">
+        <label>Objetivo mensual
+          <input type="number" id="liqObjetivo" value="750">
+        </label>
+        <label>Pago por bulto
+          <input type="number" id="liqValorBulto" value="534.75" step="0.01">
+        </label>
+        <label>Comisión por excedente (%)
+          <input type="number" id="liqPorcentajeExcedente" value="4" step="0.01">
+        </label>
+      </div>
+    </div>
+
+    <div id="liqCamposComision" class="hidden">
+      <label>Comisión desde la primera venta (%)
+        <input type="number" id="liqPorcentajeTotal" value="6" step="0.01">
+      </label>
+    </div>
+
+    <button class="primary" style="width:100%;margin-top:10px"
+      onclick="guardarConfiguracionLiquidacion()">
+      💾 Guardar configuración
+    </button>
   </div>
-</section> 
+
+  <div class="card">
+    <h3>📊 Cálculo mensual</h3>
+    <button class="secondary" style="width:100%"
+      onclick="calcularLiquidacion()">Calcular ganancias</button>
+    <div id="liqResultado" style="margin-top:12px"></div>
+  </div>
+</section>
 </main></div>
 
 <script>
