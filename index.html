@@ -2816,7 +2816,7 @@ async function registrarAdelantoLiquidacion() {
   const ventana = window.open("", "_blank");
 
   if (!ventana) {
-    alert("Permití las ventanas emergentes para imprimir el comprobante.");
+    alert("Permití las ventanas emergentes para imprimir.");
     return;
   }
 
@@ -2839,99 +2839,286 @@ async function registrarAdelantoLiquidacion() {
       ? fecha.toLocaleString("es-AR")
       : "Fecha no disponible";
 
+    const numero = doc.id.slice(0, 8).toUpperCase();
+
+    function ejemplar(tipo) {
+      return `
+        <div class="comprobante">
+
+          <div class="marca-agua">N.A.A.</div>
+
+          <div class="encabezado">
+            <div class="logo">N.A.A.</div>
+            <div>
+              <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+              <p>COMPROBANTE DE ADELANTO</p>
+            </div>
+            <div class="tipo">${tipo}</div>
+          </div>
+
+          <div class="numero">
+            Comprobante N° ${numero}
+          </div>
+
+          <div class="datos">
+            <div>
+              <span>PREVENTISTA</span>
+              <strong>${esc(a.preventistaNombre || "")}</strong>
+            </div>
+
+            <div>
+              <span>FECHA</span>
+              <strong>${esc(fechaTexto)}</strong>
+            </div>
+          </div>
+
+          <div class="importe">
+            <span>IMPORTE DEL ADELANTO</span>
+            <strong>${liqMoney(a.importe)}</strong>
+          </div>
+
+          <div class="detalle">
+            <p>
+              <span>Medio de pago:</span>
+              <strong>${esc(a.medio || "")}</strong>
+            </p>
+
+            <p>
+              <span>Descripción:</span>
+              <strong>${esc(a.descripcion || "Adelanto de liquidación")}</strong>
+            </p>
+          </div>
+
+          <div class="firmas">
+            <div>
+              __________________________
+              <span>Firma del preventista</span>
+            </div>
+
+            <div>
+              __________________________
+              <span>Firma de administración</span>
+            </div>
+          </div>
+
+          <div class="pie">
+            DISTRIBUIDORA N.A.A. S.A.S. · CONTROL DE LIQUIDACIONES
+          </div>
+
+        </div>
+      `;
+    }
+
     ventana.document.write(`
       <!DOCTYPE html>
       <html lang="es">
       <head>
         <meta charset="UTF-8">
         <title>Comprobante de adelanto</title>
+
         <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
           body {
             font-family: Arial, sans-serif;
-            color: #000;
-            padding: 30px;
-            max-width: 700px;
-            margin: auto;
+            color: #172033;
+            margin: 0;
+            background: white;
           }
 
           .comprobante {
-            border: 2px solid #000;
-            padding: 25px;
+            height: 137mm;
+            border: 1.5px solid #253b63;
+            border-radius: 8px;
+            padding: 8mm;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 5mm;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .marca-agua {
+            position: absolute;
+            top: 43%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-25deg);
+            font-size: 85px;
+            font-weight: 900;
+            color: rgba(37, 59, 99, 0.055);
+            pointer-events: none;
+            z-index: 0;
+          }
+
+          .encabezado,
+          .numero,
+          .datos,
+          .importe,
+          .detalle,
+          .firmas,
+          .pie {
+            position: relative;
+            z-index: 1;
+          }
+
+          .encabezado {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 2px solid #253b63;
+            padding-bottom: 12px;
+          }
+
+          .logo {
+            width: 58px;
+            height: 58px;
+            border-radius: 12px;
+            background: #172033;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            font-weight: bold;
           }
 
           h2 {
-            text-align: center;
-            margin-bottom: 5px;
+            font-size: 18px;
+            margin: 0 0 5px;
           }
 
-          .subtitulo {
-            text-align: center;
-            margin-bottom: 25px;
-          }
-
-          .dato {
-            border-bottom: 1px solid #ccc;
-            padding: 12px 0;
-          }
-
-          .total {
-            font-size: 24px;
+          .encabezado p {
+            margin: 0;
+            font-size: 12px;
+            letter-spacing: 2px;
             font-weight: bold;
-            text-align: right;
-            margin-top: 25px;
+            color: #405779;
           }
 
-          .firma {
-            margin-top: 65px;
+          .tipo {
+            margin-left: auto;
+            font-size: 10px;
+            font-weight: bold;
+            border: 1px solid #253b63;
+            padding: 6px;
+            border-radius: 5px;
+          }
+
+          .numero {
+            text-align: right;
+            font-size: 11px;
+            margin-top: 10px;
+          }
+
+          .datos {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+          }
+
+          .datos div {
+            background: #f2f5fa;
+            padding: 10px;
+            border-radius: 5px;
+          }
+
+          .datos span,
+          .importe span {
+            display: block;
+            font-size: 10px;
+            color: #52627a;
+            margin-bottom: 5px;
+            font-weight: bold;
+          }
+
+          .datos strong {
+            font-size: 13px;
+          }
+
+          .importe {
+            margin-top: 15px;
+            padding: 15px;
+            background: #edf2fa;
+            border-left: 5px solid #253b63;
+            border-radius: 5px;
+          }
+
+          .importe strong {
+            display: block;
+            font-size: 27px;
+            color: #172033;
+          }
+
+          .detalle {
+            margin-top: 12px;
+            font-size: 12px;
+          }
+
+          .detalle p {
+            border-bottom: 1px solid #d7deea;
+            padding-bottom: 7px;
+          }
+
+          .detalle span {
+            color: #52627a;
+          }
+
+          .firmas {
             display: flex;
             justify-content: space-between;
+            text-align: center;
+            margin-top: auto;
+            padding-top: 15px;
+            font-size: 11px;
+          }
+
+          .firmas span {
+            display: block;
+            margin-top: 6px;
+          }
+
+          .pie {
+            text-align: center;
+            border-top: 1px solid #d7deea;
+            padding-top: 7px;
+            margin-top: 12px;
+            font-size: 9px;
+            color: #64748b;
+            letter-spacing: 1px;
+          }
+
+          .corte {
+            border-top: 1px dashed #777;
+            text-align: center;
+            font-size: 9px;
+            margin: 0 0 5mm;
+            color: #777;
           }
 
           @media print {
-            body { padding: 0; }
-            button { display: none; }
+            .no-print {
+              display: none;
+            }
           }
         </style>
       </head>
+
       <body>
-        <div class="comprobante">
-          <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
-          <div class="subtitulo">
-            COMPROBANTE DE ADELANTO
-          </div>
+        ${ejemplar("ORIGINAL")}
+        <div class="corte">✂ CORTAR POR ESTA LÍNEA</div>
+        ${ejemplar("DUPLICADO")}
 
-          <div class="dato">
-            <strong>Preventista:</strong>
-            ${esc(a.preventistaNombre || "")}
-          </div>
-
-          <div class="dato">
-            <strong>Fecha:</strong>
-            ${esc(fechaTexto)}
-          </div>
-
-          <div class="dato">
-            <strong>Medio de pago:</strong>
-            ${esc(a.medio || "")}
-          </div>
-
-          <div class="dato">
-            <strong>Descripción:</strong>
-            ${esc(a.descripcion || "Adelanto de liquidación")}
-          </div>
-
-          <div class="total">
-            Importe: ${liqMoney(a.importe)}
-          </div>
-
-          <div class="firma">
-            <div>____________________<br>Firma del preventista</div>
-            <div>____________________<br>Firma de administración</div>
-          </div>
-        </div>
-
-        <br>
-        <button onclick="window.print()">Imprimir comprobante</button>
+        <button class="no-print" onclick="window.print()">
+          Imprimir comprobantes
+        </button>
       </body>
       </html>
     `);
