@@ -2812,7 +2812,8 @@ async function registrarAdelantoLiquidacion() {
 }
 
 // ===== FIN DE REGISTRO DE ADELANTO =====
-  async function imprimirComprobanteAdelanto(id) {
+  
+async function imprimirComprobanteAdelanto(id) {
   const ventana = window.open("", "_blank");
 
   if (!ventana) {
@@ -2841,70 +2842,99 @@ async function registrarAdelantoLiquidacion() {
 
     const numero = doc.id.slice(0, 8).toUpperCase();
 
+    const camionSvg = `
+      <svg viewBox="0 0 180 85" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="currentColor" stroke-width="4"
+           stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 18h91v43H12z"/>
+          <path d="M103 32h35l27 24v5h-62z"/>
+          <path d="M116 38h19l18 18h-37z"/>
+          <path d="M12 61h153"/>
+          <circle cx="43" cy="65" r="11" fill="white"/>
+          <circle cx="43" cy="65" r="4"/>
+          <circle cx="137" cy="65" r="11" fill="white"/>
+          <circle cx="137" cy="65" r="4"/>
+          <path d="M25 30h65M25 40h65"/>
+        </g>
+      </svg>
+    `;
+
     function ejemplar(tipo) {
       return `
         <div class="comprobante">
 
-          <div class="marca-agua">N.A.A.</div>
-
-          <div class="encabezado">
-            <div class="logo">N.A.A.</div>
-            <div>
-              <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
-              <p>COMPROBANTE DE ADELANTO</p>
-            </div>
-            <div class="tipo">${tipo}</div>
+          <div class="marca-agua">
+            ${camionSvg}
+            <div>DISTRIBUIDORA</div>
+            <strong>N.A.A. S.A.S.</strong>
           </div>
 
-          <div class="numero">
-            Comprobante N° ${numero}
-          </div>
+          <div class="contenido">
 
-          <div class="datos">
-            <div>
-              <span>PREVENTISTA</span>
-              <strong>${esc(a.preventistaNombre || "")}</strong>
-            </div>
+            <div class="encabezado">
+              <div class="logo">
+                ${camionSvg}
+              </div>
 
-            <div>
-              <span>FECHA</span>
-              <strong>${esc(fechaTexto)}</strong>
-            </div>
-          </div>
+              <div class="empresa">
+                <h2>DISTRIBUIDORA</h2>
+                <h2>N.A.A. S.A.S.</h2>
+                <p>COMPROBANTE DE ADELANTO</p>
+              </div>
 
-          <div class="importe">
-            <span>IMPORTE DEL ADELANTO</span>
-            <strong>${liqMoney(a.importe)}</strong>
-          </div>
-
-          <div class="detalle">
-            <p>
-              <span>Medio de pago:</span>
-              <strong>${esc(a.medio || "")}</strong>
-            </p>
-
-            <p>
-              <span>Descripción:</span>
-              <strong>${esc(a.descripcion || "Adelanto de liquidación")}</strong>
-            </p>
-          </div>
-
-          <div class="firmas">
-            <div>
-              __________________________
-              <span>Firma del preventista</span>
+              <div class="tipo">${tipo}</div>
             </div>
 
-            <div>
-              __________________________
-              <span>Firma de administración</span>
+            <div class="numero">
+              Comprobante N° ${numero}
             </div>
-          </div>
 
-          <div class="pie">
-            DISTRIBUIDORA N.A.A. S.A.S. · CONTROL DE LIQUIDACIONES
-          </div>
+            <div class="datos">
+              <div>
+                <span>PREVENTISTA</span>
+                <strong>${esc(a.preventistaNombre || "")}</strong>
+              </div>
 
+              <div>
+                <span>FECHA</span>
+                <strong>${esc(fechaTexto)}</strong>
+              </div>
+            </div>
+
+            <div class="importe">
+              <span>IMPORTE DEL ADELANTO</span>
+              <strong>${liqMoney(a.importe)}</strong>
+            </div>
+
+            <div class="detalle">
+              <p>
+                <span>Medio de pago:</span>
+                <strong>${esc(a.medio || "")}</strong>
+              </p>
+
+              <p>
+                <span>Descripción:</span>
+                <strong>${esc(a.descripcion || "Adelanto de liquidación")}</strong>
+              </p>
+            </div>
+
+            <div class="firmas">
+              <div>
+                ______________________
+                <span>Firma del preventista</span>
+              </div>
+
+              <div>
+                ______________________
+                <span>Firma de administración</span>
+              </div>
+            </div>
+
+            <div class="pie">
+              DISTRIBUIDORA N.A.A. S.A.S. · CONTROL DE LIQUIDACIONES
+            </div>
+
+          </div>
         </div>
       `;
     }
@@ -2919,7 +2949,7 @@ async function registrarAdelantoLiquidacion() {
         <style>
           @page {
             size: A4 portrait;
-            margin: 8mm;
+            margin: 5mm;
           }
 
           * {
@@ -2928,147 +2958,177 @@ async function registrarAdelantoLiquidacion() {
 
           body {
             font-family: Arial, sans-serif;
-            color: #172033;
+            color: #172b4d;
             margin: 0;
             background: white;
           }
 
           .comprobante {
-            height: 137mm;
-            border: 1.5px solid #253b63;
-            border-radius: 8px;
-            padding: 8mm;
+            height: 135mm;
+            width: 100%;
+            border: 1.4px solid #183d78;
+            border-radius: 7px;
+            padding: 6mm;
             position: relative;
             overflow: hidden;
-            margin-bottom: 5mm;
+            margin: 0;
+            page-break-inside: avoid;
+          }
+
+          .contenido {
+            position: relative;
+            z-index: 2;
+            height: 100%;
             display: flex;
             flex-direction: column;
           }
 
           .marca-agua {
             position: absolute;
-            top: 43%;
+            top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%) rotate(-25deg);
-            font-size: 85px;
-            font-weight: 900;
-            color: rgba(37, 59, 99, 0.055);
+            transform: translate(-50%, -50%);
+            width: 88%;
+            text-align: center;
+            color: #24518b;
+            opacity: 0.13;
+            z-index: 1;
             pointer-events: none;
-            z-index: 0;
           }
 
-          .encabezado,
-          .numero,
-          .datos,
-          .importe,
-          .detalle,
-          .firmas,
-          .pie {
-            position: relative;
-            z-index: 1;
+          .marca-agua svg {
+            width: 75%;
+            height: 75px;
+            display: block;
+            margin: auto;
+          }
+
+          .marca-agua div {
+            font-size: 25px;
+            font-weight: 900;
+            letter-spacing: 3px;
+          }
+
+          .marca-agua strong {
+            font-size: 29px;
+            letter-spacing: 3px;
           }
 
           .encabezado {
             display: flex;
             align-items: center;
-            gap: 12px;
-            border-bottom: 2px solid #253b63;
-            padding-bottom: 12px;
+            gap: 10px;
+            border-bottom: 2px solid #183d78;
+            padding-bottom: 8px;
           }
 
           .logo {
-            width: 58px;
-            height: 58px;
-            border-radius: 12px;
-            background: #172033;
-            color: white;
+            width: 55px;
+            height: 48px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 17px;
-            font-weight: bold;
+            color: #183d78;
+            flex-shrink: 0;
           }
 
-          h2 {
-            font-size: 18px;
-            margin: 0 0 5px;
+          .logo svg {
+            width: 55px;
+            height: 42px;
           }
 
-          .encabezado p {
+          .empresa h2 {
             margin: 0;
-            font-size: 12px;
-            letter-spacing: 2px;
+            font-size: 15px;
+            line-height: 17px;
+            font-weight: 900;
+            color: #172b4d;
+          }
+
+          .empresa p {
+            margin: 4px 0 0;
+            font-size: 10px;
+            letter-spacing: 1.4px;
             font-weight: bold;
-            color: #405779;
+            color: #315b91;
           }
 
           .tipo {
             margin-left: auto;
-            font-size: 10px;
+            background: #183d78;
+            color: white;
+            padding: 6px 9px;
+            border-radius: 4px;
+            font-size: 9px;
             font-weight: bold;
-            border: 1px solid #253b63;
-            padding: 6px;
-            border-radius: 5px;
           }
 
           .numero {
             text-align: right;
-            font-size: 11px;
-            margin-top: 10px;
+            font-size: 9px;
+            margin-top: 6px;
+            color: #52627a;
           }
 
           .datos {
             display: grid;
-            grid-template-columns: 1.5fr 1fr;
-            gap: 15px;
-            margin-top: 15px;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 10px;
+            margin-top: 8px;
           }
 
           .datos div {
-            background: #f2f5fa;
-            padding: 10px;
-            border-radius: 5px;
+            background: #f4f7fc;
+            padding: 7px;
+            border-radius: 4px;
           }
 
           .datos span,
           .importe span {
             display: block;
-            font-size: 10px;
+            font-size: 9px;
             color: #52627a;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
             font-weight: bold;
           }
 
           .datos strong {
-            font-size: 13px;
+            font-size: 12px;
+            color: #172b4d;
           }
 
           .importe {
-            margin-top: 15px;
-            padding: 15px;
-            background: #edf2fa;
-            border-left: 5px solid #253b63;
-            border-radius: 5px;
+            margin-top: 9px;
+            padding: 9px 12px;
+            background: #edf3fb;
+            border-left: 4px solid #183d78;
+            border-radius: 4px;
           }
 
           .importe strong {
             display: block;
-            font-size: 27px;
-            color: #172033;
+            font-size: 25px;
+            color: #102f65;
+            font-weight: 900;
           }
 
           .detalle {
-            margin-top: 12px;
-            font-size: 12px;
+            margin-top: 7px;
+            font-size: 10px;
           }
 
           .detalle p {
+            margin: 5px 0;
             border-bottom: 1px solid #d7deea;
-            padding-bottom: 7px;
+            padding-bottom: 5px;
           }
 
           .detalle span {
             color: #52627a;
+          }
+
+          .detalle strong {
+            color: #172b4d;
           }
 
           .firmas {
@@ -3076,36 +3136,59 @@ async function registrarAdelantoLiquidacion() {
             justify-content: space-between;
             text-align: center;
             margin-top: auto;
-            padding-top: 15px;
-            font-size: 11px;
+            padding-top: 9px;
+            font-size: 9px;
+            color: #172b4d;
+          }
+
+          .firmas div {
+            width: 42%;
           }
 
           .firmas span {
             display: block;
-            margin-top: 6px;
+            margin-top: 4px;
           }
 
           .pie {
             text-align: center;
             border-top: 1px solid #d7deea;
-            padding-top: 7px;
-            margin-top: 12px;
-            font-size: 9px;
-            color: #64748b;
-            letter-spacing: 1px;
+            padding-top: 5px;
+            margin-top: 7px;
+            font-size: 8px;
+            color: #52627a;
+            letter-spacing: 0.7px;
           }
 
           .corte {
-            border-top: 1px dashed #777;
+            height: 4mm;
+            line-height: 4mm;
             text-align: center;
             font-size: 9px;
-            margin: 0 0 5mm;
-            color: #777;
+            color: #52627a;
+            border-top: 1px dashed #52627a;
+            margin: 0;
+          }
+
+          .no-print {
+            display: block;
+            margin: 12px auto;
+            padding: 10px 25px;
+            background: #183d78;
+            color: white;
+            border: 0;
+            border-radius: 5px;
+            cursor: pointer;
           }
 
           @media print {
             .no-print {
-              display: none;
+              display: none !important;
+            }
+
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
           }
         </style>
