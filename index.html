@@ -2156,9 +2156,12 @@ async function renderLiquidaciones() {
 
     snapshot.forEach(doc => {
       const data = doc.data() || {};
-      const role = String(data.role || "").toLowerCase();
+      const role = String(data.role || "preventista").toLowerCase();
 
-      if (role === "preventista" && data.active === true) {
+      if (
+        role === "preventista" &&
+        data.active !== false
+      ) {
         preventistas.push({
           uid: doc.id,
           name: data.name || data.username || "Preventista"
@@ -2166,9 +2169,9 @@ async function renderLiquidaciones() {
       }
     });
 
-    preventistas.sort((a, b) => a.name.localeCompare(b.name, "es"));
-
-    const seleccionado = select.value;
+    preventistas.sort((a, b) =>
+      a.name.localeCompare(b.name, "es")
+    );
 
     select.innerHTML =
       '<option value="">Seleccionar preventista</option>';
@@ -2180,21 +2183,21 @@ async function renderLiquidaciones() {
       select.appendChild(option);
     });
 
-    if (seleccionado && preventistas.some(p => p.uid === seleccionado)) {
-      select.value = seleccionado;
-      await cargarConfiguracionLiquidacion();
-    } else {
-      actualizarCamposLiquidacion();
+    actualizarCamposLiquidacion();
+
+    if (preventistas.length === 0) {
+      const resultado = document.getElementById("liqResultado");
+      if (resultado) {
+        resultado.innerHTML =
+          "<p>No se encontraron preventistas registrados en Firebase.</p>";
+      }
     }
 
   } catch (error) {
-    console.error("Error cargando preventistas para liquidaciones:", error);
-    const resultado = document.getElementById("liqResultado");
-    if (resultado) {
-      resultado.innerHTML =
-        '<p style="color:#c00">No se pudieron cargar los preventistas. Revisá la conexión con Firebase.</p>';
-    }
+    console.error("Error cargando preventistas:", error);
+    alert("No se pudieron cargar los preventistas desde Firebase.");
   }
+}
 }
 
 async function cargarConfiguracionLiquidacion() {
