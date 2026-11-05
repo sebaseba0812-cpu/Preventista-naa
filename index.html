@@ -771,6 +771,45 @@ placeholder="Ej.: 10">
     <button class="secondary" style="width:100%"
       onclick="calcularLiquidacion()">Calcular ganancias</button>
     <div id="liqResultado" style="margin-top:12px"></div>
+    <div id="liqSaldoAcumulado" style="margin-top:15px">
+  <p class="small">Seleccioná un preventista para consultar su saldo acumulado.</p>
+</div>
+
+<div class="card" style="margin-top:15px">
+  <h3>💵 Registrar adelanto</h3>
+
+  <label>Importe del adelanto</label>
+  <input
+    type="number"
+    id="liqAdelantoImporte"
+    min="0"
+    step="0.01"
+    placeholder="Ingresar importe"
+  >
+
+  <label>Medio de pago</label>
+  <select id="liqAdelantoMedio">
+    <option value="efectivo">Efectivo</option>
+    <option value="transferencia">Transferencia</option>
+  </select>
+
+  <label>Descripción</label>
+  <input
+    type="text"
+    id="liqAdelantoDescripcion"
+    placeholder="Ej.: adelanto de quincena"
+  >
+
+  <button
+    class="primary"
+    style="width:100%;margin-top:10px"
+    onclick="registrarAdelantoLiquidacion()"
+  >
+    Registrar adelanto
+  </button>
+
+  <div id="liqHistorialAdelantos" style="margin-top:15px"></div>
+</div>
   </div>
 </section>
 </main></div>
@@ -2227,6 +2266,7 @@ async function cargarConfiguracionLiquidacion() {
       config.totalPercent ?? LIQ_DEFAULTS.totalPercent;
 
     actualizarCamposLiquidacion();
+    await actualizarSaldoLiquidacion();
 
   } catch (error) {
     console.error("Error cargando configuración de liquidación:", error);
@@ -2406,6 +2446,22 @@ async function calcularLiquidacion() {
       comisionTotal = totalVentas * (porcentajeTotal / 100);
       totalLiquidacion = comisionTotal;
     }
+    window.LIQ_ULTIMO_CALCULO = {
+  preventistaUid: uid,
+  nombrePreventista: nombrePreventista,
+  mes: mes,
+  modalidad: modalidad,
+  totalBultos: totalBultos,
+  totalVentas: totalVentas,
+  pagoBase: pagoBase,
+  comisionExcedente: comisionExcedente,
+  comisionTotal: comisionTotal,
+  totalLiquidacion: totalLiquidacion,
+  objetivo: objetivo,
+  valorBulto: valorBulto,
+  porcentajeExcedente: porcentajeExcedente,
+  porcentajeTotal: porcentajeTotal
+};
 
     resultado.innerHTML = `
       <div class="card" style="margin-top:10px">
@@ -2430,7 +2486,15 @@ async function calcularLiquidacion() {
             `
         }
         <hr>
-        <h2 style="text-align:right">Total a pagar: ${liqMoney(totalLiquidacion)}</h2>
+        <h2 style="text-align:right">
+  Total a pagar: ${liqMoney(totalLiquidacion)}
+</h2>
+
+<button class="primary"
+  style="width:100%;margin-top:10px"
+  onclick="guardarLiquidacionPeriodo()">
+  💾 Guardar liquidación del mes
+</button>
       </div>
     `;
 
@@ -2438,6 +2502,186 @@ async function calcularLiquidacion() {
     console.error("Error calculando liquidación:", error);
     resultado.innerHTML =
       '<p style="color:#c00">Ocurrió un error al calcular. Revisá la consola y la conexión con Firebase.</p>';
+  }
+}
+  // ===== SALDO ACUMULADO DE LIQUIDACIONES =====
+
+async function liqObtenerResumen(uid) {
+  const [periodosSnap, adelantosSnap] = await Promise.all([
+    firebaseDB.collection("liquidationPeriods")
+      .where("preventistaUid", "==", uid)
+      .get(),
+
+    firebaseDB.collection("liquidationPayments")
+      .where("preventistaUid", "==", uid)
+      .get()
+  ]);
+
+  let totalGanado = 0;
+  let totalAdelantos = 0;
+  const adelantos = [];
+
+  periodosSnap.forEach(doc => {
+    totalGanado += Number(doc.data().totalLiquidacion || 0);
+  });
+
+  adelantosSnap.forEach(doc => {
+    const data = doc.data() || {};
+
+    totalAdelantos += Number(data.importe || 0);
+
+    adelantos.push({
+      id: doc.id,
+      ...data
+    });
+  });
+
+  adelantos.sort((a, b) => {
+    const fechaA = liqDate(a.createdAt)?.getTime() || 0;
+    const fechaB = liqDate(b.createdAt)?.getTime() || 0;
+    return fechaB - fechaA;
+  });
+
+  return {
+    totalGanado,
+    totalAdelantos,
+    saldoDisponible: totalGanado - totalAdelantos,
+    adelantos
+  };
+}
+
+async function actualizarSaldoLiquidacion() {
+  const uid = document.getElementById("liqPreventista")?.value;
+  const contenedor = document.getElementById("liqSaldoAcumulado");
+  const historial = document.getElementById("liqHistorialAdelantos");
+
+  if (!uid || !contenedor) return;
+
+  contenedor.innerHTML = "<p>Consultando saldo acumulado...</p>";
+
+  try {
+    const resumen = await liqObtenerResumen(uid);
+
+    contenedor.innerHTML = `
+      <div class="card">
+        <h3>📊 Saldo acumulado</h3>
+        <p>Total ganado: <strong>${liqMoney(resumen.totalGanado)}</strong></p>
+        <p>Total adelantos: <strong>${liqMoney(resumen.totalAdelantos)}</strong></p>
+        <hr>
+        <h2>Disponible: ${liqMoney(resumen.saldoDisponible)}</h2>
+      </div>
+    `;
+
+    if (historial) {
+      if (resumen.adelantos.length === 0) {
+        historial.innerHTML = "<p>No hay adelantos registrados.</p>";
+      } else {
+        historial.innerHTML = `
+          <h3>Historial de adelantos</h3>
+          ${resumen.adelantos.map(a => `
+            <div style="border-bottom:1px solid #ccc;padding:8px 0">
+              <strong>${liqMoney(a.importe)}</strong>
+              <br>
+              <span class="small">
+                ${esc(a.medio || "")} -
+                ${esc(a.descripcion || "Sin descripción")}
+              </span>
+            </div>
+          `).join("")}
+        `;
+      }
+    }
+
+  } catch (error) {
+    console.error("Error consultando saldo acumulado:", error);
+    contenedor.innerHTML =
+      "<p>No se pudo consultar el saldo. Revisá Firebase.</p>";
+  }
+}
+
+// ===== FIN DEL SALDO ACUMULADO =====
+  async function guardarLiquidacionPeriodo() {
+  const calculo = window.LIQ_ULTIMO_CALCULO;
+
+  if (!calculo) {
+    alert("Primero tenés que calcular la liquidación.");
+    return;
+  }
+
+  const confirmar = confirm(
+    "¿Querés guardar la liquidación de " +
+    calculo.nombrePreventista +
+    " correspondiente a " + calculo.mes + "?"
+  );
+
+  if (!confirmar) return;
+
+  try {
+    const id = calculo.preventistaUid + "_" + calculo.mes;
+
+    const ref = firebaseDB
+      .collection("liquidationPeriods")
+      .doc(id);
+
+    const existente = await ref.get();
+
+    if (existente.exists) {
+      if (!confirm(
+        "Ya existe una liquidación guardada para este mes. " +
+        "¿Querés actualizarla?"
+      )) return;
+    }
+
+    const [periodosSnap, adelantosSnap] = await Promise.all([
+      firebaseDB.collection("liquidationPeriods")
+        .where("preventistaUid", "==", calculo.preventistaUid)
+        .get(),
+
+      firebaseDB.collection("liquidationPayments")
+        .where("preventistaUid", "==", calculo.preventistaUid)
+        .get()
+    ]);
+
+    let ganadoAnterior = 0;
+    let adelantos = 0;
+
+    periodosSnap.forEach(doc => {
+      if (doc.id !== id) {
+        ganadoAnterior += Number(
+          doc.data().totalLiquidacion || 0
+        );
+      }
+    });
+
+    adelantosSnap.forEach(doc => {
+      adelantos += Number(doc.data().importe || 0);
+    });
+
+    const saldoLuegoDeGuardar =
+      ganadoAnterior +
+      Number(calculo.totalLiquidacion || 0) -
+      adelantos;
+
+    if (saldoLuegoDeGuardar < 0) {
+      alert(
+        "No se puede guardar esta liquidación porque el total " +
+        "de adelantos supera las ganancias acumuladas."
+      );
+      return;
+    }
+
+    await ref.set({
+      ...calculo,
+      actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    alert("Liquidación mensual guardada correctamente.");
+
+    await actualizarSaldoLiquidacion();
+
+  } catch (error) {
+    console.error("Error guardando liquidación:", error);
+    alert("No se pudo guardar. Revisá los permisos de Firebase.");
   }
 }
 
