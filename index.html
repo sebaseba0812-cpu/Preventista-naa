@@ -2052,6 +2052,394 @@ if(promoForm){
     document.getElementById(id)?.classList.toggle("hidden", ocultar);
   });
 }
+ // ===== LIQUIDACIONES DE PREVENTISTAS =====
+
+const LIQ_DEFAULTS = {
+  mode: "bulto",
+  targetBultos: 750,
+  payPerBulto: 534.75,
+  excessPercent: 4,
+  totalPercent: 6
+};
+
+function liqMoney(value) {
+  return Number(value || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 2
+  });
+}
+
+function liqDate(value) {
+  if (!value) return null;
+
+  if (value.toDate && typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (typeof value === "number") {
+    return new Date(value);
+  }
+
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function liqEsCuentaCorriente(order) {
+  const tipo = String(order.paymentType || "").toLowerCase();
+  return tipo.includes("cuenta");
+}
+
+function liqEsPedidoValido(order) {
+  const status = String(order.status || "").toLowerCase();
+
+  if (
+    status.includes("anulad") ||
+    status.includes("cancel") ||
+    status.includes("borrador") ||
+    status.includes("draft")
+  ) {
+    return false;
+  }
+
+  if (
+    liqEsCuentaCorriente(order) &&
+    String(order.paymentStatus || "").toLowerCase() !== "cobrado"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function liqFechaPedido(order) {
+  if (liqEsCuentaCorriente(order)) {
+    return liqDate(
+      order.paymentDate || order.updatedAt || order.date || order.createdAt
+    );
+  }
+
+  return liqDate(order.date || order.createdAt);
+}
+
+function liqUidPedido(order) {
+  if (order.preventistaUid) return order.preventistaUid;
+  if (order.ownerUid) return order.ownerUid;
+  if (order.userUid) return order.userUid;
+  if (order.uid) return order.uid;
+
+  if (order.user && typeof order.user === "object") {
+    return order.user.uid || order.user.id || "";
+  }
+
+  return "";
+}
+
+async function renderLiquidaciones() {
+  const select = document.getElementById("liqPreventista");
+  const mes = document.getElementById("liqMes");
+
+  if (!select) return;
+
+  if (mes && !mes.value) {
+    const ahora = new Date();
+    mes.value =
+      ahora.getFullYear() +
+      "-" +
+      String(ahora.getMonth() + 1).padStart(2, "0");
+  }
+
+  try {
+    const snapshot = await firebaseDB.collection("users").get();
+
+    const preventistas = [];
+
+    snapshot.forEach(doc => {
+      const data = doc.data() || {};
+      const role = String(data.role || "").toLowerCase();
+
+      if (role === "preventista" && data.active === true) {
+        preventistas.push({
+          uid: doc.id,
+          name: data.name || data.username || "Preventista"
+        });
+      }
+    });
+
+    preventistas.sort((a, b) => a.name.localeCompare(b.name, "es"));
+
+    const seleccionado = select.value;
+
+    select.innerHTML =
+      '<option value="">Seleccionar preventista</option>';
+
+    preventistas.forEach(p => {
+      const option = document.createElement("option");
+      option.value = p.uid;
+      option.textContent = p.name;
+      select.appendChild(option);
+    });
+
+    if (seleccionado && preventistas.some(p => p.uid === seleccionado)) {
+      select.value = seleccionado;
+      await cargarConfiguracionLiquidacion();
+    } else {
+      actualizarCamposLiquidacion();
+    }
+
+  } catch (error) {
+    console.error("Error cargando preventistas para liquidaciones:", error);
+    const resultado = document.getElementById("liqResultado");
+    if (resultado) {
+      resultado.innerHTML =
+        '<p style="color:#c00">No se pudieron cargar los preventistas. Revisá la conexión con Firebase.</p>';
+    }
+  }
+}
+
+async function cargarConfiguracionLiquidacion() {
+  const uid = document.getElementById("liqPreventista")?.value;
+  if (!uid) return;
+
+  try {
+    const doc = await firebaseDB
+      .collection("liquidationSettings")
+      .doc(uid)
+      .get();
+
+    const config = doc.exists ? doc.data() : {};
+
+    document.getElementById("liqModalidad").value =
+      config.mode || LIQ_DEFAULTS.mode;
+
+    document.getElementById("liqObjetivo").value =
+      config.targetBultos ?? LIQ_DEFAULTS.targetBultos;
+
+    document.getElementById("liqValorBulto").value =
+      config.payPerBulto ?? LIQ_DEFAULTS.payPerBulto;
+
+    document.getElementById("liqPorcentajeExcedente").value =
+      config.excessPercent ?? LIQ_DEFAULTS.excessPercent;
+
+    document.getElementById("liqPorcentajeTotal").value =
+      config.totalPercent ?? LIQ_DEFAULTS.totalPercent;
+
+    actualizarCamposLiquidacion();
+
+  } catch (error) {
+    console.error("Error cargando configuración de liquidación:", error);
+    alert("No se pudo cargar la configuración de este preventista.");
+  }
+}
+
+function actualizarCamposLiquidacion() {
+  const modalidad = document.getElementById("liqModalidad")?.value;
+  const camposBulto = document.getElementById("liqCamposBulto");
+  const camposComision = document.getElementById("liqCamposComision");
+
+  if (camposBulto) {
+    camposBulto.classList.toggle("hidden", modalidad !== "bulto");
+  }
+
+  if (camposComision) {
+    camposComision.classList.toggle("hidden", modalidad !== "comision");
+  }
+}
+
+async function guardarConfiguracionLiquidacion() {
+  const uid = document.getElementById("liqPreventista")?.value;
+
+  if (!uid) {
+    alert("Primero seleccioná un preventista.");
+    return;
+  }
+
+  const config = {
+    mode: document.getElementById("liqModalidad").value,
+    targetBultos: Number(document.getElementById("liqObjetivo").value),
+    payPerBulto: Number(document.getElementById("liqValorBulto").value),
+    excessPercent: Number(
+      document.getElementById("liqPorcentajeExcedente").value
+    ),
+    totalPercent: Number(
+      document.getElementById("liqPorcentajeTotal").value
+    ),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  if (
+    config.targetBultos < 0 ||
+    config.payPerBulto < 0 ||
+    config.excessPercent < 0 ||
+    config.totalPercent < 0 ||
+    Object.values(config).some(v => typeof v === "number" && !Number.isFinite(v))
+  ) {
+    alert("Revisá los valores ingresados. No pueden ser negativos ni inválidos.");
+    return;
+  }
+
+  try {
+    await firebaseDB
+      .collection("liquidationSettings")
+      .doc(uid)
+      .set(config, { merge: true });
+
+    alert("Configuración de liquidación guardada correctamente.");
+
+  } catch (error) {
+    console.error("Error guardando configuración:", error);
+    alert("No se pudo guardar la configuración. Revisá Firebase.");
+  }
+}
+
+async function calcularLiquidacion() {
+  const uid = document.getElementById("liqPreventista")?.value;
+  const mes = document.getElementById("liqMes")?.value;
+  const resultado = document.getElementById("liqResultado");
+
+  if (!uid) {
+    alert("Seleccioná un preventista.");
+    return;
+  }
+
+  if (!mes) {
+    alert("Seleccioná el mes que querés liquidar.");
+    return;
+  }
+
+  const modalidad = document.getElementById("liqModalidad").value;
+  const objetivo = Number(document.getElementById("liqObjetivo").value);
+  const valorBulto = Number(document.getElementById("liqValorBulto").value);
+  const porcentajeExcedente = Number(
+    document.getElementById("liqPorcentajeExcedente").value
+  );
+  const porcentajeTotal = Number(
+    document.getElementById("liqPorcentajeTotal").value
+  );
+
+  if (
+    [objetivo, valorBulto, porcentajeExcedente, porcentajeTotal].some(
+      n => !Number.isFinite(n) || n < 0
+    )
+  ) {
+    alert("Revisá los valores de la configuración.");
+    return;
+  }
+
+  try {
+    resultado.innerHTML = "<p>Calculando liquidación...</p>";
+
+    const [ordersSnapshot, userDoc] = await Promise.all([
+      firebaseDB.collection("orders").get(),
+      firebaseDB.collection("users").doc(uid).get()
+    ]);
+
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const nombrePreventista =
+      userData.name || userData.username || "Preventista";
+
+    const [anio, mesNumero] = mes.split("-").map(Number);
+    const desde = new Date(anio, mesNumero - 1, 1);
+    const hasta = new Date(anio, mesNumero, 1);
+
+    const pedidos = [];
+
+    ordersSnapshot.forEach(doc => {
+      const order = doc.data() || {};
+
+      if (liqUidPedido(order) !== uid) return;
+      if (!liqEsPedidoValido(order)) return;
+
+      const fecha = liqFechaPedido(order);
+      if (!fecha || fecha < desde || fecha >= hasta) return;
+
+      pedidos.push({ ...order, _liqFecha: fecha });
+    });
+
+    pedidos.sort((a, b) => a._liqFecha - b._liqFecha);
+
+    let totalBultos = 0;
+    let totalVentas = 0;
+    let bultosBase = 0;
+    let bultosExcedentes = 0;
+    let ventasExcedentes = 0;
+
+    pedidos.forEach(order => {
+      const lineas = Array.isArray(order.lines) ? order.lines : [];
+
+      lineas.forEach(line => {
+        const cantidad = Number(line.qty || 0);
+        const importe = Number(line.total || 0);
+
+        if (cantidad <= 0) return;
+
+        totalBultos += cantidad;
+        totalVentas += importe;
+
+        const espacioBase = Math.max(0, objetivo - bultosBase);
+        const cantidadBase = Math.min(cantidad, espacioBase);
+        const cantidadExcedente = cantidad - cantidadBase;
+
+        bultosBase += cantidadBase;
+        bultosExcedentes += cantidadExcedente;
+
+        if (cantidadExcedente > 0) {
+          ventasExcedentes += importe * (cantidadExcedente / cantidad);
+        }
+      });
+    });
+
+    let pagoBase = 0;
+    let comisionExcedente = 0;
+    let comisionTotal = 0;
+    let totalLiquidacion = 0;
+
+    if (modalidad === "bulto") {
+      pagoBase = bultosBase * valorBulto;
+      comisionExcedente =
+        ventasExcedentes * (porcentajeExcedente / 100);
+
+      totalLiquidacion = pagoBase + comisionExcedente;
+    } else {
+      comisionTotal = totalVentas * (porcentajeTotal / 100);
+      totalLiquidacion = comisionTotal;
+    }
+
+    resultado.innerHTML = `
+      <div class="card" style="margin-top:10px">
+        <h3>Liquidación de ${nombrePreventista}</h3>
+        <p><strong>Período:</strong> ${mes}</p>
+        <p><strong>Pedidos incluidos:</strong> ${pedidos.length}</p>
+        <p><strong>Total de bultos:</strong> ${totalBultos.toLocaleString("es-AR")}</p>
+        <p><strong>Total vendido:</strong> ${liqMoney(totalVentas)}</p>
+        ${
+          modalidad === "bulto"
+            ? `
+              <hr>
+              <p><strong>Bultos dentro del objetivo:</strong> ${bultosBase.toLocaleString("es-AR")}</p>
+              <p><strong>Pago por bultos:</strong> ${liqMoney(pagoBase)}</p>
+              <p><strong>Bultos excedentes:</strong> ${bultosExcedentes.toLocaleString("es-AR")}</p>
+              <p><strong>Ventas correspondientes al excedente:</strong> ${liqMoney(ventasExcedentes)}</p>
+              <p><strong>Comisión del excedente (${porcentajeExcedente}%):</strong> ${liqMoney(comisionExcedente)}</p>
+            `
+            : `
+              <hr>
+              <p><strong>Comisión desde la primera venta (${porcentajeTotal}%):</strong> ${liqMoney(comisionTotal)}</p>
+            `
+        }
+        <hr>
+        <h2 style="text-align:right">Total a pagar: ${liqMoney(totalLiquidacion)}</h2>
+      </div>
+    `;
+
+  } catch (error) {
+    console.error("Error calculando liquidación:", error);
+    resultado.innerHTML =
+      '<p style="color:#c00">Ocurrió un error al calcular. Revisá la consola y la conexión con Firebase.</p>';
+  }
+}
+
+// ===== FIN DE LIQUIDACIONES ===== 
 function init(){
   const user = JSON.parse(localStorage.getItem('NAA_USER') || '{}');
 
