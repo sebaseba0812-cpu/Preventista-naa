@@ -379,7 +379,7 @@ oninput="renderStock()">
 
 <section id="promociones" class="screen">
 
-<div class="card">
+<div class="card" id="promoFormAdmin">
 <h2>🔥 Promociones</h2>
 
 <p class="small">
@@ -416,7 +416,7 @@ placeholder="Ej.: 10">
 
 </div>
 
-<div class="card">
+<div class="card" id="promoListCard">
 <h3>📋 Promociones creadas</h3>
 
 <div id="promotionsList"></div>
@@ -1915,6 +1915,11 @@ async function actualizarMenuPorCaja(){
   } catch(error) {
     console.error("Error verificando caja:", error);
     NAA_CAJA_ABIERTA = false;
+    }
+    const promoForm = document.getElementById("promoFormAdmin");
+
+if(promoForm){
+  promoForm.style.display = esAdmin ? "block" : "none";
   }
 
   // Secciones que el administrador necesita tener abierta la caja
