@@ -261,6 +261,15 @@ body {
   <h3>🔥 Promociones agregadas</h3>
   <div class="empty">Todavía no agregaste promociones.</div>
 </div> 
+ <div class="card" id="promoSalesBox">
+  <h3>🔥 Promociones disponibles</h3>
+  <p class="small">
+    Elegí una promoción y seleccioná cuántas veces querés aplicarla al pedido.
+  </p>
+  <div id="availablePromotions">
+    <div class="empty">Cargando promociones...</div>
+  </div>
+</div> 
 <label>Observaciones</label><textarea id="orderObs" rows="2"></textarea>
 </div>
 <div class="card"><div class="total">Total: $<span id="orderTotal">0,00</span></div>
@@ -430,15 +439,7 @@ Creá y administrá promociones para los preventistas.
 onclick="createPromotion()">
 ➕ Crear promoción
 </button>
-  <div class="card" id="promoSalesBox">
-  <h2>🔥 Ofertas disponibles</h2>
-  <p class="small">
-    Elegí una promoción y seleccioná cuántas veces querés aplicarla al pedido.
-  </p>
-  <div id="availablePromotions">
-    <div class="empty">Cargando promociones...</div>
-  </div>
-</div>
+ 
 <div class="card" id="promoListCard">
 <h3>📋 Promociones creadas</h3>
 
@@ -4197,7 +4198,12 @@ document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
 document.getElementById(id).classList.add("active");
 document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
 if(btn) btn.classList.add("active");
-if(id==="pedido"){renderClients();renderProducts()}
+if(id==="pedido"){
+  renderClients();
+  renderProducts();
+  renderAvailablePromotions();
+  renderPromotionCart();
+}
   if(id==="stock") renderStock();
   if(id==="promociones"){
   renderPromotions();
