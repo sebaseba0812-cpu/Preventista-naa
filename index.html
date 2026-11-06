@@ -257,6 +257,10 @@ body {
 <label>Cliente</label><select id="orderClient" onchange="showSelectedClient()"></select><div id="selectedClientInfo" class="small" style="margin-top:6px;color:#475569"></div>
 <label>Buscar producto</label><input id="productSearch" oninput="renderProducts()" placeholder="Nombre o presentación">
 <div id="products"></div><div id="cartList" class="card" style="padding:10px;margin-top:10px"></div>
+ <div id="promotionCartList" class="card" style="padding:10px;margin-top:10px">
+  <h3>🔥 Promociones agregadas</h3>
+  <div class="empty">Todavía no agregaste promociones.</div>
+</div> 
 <label>Observaciones</label><textarea id="orderObs" rows="2"></textarea>
 </div>
 <div class="card"><div class="total">Total: $<span id="orderTotal">0,00</span></div>
@@ -388,22 +392,33 @@ Creá y administrá promociones para los preventistas.
 </p>
 
 <label>Nombre de la promoción</label>
-<input id="promoName" placeholder="Ej.: Promo Leche">
+<input id="promoName" placeholder="Ej.: Promo Sancor + Yerba">
+
+<h3>🛒 Producto que debe comprar el cliente</h3>
 
 <label>Producto</label>
-<input id="promoProduct" placeholder="Ej.: Sancor Leche Entera">
+<input id="promoBuyProduct" placeholder="Ej.: Sancor Leche Entera">
 
-<label>Tipo de promoción</label>
-<select id="promoType">
-<option value="percent">Descuento porcentual</option>
-<option value="fixed">Precio promocional</option>
-<option value="quantity">Bonificación por cantidad</option>
-<option value="tier">Precio por cantidad</option>
-</select>
+<label>Presentación</label>
+<input id="promoBuyPresentation" placeholder="Ej.: caja x12">
 
-<label>Valor / condición</label>
-<input id="promoValue" type="number" min="0" step="0.01"
-placeholder="Ej.: 10">
+<label>Cantidad que debe comprar</label>
+<input id="promoBuyQty" type="number" min="1" step="1" placeholder="Ej.: 4">
+
+<hr>
+
+<h3>🎁 Producto bonificado (gratis)</h3>
+
+<label>Producto de regalo</label>
+<input id="promoGiftProduct" placeholder="Ej.: Yerba Verdecita">
+
+<label>Presentación del regalo</label>
+<input id="promoGiftPresentation" placeholder="Ej.: unidad 500 g">
+
+<label>Cantidad bonificada</label>
+<input id="promoGiftQty" type="number" min="1" step="1" placeholder="Ej.: 1">
+
+<hr>
 
 <label>Desde</label>
 <input id="promoStart" type="date">
@@ -411,12 +426,19 @@ placeholder="Ej.: 10">
 <label>Hasta</label>
 <input id="promoEnd" type="date">
 
-<button class="primary" style="width:100%;margin-top:10px" onclick="createPromotion()">
+<button class="primary" style="width:100%;margin-top:10px"
+onclick="createPromotion()">
 ➕ Crear promoción
 </button>
-
+  <div class="card" id="promoSalesBox">
+  <h2>🔥 Ofertas disponibles</h2>
+  <p class="small">
+    Elegí una promoción y seleccioná cuántas veces querés aplicarla al pedido.
+  </p>
+  <div id="availablePromotions">
+    <div class="empty">Cargando promociones...</div>
+  </div>
 </div>
-
 <div class="card" id="promoListCard">
 <h3>📋 Promociones creadas</h3>
 
@@ -832,6 +854,7 @@ let clients=JSON.parse(localStorage.getItem("NAA_CLIENTS")||"[]");
 let orders=JSON.parse(localStorage.getItem("NAA_ORDERS")||"[]");
 let user=JSON.parse(localStorage.getItem("NAA_USER")||"null");
 let cart={};
+ let promotionCart = []; 
 let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]");
 
 let productOverrides=JSON.parse(localStorage.getItem("NAA_PRODUCT_OVERRIDES")||"{}");
@@ -872,7 +895,8 @@ function getProducts(){
   }
 }
   
-  async function createPromotion(){
+ async function createPromotion(){
+
   const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
 
   if(user.role !== "admin"){
@@ -881,14 +905,32 @@ function getProducts(){
   }
 
   const name = document.getElementById("promoName").value.trim();
-  const product = document.getElementById("promoProduct").value.trim();
-  const type = document.getElementById("promoType").value;
-  const value = Number(document.getElementById("promoValue").value);
+
+  const buyProduct = document.getElementById("promoBuyProduct").value.trim();
+  const buyPresentation = document.getElementById("promoBuyPresentation").value.trim();
+  const buyQty = Number(document.getElementById("promoBuyQty").value);
+
+  const giftProduct = document.getElementById("promoGiftProduct").value.trim();
+  const giftPresentation = document.getElementById("promoGiftPresentation").value.trim();
+  const giftQty = Number(document.getElementById("promoGiftQty").value);
+
   const start = document.getElementById("promoStart").value;
   const end = document.getElementById("promoEnd").value;
 
-  if(!name || !product || !type || !value || !start || !end){
-    alert("Completá todos los datos de la promoción.");
+  if(
+    !name ||
+    !buyProduct ||
+    !buyPresentation ||
+    !Number.isInteger(buyQty) ||
+    buyQty < 1 ||
+    !giftProduct ||
+    !giftPresentation ||
+    !Number.isInteger(giftQty) ||
+    giftQty < 1 ||
+    !start ||
+    !end
+  ){
+    alert("Completá todos los datos de la promoción con cantidades válidas.");
     return;
   }
 
@@ -898,42 +940,61 @@ function getProducts(){
   }
 
   try{
+
     await firebaseDB.collection("promotions").add({
+
       name: name,
-      product: product,
-      type: type,
-      value: value,
+
+      buyProduct: buyProduct,
+      buyPresentation: buyPresentation,
+      buyQty: buyQty,
+
+      giftProduct: giftProduct,
+      giftPresentation: giftPresentation,
+      giftQty: giftQty,
+
       start: start,
       end: end,
+
       active: true,
       createdBy: user.uid,
+
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
+
     });
 
     alert("Promoción creada correctamente.");
 
     document.getElementById("promoName").value = "";
-    document.getElementById("promoProduct").value = "";
-    document.getElementById("promoValue").value = "";
+    document.getElementById("promoBuyProduct").value = "";
+    document.getElementById("promoBuyPresentation").value = "";
+    document.getElementById("promoBuyQty").value = "";
+    document.getElementById("promoGiftProduct").value = "";
+    document.getElementById("promoGiftPresentation").value = "";
+    document.getElementById("promoGiftQty").value = "";
     document.getElementById("promoStart").value = "";
     document.getElementById("promoEnd").value = "";
 
     renderPromotions();
 
   }catch(error){
+
     console.error(error);
     alert("No se pudo crear la promoción.");
+
   }
 }
 
 
 async function renderPromotions(){
+
   const list = document.getElementById("promotionsList");
   if(!list) return;
 
   list.innerHTML = "Cargando promociones...";
 
   try{
+
     const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
     const esAdmin = usuario.role === "admin";
 
@@ -953,7 +1014,9 @@ async function renderPromotions(){
     let cantidad = 0;
 
     snap.forEach(doc => {
+
       const p = doc.data();
+
       const vencida = p.end && p.end < hoy;
       const anulada = p.active === false;
 
@@ -967,29 +1030,41 @@ async function renderPromotions(){
       div.style.marginTop = "10px";
 
       div.innerHTML = `
-        <strong>🔥 ${p.name || ""}</strong>
+        <strong>🔥 ${p.name || "Promoción"}</strong>
+
         <p class="small">
-          Producto: ${p.product || ""}<br>
-          Tipo: ${p.type || ""}<br>
-          Valor: ${p.value ?? ""}<br>
-          Vigencia: ${p.start || ""} al ${p.end || ""}
+          <b>🛒 El cliente compra:</b><br>
+          ${p.buyQty || 0} × ${p.buyProduct || ""}<br>
+          Presentación: ${p.buyPresentation || ""}
+
+          <br><br>
+
+          <b>🎁 Recibe gratis:</b><br>
+          ${p.giftQty || 0} × ${p.giftProduct || ""}<br>
+          Presentación: ${p.giftPresentation || ""}
+
+          <br><br>
+
+          <b>Vigencia:</b> ${p.start || ""} al ${p.end || ""}
           ${vencida ? "<br><strong style='color:#c00'>PROMOCIÓN VENCIDA</strong>" : ""}
         </p>
       `;
 
       if(esAdmin){
+
         const actions = document.createElement("div");
         actions.style.marginTop = "10px";
 
         actions.innerHTML = `
           <button class="secondary" onclick="editPromotion('${doc.id}')">✏️ Editar</button>
-          <button class="danger" onclick="deletePromotion('${doc.id}')">🗑️ Eliminar</button>
+         <button class="danger" onclick="cancelPromotion('${doc.id}')">🚫 Anular</button>
         `;
 
         div.appendChild(actions);
       }
 
       list.appendChild(div);
+
     });
 
     if(cantidad === 0){
@@ -997,8 +1072,10 @@ async function renderPromotions(){
     }
 
   }catch(error){
+
     console.error(error);
     list.innerHTML = "<p class='small'>No se pudieron cargar las promociones.</p>";
+
   }
 }
 
@@ -1873,52 +1950,270 @@ if(cantidad === null) return;
  return "";
 }
 
-async function editPromotion(id){
-  const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+  async function renderAvailablePromotions(){
 
-if(user.role !== "admin"){
-  alert("Solo el administrador puede editar promociones.");
-  return;
+  const box = document.getElementById("availablePromotions");
+  if(!box) return;
+
+  box.innerHTML = "Cargando ofertas...";
+
+  try{
+
+    const snap = await firebaseDB
+      .collection("promotions")
+      .orderBy("createdAt","desc")
+      .get();
+
+    const hoy = new Date().toISOString().slice(0,10);
+    const ofertas = [];
+
+    snap.forEach(doc => {
+      const p = doc.data();
+
+      if(p.active === false) return;
+      if(p.start && p.start > hoy) return;
+      if(p.end && p.end < hoy) return;
+
+      ofertas.push({id:doc.id,...p});
+    });
+
+    if(!ofertas.length){
+      box.innerHTML = "<div class='empty'>No hay promociones vigentes.</div>";
+      return;
+    }
+
+    box.innerHTML = "";
+
+    ofertas.forEach(p => {
+
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.marginTop = "10px";
+
+      div.innerHTML = `
+        <strong>🔥 ${esc(p.name || "Promoción")}</strong>
+
+        <p class="small">
+          🛒 Comprás: <b>${p.buyQty} × ${esc(p.buyProduct || "")}</b><br>
+          Presentación: ${esc(p.buyPresentation || "")}
+          <br><br>
+          🎁 Recibís gratis: <b>${p.giftQty} × ${esc(p.giftProduct || "")}</b><br>
+          Presentación: ${esc(p.giftPresentation || "")}
+          <br><br>
+          Vigencia: ${esc(p.start || "")} al ${esc(p.end || "")}
+        </p>
+
+        <label>¿Cuántas promociones querés agregar?</label>
+        <input class="promo-count" type="number" min="1" step="1" value="1">
+
+        <button class="primary add-promotion-btn" type="button" style="width:100%;margin-top:8px">
+          ➕ Agregar al pedido
+        </button>
+      `;
+
+      div.querySelector(".add-promotion-btn").onclick = () => {
+        const cantidad = Number(div.querySelector(".promo-count").value);
+        addPromotionToCart(p, cantidad);
+      };
+
+      box.appendChild(div);
+    });
+
+  }catch(error){
+
+    console.error(error);
+    box.innerHTML = "<div class='empty'>No se pudieron cargar las promociones.</div>";
+
+  }
 }
-  const ref = firebaseDB.collection("promotions").doc(id);
-  const snap = await ref.get();
 
-  if(!snap.exists){
-    alert("No se encontró la promoción.");
+
+function addPromotionToCart(p,cantidad){
+
+  if(!Number.isInteger(cantidad) || cantidad < 1){
+    alert("Ingresá una cantidad válida de promociones.");
     return;
   }
 
-  const p = snap.data();
+  const existente = promotionCart.find(x => x.promotionId === p.id);
 
-  const nuevoNombre = prompt("Nombre de la promoción:", p.name || "");
-  if(nuevoNombre === null) return;
+  if(existente){
+    existente.count += cantidad;
+  }else{
+    promotionCart.push({
+      promotionId:p.id,
+      name:p.name,
+      buyProduct:p.buyProduct,
+      buyPresentation:p.buyPresentation,
+      buyQty:Number(p.buyQty),
+      giftProduct:p.giftProduct,
+      giftPresentation:p.giftPresentation,
+      giftQty:Number(p.giftQty),
+      count:cantidad
+    });
+  }
 
-  const nuevoValor = prompt("Valor / condición:", p.value ?? "");
-  if(nuevoValor === null) return;
+  renderPromotionCart();
+}
 
-  const nuevoInicio = prompt("Desde (AAAA-MM-DD):", p.start || "");
-  if(nuevoInicio === null) return;
 
-  const nuevoFin = prompt("Hasta (AAAA-MM-DD):", p.end || "");
-  if(nuevoFin === null) return;
+function getPromotionBuyTotal(p){
+
+  const cantidadTotal = p.buyQty * p.count;
+
+  const producto = getProducts().find(x =>
+    x[0] === p.buyProduct &&
+    (x[1] === p.buyPresentation || x[2] === p.buyPresentation)
+  );
+
+  if(!producto) return null;
+
+  return cantidadTotal * tierPrice(producto,cantidadTotal);
+}
+
+
+function renderPromotionCart(){
+
+  const box = document.getElementById("promotionCartList");
+  if(!box) return;
+
+  if(!promotionCart.length){
+
+    box.innerHTML = `
+      <h3>🔥 Promociones agregadas</h3>
+      <div class="empty">Todavía no agregaste promociones.</div>
+    `;
+
+    updateTotal();
+    return;
+  }
+
+  box.innerHTML = "<h3>🔥 Promociones agregadas</h3>";
+
+  promotionCart.forEach((p,index) => {
+
+    const totalCompra = getPromotionBuyTotal(p);
+    const div = document.createElement("div");
+
+    div.className = "orderline";
+
+    div.innerHTML = `
+      <div>
+        <b>${esc(p.name)}</b>
+        <div class="muted">
+          ${p.count} promoción(es)<br>
+          Comprás: ${p.buyQty * p.count} × ${esc(p.buyProduct)}<br>
+          Gratis: ${p.giftQty * p.count} × ${esc(p.giftProduct)}
+          ${p.giftPresentation ? " · " + esc(p.giftPresentation) : ""}
+        </div>
+      </div>
+
+      <div style="text-align:right">
+        <b>${totalCompra === null ? "Revisar producto" : "$" + money(totalCompra)}</b><br>
+        <button class="danger remove-promotion" type="button">❌ Quitar</button>
+      </div>
+    `;
+
+    div.querySelector(".remove-promotion").onclick = () => {
+      promotionCart.splice(index,1);
+      renderPromotionCart();
+    };
+
+    box.appendChild(div);
+
+  });
+
+  updateTotal();
+}
+async function editPromotion(id){
+
+  const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+  if(user.role !== "admin"){
+    alert("Solo el administrador puede editar promociones.");
+    return;
+  }
+
+  const ref = firebaseDB.collection("promotions").doc(id);
 
   try{
+
+    const snap = await ref.get();
+
+    if(!snap.exists){
+      alert("No se encontró la promoción.");
+      return;
+    }
+
+    const p = snap.data();
+
+    const name = prompt("Nombre de la promoción:", p.name || "");
+    if(name === null) return;
+
+    const buyProduct = prompt("Producto que debe comprar:", p.buyProduct || "");
+    if(buyProduct === null) return;
+
+    const buyPresentation = prompt("Presentación del producto:", p.buyPresentation || "");
+    if(buyPresentation === null) return;
+
+    const buyQty = Number(prompt("Cantidad que debe comprar:", p.buyQty || ""));
+    if(!Number.isInteger(buyQty) || buyQty < 1){
+      alert("La cantidad de compra debe ser un número entero mayor que cero.");
+      return;
+    }
+
+    const giftProduct = prompt("Producto bonificado:", p.giftProduct || "");
+    if(giftProduct === null) return;
+
+    const giftPresentation = prompt("Presentación del regalo:", p.giftPresentation || "");
+    if(giftPresentation === null) return;
+
+    const giftQty = Number(prompt("Cantidad bonificada:", p.giftQty || ""));
+    if(!Number.isInteger(giftQty) || giftQty < 1){
+      alert("La cantidad bonificada debe ser un número entero mayor que cero.");
+      return;
+    }
+
+    const start = prompt("Desde (AAAA-MM-DD):", p.start || "");
+    if(start === null) return;
+
+    const end = prompt("Hasta (AAAA-MM-DD):", p.end || "");
+    if(end === null) return;
+
+    if(!name.trim() || !buyProduct.trim() || !buyPresentation.trim() ||
+       !giftProduct.trim() || !giftPresentation.trim() || !start || !end){
+      alert("Completá todos los datos.");
+      return;
+    }
+
+    if(end < start){
+      alert("La fecha Hasta no puede ser anterior a Desde.");
+      return;
+    }
+
     await ref.update({
-      name: nuevoNombre,
-      value: nuevoValor,
-      start: nuevoInicio,
-      end: nuevoFin,
+      name: name.trim(),
+      buyProduct: buyProduct.trim(),
+      buyPresentation: buyPresentation.trim(),
+      buyQty: buyQty,
+      giftProduct: giftProduct.trim(),
+      giftPresentation: giftPresentation.trim(),
+      giftQty: giftQty,
+      start: start,
+      end: end,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
     alert("Promoción modificada correctamente.");
-    loadPromotions();
+    renderPromotions();
+
   }catch(error){
+
     console.error(error);
     alert("No se pudo modificar la promoción.");
+
   }
 }
-
 async function cancelPromotion(id){
   const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
 
@@ -3904,7 +4199,10 @@ document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"))
 if(btn) btn.classList.add("active");
 if(id==="pedido"){renderClients();renderProducts()}
   if(id==="stock") renderStock();
-  if(id==="promociones") renderPromotions();
+  if(id==="promociones"){
+  renderPromotions();
+  renderAvailablePromotions();
+}
 if(id==="clientes"){renderClients()}
 if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
@@ -4277,14 +4575,36 @@ updateTotal();
 }
 function setQty(key,val){cart[key]=Math.max(0,parseInt(val||0));renderProducts()}
 function updateTotal(){
-let total=0;
-Object.entries(cart).forEach(([key,q])=>{
-let [name,pres]=key.split("|"),p=getProducts().find(x=>x[0]===name&&x[1]===pres);
-if(p&&q>0)total+=q*tierPrice(p,q);
-});
-document.getElementById("orderTotal").textContent=money(total);
-}
 
+  let total = 0;
+
+  Object.entries(cart).forEach(([key,q])=>{
+
+    let [name,pres] = key.split("|");
+
+    let p = getProducts().find(
+      x => x[0] === name && x[1] === pres
+    );
+
+    if(p && q > 0){
+      total += q * tierPrice(p,q);
+    }
+
+  });
+
+  promotionCart.forEach(p=>{
+
+    const importe = getPromotionBuyTotal(p);
+
+    if(importe !== null){
+      total += importe;
+    }
+
+  });
+
+  document.getElementById("orderTotal").textContent = money(total);
+
+}
 async function saveOrder(){
   let cid=document.getElementById("orderClient").value;
 
@@ -4453,46 +4773,96 @@ async function saveOrder(){
 }
 function saveDraft(){
 
-  let cid=document.getElementById("orderClient").value;
+  let cid = document.getElementById("orderClient").value;
 
   if(!cid){
     alert("Seleccioná un cliente");
     return;
   }
 
-  let lines=[],total=0;
+  let lines = [];
+  let bonuses = [];
+  let total = 0;
 
+  // PRODUCTOS NORMALES
   Object.entries(cart).forEach(([key,q])=>{
-    if(q<=0)return;
 
-    let [name,pres]=key.split("|");
+    if(q <= 0) return;
 
-    let p=getProducts().find(
-      x=>x[0]===name && x[1]===pres
+    let [name,pres] = key.split("|");
+
+    let p = getProducts().find(
+      x => x[0] === name && x[1] === pres
     );
 
-    if(!p)return;
+    if(!p) return;
 
-    let unit=tierPrice(p,q);
+    let unit = tierPrice(p,q);
+    let lineTotal = q * unit;
 
     lines.push({
       name:name,
       presentation:pres,
       qty:q,
       unit:unit,
-      total:q*unit
+      total:lineTotal,
+      type:"normal"
     });
 
-    total+=q*unit;
+    total += lineTotal;
+
   });
 
+  // PROMOCIONES: PRODUCTOS QUE SE COBRAN
+  for(const promo of promotionCart){
+
+    const cantidad = promo.buyQty * promo.count;
+
+    const producto = getProducts().find(x =>
+      x[0] === promo.buyProduct &&
+      (x[1] === promo.buyPresentation || x[2] === promo.buyPresentation)
+    );
+
+    if(!producto){
+      alert("No se encontró el producto de compra de la promoción: " + promo.buyProduct);
+      return;
+    }
+
+    const unit = tierPrice(producto,cantidad);
+    const lineTotal = cantidad * unit;
+
+    lines.push({
+      name:promo.buyProduct,
+      presentation:promo.buyPresentation,
+      qty:cantidad,
+      unit:unit,
+      total:lineTotal,
+      type:"promotion",
+      promotionId:promo.promotionId,
+      promotionName:promo.name
+    });
+
+    total += lineTotal;
+
+    // PRODUCTOS BONIFICADOS: NO SE COBRAN
+    bonuses.push({
+      name:promo.giftProduct,
+      presentation:promo.giftPresentation,
+      qty:promo.giftQty * promo.count,
+      total:0,
+      promotionId:promo.promotionId,
+      promotionName:promo.name
+    });
+
+  }
+
   if(!lines.length){
-    alert("Agregá al menos un producto");
+    alert("Agregá al menos un producto o una promoción.");
     return;
   }
 
-  let c=clients.find(
-    x=>String(x.id)===String(cid)
+  let c = clients.find(
+    x => String(x.id) === String(cid)
   );
 
   if(!c){
@@ -4500,15 +4870,15 @@ function saveDraft(){
     return;
   }
 
-  const currentUser=JSON.parse(
+  const currentUser = JSON.parse(
     localStorage.getItem("NAA_USER") || "{}"
   );
 
-  const draft={
+  const draft = {
+
     date:new Date().toISOString(),
 
     ownerUid:currentUser.uid || "",
-
     preventistaUid:currentUser.uid || "",
 
     preventistaName:
@@ -4519,16 +4889,17 @@ function saveDraft(){
     user:user,
 
     client:c.name,
-
     clientId:cid,
 
     lines:lines,
+    bonuses:bonuses,
 
     total:total,
 
     obs:document.getElementById("orderObs").value,
 
     status:"borrador"
+
   };
 
   localStorage.setItem(
@@ -4537,99 +4908,89 @@ function saveDraft(){
   );
 
   alert("Borrador guardado correctamente.");
-}
 
+}
 
 async function sendDraftToOffice(){
 
-  const draftRaw=localStorage.getItem(
-    "NAA_DRAFT_ORDER"
-  );
+  const draftRaw = localStorage.getItem("NAA_DRAFT_ORDER");
 
   if(!draftRaw){
     alert("Primero guardá el pedido como borrador.");
     return;
   }
 
-  const draft=JSON.parse(draftRaw);
+  const draft = JSON.parse(draftRaw);
 
   if(!draft.lines || !draft.lines.length){
-    alert("El borrador no tiene productos.");
+    alert("El borrador no tiene productos o promociones.");
     return;
   }
 
-  const numberRef=firebaseDB
+  const numberRef = firebaseDB
     .collection("settings")
     .doc("numbering");
 
-  const orderRef=firebaseDB
+  const orderRef = firebaseDB
     .collection("orders")
     .doc();
 
   try{
 
-    const boletaNumber=
-      await firebaseDB.runTransaction(
-        async transaction=>{
+    const boletaNumber = await firebaseDB.runTransaction(
+      async transaction => {
 
-          const numberSnap=
-            await transaction.get(numberRef);
+        const numberSnap = await transaction.get(numberRef);
 
-          if(!numberSnap.exists){
-            throw new Error(
-              "No existe la configuración de numeración."
-            );
-          }
-
-          const nextNumber=
-            Number(
-              numberSnap.data().nextInvoiceNumber
-            );
-
-          if(!nextNumber || nextNumber<1){
-            throw new Error(
-              "Número de boleta inválido."
-            );
-          }
-const pedidoClient=clients.find(c=>String(c.id)===String(draft.clientId)&&c.user?.uid===user?.uid);
-          
-          const pedido={
-            ...draft,
-
-            status:"nuevo",
-            paymentType:pedidoClient?.paymentType||"contado",
-creditDays:Number(pedidoClient?.creditDays||0),
-paymentStatus:pedidoClient?.paymentType==="cuenta_corriente"?"pendiente":"cobrado",
-
-            boletaNumber:nextNumber,
-
-            sentAt:
-              firebase.firestore.FieldValue.serverTimestamp(),
-
-            createdAt:
-              firebase.firestore.FieldValue.serverTimestamp()
-          };
-
-          transaction.update(
-            numberRef,
-            {
-              nextInvoiceNumber:
-                nextNumber+1
-            }
-          );
-
-          transaction.set(
-            orderRef,
-            pedido
-          );
-
-          return nextNumber;
+        if(!numberSnap.exists){
+          throw new Error("No existe la configuración de numeración.");
         }
-      );
 
-    localStorage.removeItem(
-      "NAA_DRAFT_ORDER"
+        const nextNumber = Number(
+          numberSnap.data().nextInvoiceNumber
+        );
+
+        if(!nextNumber || nextNumber < 1){
+          throw new Error("Número de boleta inválido.");
+        }
+
+        const pedidoClient = clients.find(
+          c => String(c.id) === String(draft.clientId) &&
+          c.user?.uid === user?.uid
+        );
+
+        const pedido = {
+          ...draft,
+
+          status:"nuevo",
+
+          paymentType:pedidoClient?.paymentType || "contado",
+
+          creditDays:Number(pedidoClient?.creditDays || 0),
+
+          paymentStatus:
+            pedidoClient?.paymentType === "cuenta_corriente"
+              ? "pendiente"
+              : "cobrado",
+
+          boletaNumber:nextNumber,
+
+          sentAt:firebase.firestore.FieldValue.serverTimestamp(),
+
+          createdAt:firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        transaction.update(numberRef,{
+          nextInvoiceNumber:nextNumber + 1
+        });
+
+        transaction.set(orderRef,pedido);
+
+        return nextNumber;
+      }
     );
+
+    localStorage.removeItem("NAA_DRAFT_ORDER");
 
     orders.unshift({
       id:orderRef.id,
@@ -4640,19 +5001,20 @@ paymentStatus:pedidoClient?.paymentType==="cuenta_corriente"?"pendiente":"cobrad
 
     save();
 
-    cart={};
+    cart = {};
+    promotionCart = [];
 
-    document.getElementById(
-      "orderObs"
-    ).value="";
+    document.getElementById("orderObs").value = "";
 
     renderProducts();
+    renderPromotionCart();
     renderHistory();
     renderClosure();
+    updateTotal();
 
     alert(
-      "Pedido enviado correctamente a la oficina.\n\n"+
-      "Boleta Nº "+boletaNumber
+      "Pedido enviado correctamente a la oficina.\n\n" +
+      "Boleta Nº " + boletaNumber
     );
 
   }catch(error){
@@ -4660,9 +5022,10 @@ paymentStatus:pedidoClient?.paymentType==="cuenta_corriente"?"pendiente":"cobrad
     console.error(error);
 
     alert(
-      "No se pudo enviar el pedido.\n\n"+
+      "No se pudo enviar el pedido.\n\n" +
       error.message
     );
+
   }
 }
   function cancelOrder(id){
@@ -5094,15 +5457,27 @@ async function renderOfficeOrders(){
         : (o.date ? new Date(o.date).toLocaleString("es-AR") : "Sin fecha");
 
       const lineas = Array.isArray(o.lines)
-        ? o.lines.map(line => `
-            <div style="margin-top:4px">
-              • ${esc(line.name || "")}
-              ${line.presentation ? " · " + esc(line.presentation) : ""}
-              · Cant.: <b>${line.qty || 0}</b>
-              · $${money(line.total || 0)}
-            </div>
-          `).join("")
-        : "";
+  ? o.lines.map(line => `
+      <div style="margin-top:4px">
+        • ${esc(line.name || "")}
+        ${line.presentation ? " · " + esc(line.presentation) : ""}
+        ${line.type === "promotion" ? " · 🔥 Compra promocional" : ""}
+        · Cant.: <b>${line.qty || 0}</b>
+        · $${money(line.total || 0)}
+      </div>
+    `).join("")
+  : "";
+
+const bonificaciones = Array.isArray(o.bonuses)
+  ? o.bonuses.map(item => `
+      <div style="margin-top:4px;color:#15803d">
+        🎁 ${esc(item.name || "")}
+        ${item.presentation ? " · " + esc(item.presentation) : ""}
+        · Cant.: <b>${item.qty || 0}</b>
+        · GRATIS ($0)
+      </div>
+    `).join("")
+  : "";
 
       let acciones = "";
 
@@ -5131,7 +5506,17 @@ async function renderOfficeOrders(){
           <div class="small" style="margin-top:4px">📅 ${fecha}</div>
           <div style="margin-top:8px">👤 Preventista: <b>${esc(o.preventistaName || o.user || "Sin nombre")}</b></div>
           <div style="margin-top:5px">🏪 Cliente: <b>${esc(o.client || "Sin cliente")}</b></div>
-          <div style="margin-top:8px"><b>Productos:</b>${lineas || '<div class="small">Sin productos</div>'}</div>
+          <div style="margin-top:8px">
+  <b>Productos:</b>
+  ${lineas || '<div class="small">Sin productos</div>'}
+
+  ${bonificaciones ? `
+    <div style="margin-top:12px;padding:8px;background:#f0fdf4;border-radius:8px">
+      <b>🎁 Productos bonificados (sin cargo):</b>
+      ${bonificaciones}
+    </div>
+  ` : ""}
+</div>
           <div style="margin-top:10px">💰 Total: <b>$${money(o.total || 0)}</b></div>
           ${o.paymentType === "cuenta_corriente" ? `
             <div style="margin-top:8px">
