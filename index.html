@@ -2844,28 +2844,9 @@ async function imprimirComprobanteAdelanto(id) {
 
    
 
-const camionSvg = `
-  <svg viewBox="0 0 240 125" xmlns="http://www.w3.org/2000/svg">
-    <g fill="none" stroke="#0876c9" stroke-width="5"
-       stroke-linecap="round">
-      <path d="M15 79 C25 22 176 3 218 48"/>
-      <path d="M10 91 C55 119 184 117 228 78"/>
-    </g>
 
-    <g fill="#123b79" stroke="#123b79" stroke-linejoin="round">
-      <path d="M35 35 H145 V84 H35 Z"/>
-      <path d="M145 49 H177 L205 76 V84 H145 Z"/>
-      <path d="M158 55 H174 L193 75 H158 Z" fill="#fff"/>
-      <path d="M45 45 H135 V53 H45 Z" fill="#fff"/>
-      <path d="M45 59 H135 V66 H45 Z" fill="#fff"/>
-      <path d="M45 72 H135 V78 H45 Z" fill="#fff"/>
-      <circle cx="68" cy="88" r="16"/>
-      <circle cx="68" cy="88" r="7" fill="#fff"/>
-      <circle cx="174" cy="88" r="16"/>
-      <circle cx="174" cy="88" r="7" fill="#fff"/>
-    </g>
-  </svg>
-`;
+const logoUrl = "https://raw.githubusercontent.com/sebaseba0812-cpu/Preventista-naa/main/png_logo_on_white_background_a_bold_glossy_blue.png";
+
 
 
 
@@ -2873,24 +2854,24 @@ const camionSvg = `
       return `
         <div class="comprobante">
 
-          <div class="marca-agua">
-            ${camionSvg}
-            <div>DISTRIBUIDORA</div>
-            <strong>N.A.A. S.A.S.</strong>
-          </div>
+          
+<div class="marca-agua">
+  <img src="${logoUrl}" alt="Distribuidora N.A.A. S.A.S.">
+</div>
+
 
           <div class="contenido">
 
             <div class="encabezado">
-              <div class="logo">
-                ${camionSvg}
-              </div>
+             
+<div class="logo">
+  <img src="${logoUrl}" alt="Logo Distribuidora N.A.A.">
+</div>
+
 
               <div class="empresa">
-                <h2>DISTRIBUIDORA</h2>
-                <h2>N.A.A. S.A.S.</h2>
-                <p>COMPROBANTE DE ADELANTO</p>
-              </div>
+  <p>COMPROBANTE DE ADELANTO</p>
+</div>
 
               <div class="tipo">${tipo}</div>
             </div>
@@ -2995,37 +2976,22 @@ const camionSvg = `
 
        
 .marca-agua {
-  position: absolute;
-  top: 48%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 88%;
-  text-align: center;
-  color: #0876c9;
-  opacity: 0.17;
-  z-index: 1;
-  pointer-events: none;
-  overflow: visible;
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  width:76%;
+  z-index:1;
+  pointer-events:none;
+  opacity:0.15;
 }
 
-.marca-agua svg {
-  display: block;
-  width: 210px;
-  height: 110px;
-  margin: 0 auto 2px;
-  overflow: visible;
-}
-
-.marca-agua div {
-  font-size: 23px;
-  font-weight: 900;
-  letter-spacing: 2px;
-}
-
-.marca-agua strong {
-  display: block;
-  font-size: 27px;
-  letter-spacing: 2px;
+.marca-agua img {
+  display:block;
+  width:100%;
+  height:auto;
+  object-fit:contain;
+  mix-blend-mode:multiply;
 }
 
 
@@ -3038,19 +3004,20 @@ const camionSvg = `
           }
 
           .logo {
-            width: 55px;
-            height: 48px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #183d78;
-            flex-shrink: 0;
-          }
+  width:145px;
+  height:55px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
 
-          .logo svg {
-            width: 55px;
-            height: 42px;
-          }
+.logo img {
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
 
           .empresa h2 {
             margin: 0;
@@ -3113,12 +3080,17 @@ const camionSvg = `
           }
 
           .importe {
-            margin-top: 9px;
-            padding: 9px 12px;
-            background: #edf3fb;
-            border-left: 4px solid #183d78;
-            border-radius: 4px;
-          }
+  display:inline-block;
+  align-self:flex-start;
+  width:fit-content;
+  max-width:100%;
+  min-width:160px;
+  margin-top:9px;
+  padding:9px 16px;
+  background:#edf3fb;
+  border-left:4px solid #183d78;
+  border-radius:4px;
+}
 
           .importe strong {
             display: block;
