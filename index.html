@@ -2855,12 +2855,13 @@ async function calcularLiquidacion() {
     let totalLiquidacion = 0;
 
     if (modalidad === "bulto") {
-      pagoBase = bultosBase * valorBulto;
-      comisionExcedente =
-        ventasExcedentes * (porcentajeExcedente / 100);
+  pagoBase = totalBultos * valorBulto;
 
-      totalLiquidacion = pagoBase + comisionExcedente;
-    } else {
+  comisionExcedente =
+    ventasExcedentes * (porcentajeExcedente / 100);
+
+  totalLiquidacion = pagoBase + comisionExcedente;
+} else {
       comisionTotal = totalVentas * (porcentajeTotal / 100);
       totalLiquidacion = comisionTotal;
     }
@@ -2936,12 +2937,20 @@ async function liqObtenerResumen(uid) {
   ]);
 
   let totalGanado = 0;
-  let totalAdelantos = 0;
-  const adelantos = [];
+let totalAdelantos = 0;
+const adelantos = [];
+const periodos = [];
 
-  periodosSnap.forEach(doc => {
-    totalGanado += Number(doc.data().totalLiquidacion || 0);
+ periodosSnap.forEach(doc => {
+  const data = doc.data() || {};
+
+  totalGanado += Number(data.totalLiquidacion || 0);
+
+  periodos.push({
+    id: doc.id,
+    ...data
   });
+});
 
   adelantosSnap.forEach(doc => {
     const data = doc.data() || {};
@@ -2954,18 +2963,34 @@ async function liqObtenerResumen(uid) {
     });
   });
 
-  adelantos.sort((a, b) => {
-    const fechaA = liqDate(a.createdAt)?.getTime() || 0;
-    const fechaB = liqDate(b.createdAt)?.getTime() || 0;
-    return fechaB - fechaA;
-  });
+adelantos.sort((a, b) => {
+  const fechaA = liqDate(a.createdAt)?.getTime() || 0;
+  const fechaB = liqDate(b.createdAt)?.getTime() || 0;
+  return fechaB - fechaA;
+});
 
-  return {
-    totalGanado,
-    totalAdelantos,
-    saldoDisponible: totalGanado - totalAdelantos,
-    adelantos
-  };
+periodos.forEach(periodo => {
+  const adelantosMes = adelantos
+    .filter(a => a.mes === periodo.mes)
+    .reduce((suma, a) => suma + Number(a.importe || 0), 0);
+
+  periodo.adelantosMes = adelantosMes;
+
+  periodo.saldoMes =
+    Number(periodo.totalLiquidacion || 0) - adelantosMes;
+});
+
+ periodos.sort((a, b) =>
+  String(b.mes || "").localeCompare(String(a.mes || ""))
+);
+
+return {
+  totalGanado,
+  totalAdelantos,
+  saldoDisponible: totalGanado - totalAdelantos,
+  adelantos,
+  periodos
+};
 }
 
 async function actualizarSaldoLiquidacion() {
@@ -2991,33 +3016,56 @@ async function actualizarSaldoLiquidacion() {
     `;
 
     if (historial) {
-      if (resumen.adelantos.length === 0) {
-        historial.innerHTML = "<p>No hay adelantos registrados.</p>";
-      } else {
-        historial.innerHTML = `
-          <h3>Historial de adelantos</h3>
-         ${resumen.adelantos.map(a => `
-  <div style="border-bottom:1px solid #ccc;padding:10px 0">
-    <strong>${liqMoney(a.importe)}</strong>
-    <br>
-    <span class="small">
-      ${esc(a.medio || "")} -
-      ${esc(a.descripcion || "Sin descripción")}
-    </span>
-    <br>
-    <button
-      type="button"
-      style="margin-top:8px"
-      onclick="imprimirComprobanteAdelanto('${a.id}')">
-      🖨️ Imprimir comprobante
-    </button>
-  </div>
-`).join("")}
-        `;
-      }
+  historial.innerHTML = `
+    <h3>📅 Historial de liquidaciones mensuales</h3>
+
+    ${
+      resumen.periodos.length === 0
+        ? "<p>No hay liquidaciones guardadas.</p>"
+        : resumen.periodos.map(p => `
+            <div style="border:1px solid #ccc;padding:12px;margin:8px 0;border-radius:8px">
+              <h3>${esc(p.mes || "Mes sin identificar")}</h3>
+              <p>Bultos vendidos: <strong>${Number(p.totalBultos || 0).toLocaleString("es-AR")}</strong></p>
+              <p>Total ganado: <strong>${liqMoney(p.totalLiquidacion || 0)}</strong></p>
+              <p>Adelantos del mes: <strong>${liqMoney(p.adelantosMes || 0)}</strong></p>
+              <hr>
+              <p>Saldo pendiente: <strong>${liqMoney(
+                p.saldoMes ?? (
+                  Number(p.totalLiquidacion || 0) -
+                  Number(p.adelantosMes || 0)
+                )
+              )}</strong></p>
+            </div>
+          `).join("")
     }
 
-  } catch (error) {
+    <hr>
+    <h3>💵 Historial de adelantos</h3>
+
+    ${
+      resumen.adelantos.length === 0
+        ? "<p>No hay adelantos registrados.</p>"
+        : resumen.adelantos.map(a => `
+            <div style="border-bottom:1px solid #ccc;padding:10px 0">
+              <strong>${liqMoney(a.importe)}</strong>
+              <br>
+              <span class="small">
+                ${esc(a.mes || "Mes anterior sin identificar")} -
+                ${esc(a.medio || "")} -
+                ${esc(a.descripcion || "Sin descripción")}
+              </span>
+              <br>
+              <button
+                type="button"
+                style="margin-top:8px"
+                onclick="imprimirComprobanteAdelanto('${a.id}')">
+                🖨️ Imprimir comprobante
+              </button>
+            </div>
+          `).join("")
+    }
+  `;
+}
     console.error("Error consultando saldo acumulado:", error);
     contenedor.innerHTML =
       "<p>No se pudo consultar el saldo. Revisá Firebase.</p>";
@@ -3068,8 +3116,8 @@ async function actualizarSaldoLiquidacion() {
     ]);
 
     let ganadoAnterior = 0;
-    let adelantos = 0;
-
+let adelantos = 0;
+let adelantosMes = 0;
     periodosSnap.forEach(doc => {
       if (doc.id !== id) {
         ganadoAnterior += Number(
@@ -3078,10 +3126,16 @@ async function actualizarSaldoLiquidacion() {
       }
     });
 
-    adelantosSnap.forEach(doc => {
-      adelantos += Number(doc.data().importe || 0);
-    });
+   adelantosSnap.forEach(doc => {
+  const data = doc.data() || {};
+  const importe = Number(data.importe || 0);
 
+  adelantos += importe;
+
+  if (data.mes === calculo.mes) {
+    adelantosMes += importe;
+  }
+});
     const saldoLuegoDeGuardar =
       ganadoAnterior +
       Number(calculo.totalLiquidacion || 0) -
@@ -3095,11 +3149,15 @@ async function actualizarSaldoLiquidacion() {
       return;
     }
 
-    await ref.set({
-      ...calculo,
-      actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    const saldoMes =
+  Number(calculo.totalLiquidacion || 0) - adelantosMes;
 
+await ref.set({
+  ...calculo,
+  adelantosMes: adelantosMes,
+  saldoMes: saldoMes,
+  actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
+}, { merge: true });
     alert("Liquidación mensual guardada correctamente.");
 
     await actualizarSaldoLiquidacion();
@@ -3191,9 +3249,10 @@ async function registrarAdelantoLiquidacion() {
     const batch = firebaseDB.batch();
 
     batch.set(adelantoRef, {
-      preventistaUid: uid,
-      preventistaNombre: nombrePreventista,
-      importe: importe,
+  preventistaUid: uid,
+  preventistaNombre: nombrePreventista,
+  mes: document.getElementById("liqMes")?.value || "",
+  importe: importe,
       medio: medio,
       descripcion: descripcion,
       usuario: usuarioActual.name || "Administrador",
