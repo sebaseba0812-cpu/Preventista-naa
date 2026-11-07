@@ -408,10 +408,14 @@ Creá y administrá promociones para los preventistas.
 <h3>🛒 Producto que debe comprar el cliente</h3>
 
 <label>Producto</label>
-<input id="promoBuyProduct" placeholder="Ej.: Sancor Leche Entera">
+<select id="promoBuyProduct" onchange="updatePromotionPresentations('buy')">
+  <option value="">Seleccionar producto</option>
+</select>
 
 <label>Presentación</label>
-<input id="promoBuyPresentation" placeholder="Ej.: caja x12">
+<select id="promoBuyPresentation">
+  <option value="">Seleccionar presentación</option>
+</select>
 
 <label>Cantidad que debe comprar</label>
 <input id="promoBuyQty" type="number" min="1" step="1" placeholder="Ej.: 4">
@@ -421,14 +425,17 @@ Creá y administrá promociones para los preventistas.
 <h3>🎁 Producto bonificado (gratis)</h3>
 
 <label>Producto de regalo</label>
-<input id="promoGiftProduct" placeholder="Ej.: Yerba Verdecita">
+<select id="promoGiftProduct" onchange="updatePromotionPresentations('gift')">
+  <option value="">Seleccionar producto</option>
+</select>
 
 <label>Presentación del regalo</label>
-<input id="promoGiftPresentation" placeholder="Ej.: unidad 500 g">
+<select id="promoGiftPresentation">
+  <option value="">Seleccionar presentación</option>
+</select>
 
 <label>Cantidad bonificada</label>
 <input id="promoGiftQty" type="number" min="1" step="1" placeholder="Ej.: 1">
-
 <hr>
 
 <label>Desde</label>
@@ -904,7 +911,53 @@ function getProducts(){
     alert('No se pudieron sincronizar los productos.');
   }
 }
-  
+
+  function loadPromotionProductOptions(){
+  const products=getProducts();
+  const buySelect=document.getElementById("promoBuyProduct");
+  const giftSelect=document.getElementById("promoGiftProduct");
+
+  if(!buySelect || !giftSelect)return;
+
+  const names=[...new Set(products.map(p=>p[0]).filter(Boolean))];
+
+  const options='<option value="">Seleccionar producto</option>'+
+    names.map(name=>'<option value="'+esc(name)+'">'+esc(name)+'</option>').join("");
+
+  buySelect.innerHTML=options;
+  giftSelect.innerHTML=options;
+
+  updatePromotionPresentations("buy");
+  updatePromotionPresentations("gift");
+}
+
+function updatePromotionPresentations(type){
+  const productSelect=document.getElementById(
+    type==="buy" ? "promoBuyProduct" : "promoGiftProduct"
+  );
+
+  const presentationSelect=document.getElementById(
+    type==="buy" ? "promoBuyPresentation" : "promoGiftPresentation"
+  );
+
+  if(!productSelect || !presentationSelect)return;
+
+  const selectedProduct=productSelect.value;
+  const products=getProducts();
+
+  const presentations=[...new Set(
+    products
+      .filter(p=>p[0]===selectedProduct)
+      .map(p=>p[1])
+      .filter(Boolean)
+  )];
+
+  presentationSelect.innerHTML=
+    '<option value="">Seleccionar presentación</option>'+
+    presentations.map(pres=>
+      '<option value="'+esc(pres)+'">'+esc(pres)+'</option>'
+    ).join("");
+}
  async function createPromotion(){
 
   const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
@@ -4215,6 +4268,7 @@ if(id==="pedido"){
 }
   if(id==="stock") renderStock();
   if(id==="promociones"){
+  loadPromotionProductOptions();
   renderPromotions();
   renderAvailablePromotions();
 }
