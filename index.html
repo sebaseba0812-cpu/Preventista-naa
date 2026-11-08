@@ -5616,6 +5616,279 @@ async function renderOfficeOrders(){
       ["anulado","anulada","cancelado","canceled"].includes(estadoDe(o))
     );
 
+    // ==========================================
+// IMPRESIÓN DE BOLETA ORIGINAL Y DUPLICADO
+// DISTRIBUIDORA N.A.A. S.A.S.
+// ==========================================
+
+async function imprimirBoletaPedidoOficina(id){
+
+  try {
+
+    const doc = await firebaseDB
+      .collection("orders")
+      .doc(id)
+      .get();
+
+    if(!doc.exists){
+      alert("No se encontró el pedido.");
+      return;
+    }
+
+    const o = doc.data();
+
+    const cliente = Array.isArray(clients)
+      ? clients.find(c =>
+          String(c.id) === String(o.clientId)
+        )
+      : null;
+
+    const fecha = o.createdAt?.toDate
+      ? o.createdAt.toDate().toLocaleDateString("es-AR")
+      : (o.date
+          ? new Date(o.date).toLocaleDateString("es-AR")
+          : new Date().toLocaleDateString("es-AR"));
+
+    const comercio = o.client || cliente?.name || "Sin cliente";
+    const calle = cliente?.street || "";
+    const altura = cliente?.height || "";
+    const zona = cliente?.zone || "";
+
+    const productos = (o.lines || []).map(p => `
+      <tr>
+        <td>${esc(p.name || "")}
+          ${p.presentation ? " - " + esc(p.presentation) : ""}
+        </td>
+        <td class="center">${p.qty || 0}</td>
+        <td class="right">$${money(p.total || 0)}</td>
+      </tr>
+    `).join("");
+
+    const bonificaciones = (o.bonuses || []).map(p => `
+      <tr>
+        <td>${esc(p.name || "")}
+          ${p.presentation ? " - " + esc(p.presentation) : ""}
+          <small>(BONIFICADO)</small>
+        </td>
+        <td class="center">${p.qty || 0}</td>
+        <td class="right">$0,00</td>
+      </tr>
+    `).join("");
+
+    const comprobante = `
+      <div class="boleta">
+        <div class="encabezado">
+          <div class="marca">N.A.A.</div>
+          <div>
+            <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+            <div>COMPROBANTE DE PEDIDO</div>
+          </div>
+        </div>
+
+        <div class="numero">
+          BOLETA Nº ${esc(String(o.boletaNumber || "617"))}
+        </div>
+
+        <div class="datos">
+          <b>Fecha:</b> ${fecha}<br>
+          <b>Comercio:</b> ${esc(comercio)}<br>
+          <b>Nº Cliente:</b> ${esc(String(cliente?.number || cliente?.clientNumber || ""))}<br>
+          <b>Calle:</b> ${esc(calle)}
+          ${altura ? " - " + esc(altura) : ""}<br>
+          ${zona ? "<b>Barrio / Zona:</b> " + esc(zona) : ""}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Cant.</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${productos}
+            ${bonificaciones}
+          </tbody>
+        </table>
+
+        <div class="total">
+          TOTAL: $${money(o.total || 0)}
+        </div>
+
+        ${o.obs ? `
+          <div class="observaciones">
+            Observaciones: ${esc(o.obs)}
+          </div>
+        ` : ""}
+
+        <div class="pie">
+          Preventista: ${esc(o.preventistaName || o.user || "")}
+          <br>
+          Distribuidora N.A.A. S.A.S.
+        </div>
+      </div>
+    `;
+
+    const ventana = window.open("", "_blank");
+
+    if(!ventana){
+      alert("Permití las ventanas emergentes para imprimir.");
+      return;
+    }
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Boleta ${esc(String(o.boletaNumber || ""))}</title>
+
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            color: #111;
+            margin: 0;
+          }
+
+          .boleta {
+            height: 133mm;
+            padding: 8mm;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #777;
+            margin-bottom: 4mm;
+          }
+
+          .encabezado {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 2px solid #111;
+            padding-bottom: 10px;
+          }
+
+          .marca {
+            width: 55px;
+            height: 55px;
+            border: 2px solid #111;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 15px;
+          }
+
+          h2 {
+            margin: 0 0 5px;
+            font-size: 17px;
+          }
+
+          .numero {
+            text-align: right;
+            font-weight: bold;
+            font-size: 17px;
+            margin: 12px 0;
+          }
+
+          .datos {
+            font-size: 12px;
+            line-height: 1.7;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 11px;
+          }
+
+          th, td {
+            border: 1px solid #555;
+            padding: 6px;
+          }
+
+          th {
+            background: #eee;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .right {
+            text-align: right;
+          }
+
+          .total {
+            text-align: right;
+            font-size: 19px;
+            font-weight: bold;
+            margin-top: 15px;
+          }
+
+          .observaciones {
+            margin-top: 12px;
+            font-size: 11px;
+          }
+
+          .pie {
+            position: absolute;
+            bottom: 8mm;
+            left: 8mm;
+            right: 8mm;
+            padding-top: 8px;
+            border-top: 1px solid #777;
+            font-size: 10px;
+          }
+
+          small {
+            font-weight: bold;
+          }
+
+          @media print {
+            .boleta {
+              break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${comprobante}
+
+        ${comprobante}
+
+        <script>
+          window.onload = function(){
+            window.print();
+          };
+        <\/script>
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+
+  } catch(error) {
+
+    console.error(error);
+    alert("Error al generar la boleta: " + error.message);
+
+  }
+
+}
+    
     function tarjetaPedido(o){
       const estado = estadoDe(o);
       const fecha = o.createdAt?.toDate
@@ -5646,6 +5919,14 @@ const bonificaciones = Array.isArray(o.bonuses)
   : "";
 
       let acciones = "";
+
+  acciones += `
+  <button class="secondary"
+    style="background:#0f172a;color:white;margin-top:6px"
+    onclick="imprimirBoletaPedidoOficina('${o.id}')">
+    🖨️ Imprimir boleta
+  </button>
+`;
 
       if(estado === "nuevo"){
         acciones += `<button class="primary" onclick="cambiarEstadoPedidoOficina('${o.id}','preparando')">⚙️ Aceptar y preparar</button>`;
