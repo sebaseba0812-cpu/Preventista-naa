@@ -2095,7 +2095,8 @@ async function registrarMovimientoStock(datos){
 
 }
   
- async function stockEntrada(id){
+
+async function stockEntrada(id){
 
   const ref = firebaseDB.collection("stock").doc(id);
   const snap = await ref.get();
@@ -2144,37 +2145,66 @@ async function registrarMovimientoStock(datos){
     return;
   }
 
+  const usuario = firebase.auth().currentUser;
+
+  if(!usuario){
+    alert("No se pudo identificar al usuario.");
+    return;
+  }
+
+  const nuevoStock = actual + ingreso;
+  const movimientoRef = firebaseDB
+    .collection("stockMovements").doc();
+
   try{
 
-    await ref.update({
-      quantity: actual + ingreso,
+    const batch = firebaseDB.batch();
+
+    batch.update(ref, {
+      quantity: nuevoStock,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    await registrarMovimientoStock({
-  type: "ENTRADA",
-  productId: id,
-  productName: p.name || "",
-  quantity: ingreso,
-  stockBefore: actual,
-  stockAfter: actual + ingreso,
-  reason: "Ingreso de mercadería: " + cajas + " cajas/bultos y " + sueltas + " unidades sueltas"
-});
+
+    batch.set(movimientoRef, {
+      type: "ENTRADA",
+      productId: id,
+      productName: p.name || "",
+      quantity: ingreso,
+      stockBefore: actual,
+      stockAfter: nuevoStock,
+      reason: "Ingreso de mercadería: " +
+        cajas + " cajas/bultos y " + sueltas + " unidades sueltas",
+      responsible: usuario.displayName ||
+        usuario.email || usuario.uid,
+      createdBy: usuario.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
 
     alert(
       "Entrada registrada correctamente.\n\n" +
-      cajas + " cajas/bultos + " + sueltas + " unidades sueltas.\n" +
-      "Total ingresado: " + ingreso + " unidades."
+      cajas + " cajas/bultos + " + sueltas +
+      " unidades sueltas.\n" +
+      "Total ingresado: " + ingreso +
+      " unidades.\n" +
+      "Stock actual: " + nuevoStock + " unidades."
     );
 
     renderStock();
 
   }catch(error){
 
-    console.error(error);
-    alert("No se pudo actualizar el stock.");
+    console.error("Error al registrar entrada:", error);
+
+    alert(
+      "No se pudo registrar la entrada.\n" +
+      "El stock no fue modificado."
+    );
 
   }
 }
+
  async function stockSalida(id){
 
   const ref = firebaseDB.collection("stock").doc(id);
