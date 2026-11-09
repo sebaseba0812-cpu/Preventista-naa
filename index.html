@@ -634,7 +634,6 @@ onclick="createPromotion()">
         placeholder="Nombre completo">
 
       <label for="personalCorreo">Correo electrónico personal</label>
-      <label for="personalUsername">Nombre de usuario para ingresar</label>
 <input
   type="email"
   id="personalCorreo"
@@ -642,10 +641,20 @@ onclick="createPromotion()">
   required
 >
 
-      <label for="personalTelefono">Teléfono</label>
-      <input id="personalTelefono" type="tel"
-        placeholder="Teléfono de contacto">
+<label for="personalUsername">Nombre de usuario para ingresar</label>
+<input
+  type="text"
+  id="personalUsername"
+  placeholder="Ej.: yami.chavez"
+  required
+>
 
+<label for="personalTelefono">Teléfono</label>
+<input
+  id="personalTelefono"
+  type="tel"
+  placeholder="Teléfono de contacto"
+>
       <label for="personalRol">Tipo de usuario</label>
       <select id="personalRol">
         <option value="preventista">Preventista</option>
