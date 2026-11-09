@@ -1449,6 +1449,7 @@ actions.innerHTML = `
   <button class="secondary" onclick="stockEntrada('${p.id}')">➕ Entrada</button>
   <button class="secondary" onclick="stockSalida('${p.id}')">➖ Salida</button>
   <button class="secondary" onclick="stockAjustar('${p.id}')">✏️ Ajustar</button>
+  <button class="danger" onclick="stockRegistrarDano('${p.id}')">⚠️ Mercadería dañada</button>
 `;
 
 div.appendChild(actions);
@@ -2266,6 +2267,83 @@ Stock nuevo: ${nuevoStock}`);
     alert("No se pudo ajustar el stock.");
   }
 }
+async function stockRegistrarDano(id){
+  const stockRef = firebaseDB.collection("stock").doc(id);
+  const danoRef = firebaseDB.collection("stockDamages").doc();
+
+  try{
+    const cantidadTexto = prompt(
+      "¿Cuántas unidades individuales están dañadas?"
+    );
+
+    if(cantidadTexto === null) return;
+
+    const cantidad = Number(cantidadTexto);
+
+    if(!Number.isInteger(cantidad) || cantidad <= 0){
+      alert("Ingresá una cantidad válida.");
+      return;
+    }
+
+    const motivo = prompt(
+      "Indicá el motivo del daño (rotura, vencimiento, pérdida, etc.):"
+    );
+
+    if(motivo === null) return;
+
+    if(!motivo.trim()){
+      alert("Tenés que indicar el motivo.");
+      return;
+    }
+
+    await firebaseDB.runTransaction(async (transaction) => {
+      const snap = await transaction.get(stockRef);
+
+      if(!snap.exists){
+        throw new Error("No se encontró el producto.");
+      }
+
+      const producto = snap.data();
+      const stockActual = Number(producto.quantity || 0);
+
+      if(cantidad > stockActual){
+        throw new Error(
+          `No hay suficiente stock. Disponible: ${stockActual} unidades.`
+        );
+      }
+
+      transaction.update(stockRef, {
+        quantity: stockActual - cantidad,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      transaction.set(danoRef, {
+        productId: id,
+        name: producto.name || "",
+        presentation: producto.presentation || "",
+        unit: producto.unit || "",
+        quantity: cantidad,
+        reason: motivo.trim(),
+        status: "pendiente",
+        replacementPending: true,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    alert(
+      "Daño registrado correctamente.\\n\\n" +
+      "Unidades dañadas: " + cantidad +
+      "\\nQuedó pendiente la reposición."
+    );
+
+    renderStock();
+
+  }catch(error){
+    console.error(error);
+    alert(error.message || "No se pudo registrar el daño.");
+  }
+}
+    
 async function addStockProduct(){
 
   const select = document.getElementById("stockProductSelect");
