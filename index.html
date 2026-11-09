@@ -2392,54 +2392,41 @@ function save(){localStorage.setItem("NAA_CLIENTS",JSON.stringify(clients));loca
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 
 async function login(){
-  const username = (document.getElementById('loginName')?.value || '').trim().toLowerCase();
-  const password = document.getElementById('loginPass')?.value || '';
+  const username = (
+    document.getElementById("loginName")?.value || ""
+  ).trim().toLowerCase();
+
+  const password =
+    document.getElementById("loginPass")?.value || "";
 
   if(!username || !password){
-    alert('Ingresá usuario y contraseña.');
+    alert("Ingresá usuario y contraseña.");
     return;
   }
 
-  try{
-    let authEmail = '';
+  try {
+    let authEmail = "";
 
-    // Administrador
-    if(username === 'admin'){
-      authEmail = 'sebaseba0812@gmail.com';
-    }else{
-      // Preventistas
-      const emails = {
-        'alejandra.gonzalez': 'alejandra.gonzalez@preventista-naa.com',
-        'milagros.gonzalez': 'milagros.gonzalez@preventista-naa.com',
-        'pablo.gonzalez': 'pablo.gonzalez@preventista-naa.com',
-        'gustavo.joaquin': 'gustavo.joaquin@preventista-naa.com',
-        'antonella.lopez': 'antonella.lopez@preventista-naa.com',
-        'santiago.lopez': 'santiago.lopez@preventista-naa.com',
-        'lorena.sosa': 'lorena.sosa@preventista-naa.com'
-      };
-
-      authEmail = emails[username] || '';
+    if(username === "admin"){
+      authEmail = "sebaseba0812@gmail.com";
+    } else {
+      authEmail = username + "@preventista-naa.com";
     }
 
-    if(!authEmail){
-      alert('Usuario o contraseña incorrectos.');
-      return;
-    }
+    const credential =
+      await firebaseAuth.signInWithEmailAndPassword(
+        authEmail,
+        password
+      );
 
-    // Primero autenticamos con Firebase
-    const credential = await firebaseAuth.signInWithEmailAndPassword(
-      authEmail,
-      password
-    );
-
-    // Después buscamos los datos del usuario
     const userDoc = await firebaseDB
-      .collection('users')
+      .collection("users")
       .doc(credential.user.uid)
       .get();
 
     if(!userDoc.exists){
-      alert('El usuario está autenticado pero no tiene perfil configurado.');
+      await firebaseAuth.signOut();
+      alert("El usuario no tiene un perfil configurado.");
       return;
     }
 
@@ -2447,24 +2434,24 @@ async function login(){
 
     if(data.active !== true){
       await firebaseAuth.signOut();
-      alert('Este usuario está desactivado.');
+      alert("Este usuario está desactivado.");
       return;
     }
 
-    localStorage.setItem('NAA_USER', JSON.stringify({
+    localStorage.setItem("NAA_USER", JSON.stringify({
       uid: credential.user.uid,
       name: data.name,
       username: data.username,
-      role: data.role || 'preventista'
+      role: data.role || "preventista"
     }));
 
     location.reload();
 
-  }catch(error){
-    console.error(error);
-    alert('Usuario o contraseña incorrectos.');
+  } catch(error) {
+    console.error("Error de inicio de sesión:", error);
+    alert("Usuario o contraseña incorrectos.");
   }
-}
+}}
   let NAA_CAJA_ABIERTA = false;
 
 // VERSIÓN 1100
@@ -6788,17 +6775,19 @@ async function crearUsuarioPersonal() {
 
     const secondaryAuth = secondaryApp.auth();
 
-    const credential = await secondaryAuth.createUserWithEmailAndPassword(
-      correo,
-      password
-    );
+   const authEmail = username + "@preventista-naa.com";
 
+const credential = await secondaryAuth.createUserWithEmailAndPassword(
+  authEmail,
+  password
+);
     const uid = credential.user.uid;
 
     await firebaseDB.collection("users").doc(uid).set({
       name: nombre,
       username: username,
-      authEmail: correo,
+      authEmail: authEmail,
+personalEmail: correo,
       phone: telefono,
       role: rol,
       active: true,
