@@ -2175,7 +2175,8 @@ async function registrarMovimientoStock(datos){
 
   }
 }
-  async function stockSalida(id){
+ async function stockSalida(id){
+
   const ref = firebaseDB.collection("stock").doc(id);
   const snap = await ref.get();
 
@@ -2188,7 +2189,7 @@ async function registrarMovimientoStock(datos){
   const actual = Number(p.quantity || 0);
   const packQty = Number(p.packQty) || 1;
 
-  const cajasTexto = prompt("¿Cuántas cajas o bultos salen?");
+  const cajasTexto = prompt("¿Cuántas cajas o bultos salen?", "0");
   if(cajasTexto === null) return;
 
   const cajas = Number(cajasTexto);
@@ -2198,7 +2199,7 @@ async function registrarMovimientoStock(datos){
     return;
   }
 
-  const sueltasTexto = prompt("¿Cuántas unidades sueltas salen?");
+  const sueltasTexto = prompt("¿Cuántas unidades sueltas salen?", "0");
   if(sueltasTexto === null) return;
 
   const sueltas = Number(sueltasTexto);
@@ -2216,40 +2217,100 @@ async function registrarMovimientoStock(datos){
   }
 
   if(salida > actual){
-    alert(`No hay suficiente stock.
-
-Stock disponible: ${actual} unidades
-Salida solicitada: ${salida} unidades`);
+    alert("No hay suficiente stock. Disponible: " + actual + " unidades.");
     return;
   }
 
+  const motivoTexto = prompt(
+    "MOTIVO DE SALIDA:\n\n" +
+    "1 - Retiro de socios\n" +
+    "2 - Uso interno\n" +
+    "3 - Mercadería para otro depósito\n" +
+    "4 - Entrega especial\n" +
+    "5 - Otro motivo\n\n" +
+    "Ingresá el número:"
+  );
+
+  if(motivoTexto === null) return;
+
+  const motivos = {
+    "1": "Retiro de socios",
+    "2": "Uso interno",
+    "3": "Mercadería para otro depósito",
+    "4": "Entrega especial",
+    "5": "Otro motivo"
+  };
+
+  const motivo = motivos[motivoTexto.trim()];
+
+  if(!motivo){
+    alert("Seleccioná un motivo válido.");
+    return;
+  }
+
+  const observacion = prompt(
+    "DETALLÁ LA SALIDA:\n\n" +
+    "Ejemplo: Retiró Juancito 5 leches."
+  );
+
+  if(observacion === null) return;
+
+  if(!observacion.trim()){
+    alert("La observación es obligatoria.");
+    return;
+  }
+
+  const usuario = firebase.auth().currentUser;
+
+  if(!usuario){
+    alert("No se pudo identificar al usuario.");
+    return;
+  }
+
+  const movimientoRef = firebaseDB
+    .collection("stockMovements").doc();
+
+  const nuevoStock = actual - salida;
+
   try{
-    await ref.update({
-      quantity: actual - salida,
+
+    const batch = firebaseDB.batch();
+
+    batch.update(ref, {
+      quantity: nuevoStock,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    await registrarMovimientoStock({
-  type: "SALIDA",
-  productId: id,
-  productName: p.name || "",
-  quantity: salida,
-  stockBefore: actual,
-  stockAfter: actual - salida,
-  reason: "Salida de mercadería: " + cajas + " cajas/bultos y " + sueltas + " unidades sueltas"
-});
 
-    alert(`Salida registrada correctamente.
+    batch.set(movimientoRef, {
+      type: "SALIDA",
+      productId: id,
+      productName: p.name || "",
+      quantity: salida,
+      stockBefore: actual,
+      stockAfter: nuevoStock,
+      reason: motivo,
+      observation: observacion.trim(),
+      responsible: usuario.displayName || usuario.email || usuario.uid,
+      createdBy: usuario.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-Cajas/bultos: ${cajas}
-Unidades sueltas: ${sueltas}
-Total descontado: ${salida} unidades
+    await batch.commit();
 
-Stock restante: ${actual - salida} unidades`);
+    alert(
+      "Salida registrada correctamente.\n\n" +
+      "Producto: " + (p.name || "") +
+      "\nCantidad: " + salida +
+      "\nMotivo: " + motivo +
+      "\nObservación: " + observacion +
+      "\nStock restante: " + nuevoStock
+    );
 
     renderStock();
+
   }catch(error){
     console.error(error);
-    alert("No se pudo registrar la salida.");
+    alert("No se pudo registrar la salida. El stock no fue modificado.");
   }
 }
   async function stockAjustar(id){
@@ -2481,8 +2542,20 @@ async function renderStockHistory(){
       motivo.textContent = m.reason
         ? "Motivo: " + m.reason
         : "";
+      const observacion = document.createElement("p");
+observacion.className = "small";
+observacion.textContent = m.observation
+  ? "Observación: " + m.observation
+  : "";
 
-      div.append(titulo, detalle, responsable, fechaTexto, motivo);
+     div.append(
+  titulo,
+  detalle,
+  responsable,
+  fechaTexto,
+  motivo,
+  observacion
+);
       contenedor.appendChild(div);
     });
 
