@@ -536,6 +536,21 @@ placeholder="🔎 Buscar producto..."
 oninput="renderStock()">
 
 <div id="stockList"></div>
+  <div class="card" style="margin-top:15px">
+  <h3>📜 Historial de movimientos</h3>
+
+  <p class="small">
+    Consultá todas las entradas, salidas, daños, reposiciones y ajustes de stock.
+  </p>
+
+  <button class="secondary"
+    style="width:100%"
+    onclick="renderStockHistory()">
+    📋 Ver historial de movimientos
+  </button>
+
+  <div id="stockHistory" style="margin-top:15px"></div>
+</div>
 
 </div>
 
@@ -2058,6 +2073,28 @@ await actualizarMenuPorCaja();
     alert("No se pudo cerrar la caja. Revisá los permisos de Firebase.");
   }
 }
+
+async function registrarMovimientoStock(datos){
+
+  const usuario = firebase.auth().currentUser;
+
+  await firebaseDB.collection("stockMovements").add({
+    type: datos.type,
+    productId: datos.productId,
+    productName: datos.productName,
+    quantity: datos.quantity,
+    stockBefore: datos.stockBefore,
+    stockAfter: datos.stockAfter,
+    reason: datos.reason || "",
+    responsible: usuario
+      ? (usuario.displayName || usuario.email || usuario.uid)
+      : "No identificado",
+    createdBy: usuario ? usuario.uid : null,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+}
+  
  async function stockEntrada(id){
 
   const ref = firebaseDB.collection("stock").doc(id);
@@ -2113,6 +2150,15 @@ await actualizarMenuPorCaja();
       quantity: actual + ingreso,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    await registrarMovimientoStock({
+  type: "ENTRADA",
+  productId: id,
+  productName: p.name || "",
+  quantity: ingreso,
+  stockBefore: actual,
+  stockAfter: actual + ingreso,
+  reason: "Ingreso de mercadería: " + cajas + " cajas/bultos y " + sueltas + " unidades sueltas"
+});
 
     alert(
       "Entrada registrada correctamente.\n\n" +
@@ -2182,6 +2228,15 @@ Salida solicitada: ${salida} unidades`);
       quantity: actual - salida,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    await registrarMovimientoStock({
+  type: "SALIDA",
+  productId: id,
+  productName: p.name || "",
+  quantity: salida,
+  stockBefore: actual,
+  stockAfter: actual - salida,
+  reason: "Salida de mercadería: " + cajas + " cajas/bultos y " + sueltas + " unidades sueltas"
+});
 
     alert(`Salida registrada correctamente.
 
@@ -2250,6 +2305,17 @@ Ingresá la cantidad REAL de cajas o bultos:`,
       quantity: nuevoStock,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    if(nuevoStock !== actual){
+  await registrarMovimientoStock({
+    type: "AJUSTE",
+    productId: id,
+    productName: p.name || "",
+    quantity: Math.abs(nuevoStock - actual),
+    stockBefore: actual,
+    stockAfter: nuevoStock,
+    reason: "Corrección manual del inventario"
+  });
+}
 
     alert(`Stock ajustado correctamente.
 
@@ -2270,6 +2336,7 @@ Stock nuevo: ${nuevoStock}`);
 async function stockRegistrarDano(id){
   const stockRef = firebaseDB.collection("stock").doc(id);
   const danoRef = firebaseDB.collection("stockDamages").doc();
+  const movimientoRef = firebaseDB.collection("stockMovements").doc();
 
   try{
     const cantidadTexto = prompt(
@@ -2328,6 +2395,19 @@ async function stockRegistrarDano(id){
         replacementPending: true,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      transaction.set(movimientoRef, {
+  type: "DAÑO",
+  productId: id,
+  productName: producto.name || "",
+  quantity: cantidad,
+  stockBefore: stockActual,
+  stockAfter: stockActual - cantidad,
+  reason: motivo.trim(),
+  responsible: firebase.auth().currentUser?.displayName ||
+    firebase.auth().currentUser?.email || "No identificado",
+  createdBy: firebase.auth().currentUser?.uid || null,
+  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+});
     });
 
     alert(
@@ -2343,7 +2423,76 @@ async function stockRegistrarDano(id){
     alert(error.message || "No se pudo registrar el daño.");
   }
 }
-    
+
+async function renderStockHistory(){
+
+  const contenedor = document.getElementById("stockHistory");
+  if(!contenedor) return;
+
+  contenedor.innerHTML = "<p class='small'>Cargando movimientos...</p>";
+
+  try{
+    const snap = await firebaseDB
+      .collection("stockMovements")
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+
+    if(snap.empty){
+      contenedor.innerHTML =
+        "<p class='small'>Todavía no hay movimientos registrados.</p>";
+      return;
+    }
+
+    contenedor.innerHTML = "";
+
+    snap.forEach(doc => {
+      const m = doc.data();
+
+      const fecha = m.createdAt?.toDate
+        ? m.createdAt.toDate().toLocaleString("es-AR")
+        : "Fecha no disponible";
+
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.marginTop = "8px";
+
+      const titulo = document.createElement("strong");
+      titulo.textContent = m.type || "Movimiento";
+
+      const detalle = document.createElement("p");
+      detalle.className = "small";
+      detalle.textContent =
+        (m.productName || "Producto sin nombre") +
+        " | Cantidad: " + (m.quantity ?? 0) +
+        " unidades";
+
+      const responsable = document.createElement("p");
+      responsable.className = "small";
+      responsable.textContent =
+        "Responsable: " + (m.responsible || "No identificado");
+
+      const fechaTexto = document.createElement("p");
+      fechaTexto.className = "small";
+      fechaTexto.textContent = fecha;
+
+      const motivo = document.createElement("p");
+      motivo.className = "small";
+      motivo.textContent = m.reason
+        ? "Motivo: " + m.reason
+        : "";
+
+      div.append(titulo, detalle, responsable, fechaTexto, motivo);
+      contenedor.appendChild(div);
+    });
+
+  }catch(error){
+    console.error("Error al cargar historial:", error);
+    contenedor.innerHTML =
+      "<p class='small'>No se pudo cargar el historial. Revisá los permisos de Firebase.</p>";
+  }
+}
+  
 async function addStockProduct(){
 
   const select = document.getElementById("stockProductSelect");
