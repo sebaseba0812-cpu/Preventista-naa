@@ -5634,10 +5634,18 @@ async function saveOrder(){
 
           user:user,
 
-          client:c.name,
-          clientId:cid,
+        client:c.name,
+clientId:cid,
 
-          lines:lines,
+clientData: {
+  name: c.name || "",
+  clientNumber: c.clientNumber || "",
+  zone: c.zone || "",
+  street: c.street || "",
+  height: c.height || ""
+},
+
+lines:lines,
           total:total,
 
           obs:document.getElementById("orderObs").value,
@@ -5907,13 +5915,13 @@ async function sendDraftToOffice(){
 
   status:"nuevo",
 
-  clientData: {
-    name: pedidoClient?.name || draft.client || "",
-    clientNumber: pedidoClient?.clientNumber || "",
-    zone: pedidoClient?.zone || "",
-    street: pedidoClient?.street || "",
-    height: pedidoClient?.height || ""
-  },
+ clientData: {
+  name: draft.clientData?.name || pedidoClient?.name || draft.client || "",
+  clientNumber: draft.clientData?.clientNumber || pedidoClient?.clientNumber || "",
+  zone: draft.clientData?.zone || pedidoClient?.zone || "",
+  street: draft.clientData?.street || pedidoClient?.street || "",
+  height: draft.clientData?.height || pedidoClient?.height || ""
+},
 
   paymentType:pedidoClient?.paymentType || "contado",
 
