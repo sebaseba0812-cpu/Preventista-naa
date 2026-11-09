@@ -5622,8 +5622,7 @@ async function renderOfficeOrders(){
 // DISTRIBUIDORA N.A.A. S.A.S.
 // ==========================================
 
-async function imprimirBoletaPedidoOficina(id){
-
+window.imprimirBoletaPedidoOficina = async function(id){
   try {
 
     const doc = await firebaseDB
@@ -5888,7 +5887,7 @@ async function imprimirBoletaPedidoOficina(id){
 
   }
 
-}
+};
     
     function tarjetaPedido(o){
       const estado = estadoDe(o);
