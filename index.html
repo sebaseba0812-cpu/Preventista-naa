@@ -634,8 +634,9 @@ onclick="createPromotion()">
         placeholder="Nombre completo">
 
       <label for="personalCorreo">Correo electrónico personal</label>
-      <input id="personalCorreo" type="email"
-        placeholder="nombre@correo.com">
+      <label for="personalUsername">Nombre de usuario para ingresar</label>
+<input id="personalUsername" type="text"
+  placeholder="Ej.: juan.perez">
 
       <label for="personalTelefono">Teléfono</label>
       <input id="personalTelefono" type="tel"
@@ -6663,7 +6664,7 @@ async function generarHojaRutaReparto() {
   }
 }
 
-  async function renderPersonal() {
+ async function renderPersonal() {
   const lista = document.getElementById("personalLista");
   if (!lista) return;
 
@@ -6678,26 +6679,50 @@ async function generarHojaRutaReparto() {
         ["preventista", "repartidor"].includes(
           String(u.role || "").toLowerCase()
         )
+      )
+      .sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), "es")
       );
 
-    if (personal.length === 0) {
-      lista.innerHTML =
-        '<p class="small">Todavía no hay preventistas ni repartidores registrados.</p>';
+    if (!personal.length) {
+      lista.innerHTML = '<p class="small">Todavía no hay personal registrado.</p>';
       return;
     }
 
     lista.innerHTML = personal.map(u => {
-      const nombre = String(u.name || u.username || "Sin nombre");
-      const correo = String(u.authEmail || "Sin correo");
-      const rol = String(u.role || "Sin rol");
-      const estado = u.active === false ? "Inactivo" : "Activo";
+      const nombre = esc(u.name || u.username || "Sin nombre");
+      const correo = esc(u.authEmail || "Sin correo");
+      const usuario = esc(u.username || "Sin usuario");
+      const telefono = esc(u.phone || "Sin teléfono");
+      const activo = u.active !== false;
 
       return `
         <div class="card">
           <strong>${nombre}</strong>
+          <p class="small">Usuario: ${usuario}</p>
           <p class="small">Correo: ${correo}</p>
-          <p class="small">Tipo: ${rol}</p>
-          <p class="small">Estado: ${estado}</p>
+          <p class="small">Teléfono: ${telefono}</p>
+          <p class="small">Tipo: ${esc(u.role || "")}</p>
+          <p class="small">
+            Estado: <strong>${activo ? "Activo" : "Inactivo"}</strong>
+          </p>
+
+          <div class="row">
+            <button type="button"
+              onclick="editarUsuarioPersonal('${u.id}')">
+              Editar
+            </button>
+
+            <button type="button" class="secondary"
+              onclick="cambiarEstadoUsuario('${u.id}', ${activo})">
+              ${activo ? "Desactivar" : "Activar"}
+            </button>
+
+            <button type="button" class="secondary"
+              onclick="restablecerClavePersonal('${encodeURIComponent(u.authEmail || "")}')">
+              Restablecer contraseña
+            </button>
+          </div>
         </div>
       `;
     }).join("");
@@ -6709,6 +6734,188 @@ async function generarHojaRutaReparto() {
   }
 }
 
+// CREAR USUARIO SIN CERRAR LA SESIÓN DEL ADMINISTRADOR
+async function crearUsuarioPersonal() {
+  const nombre = document.getElementById("personalNombre").value.trim();
+  const correo = document.getElementById("personalCorreo").value.trim().toLowerCase();
+  const username = document.getElementById("personalUsername").value.trim().toLowerCase();
+  const telefono = document.getElementById("personalTelefono").value.trim();
+  const rol = document.getElementById("personalRol").value;
+  const password = document.getElementById("personalContrasena").value;
+
+  if (!nombre || !correo || !username || !password) {
+    alert("Completá nombre, correo, usuario y contraseña.");
+    return;
+  }
+
+  if (!/^[a-z0-9._-]+$/.test(username)) {
+    alert("El usuario solo puede contener letras, números, puntos, guiones y guiones bajos.");
+    return;
+  }
+
+  if (password.length < 6) {
+    alert("La contraseña debe tener al menos 6 caracteres.");
+    return;
+  }
+
+  if (!firebaseAuth.currentUser) {
+    alert("La sesión del administrador no está activa.");
+    return;
+  }
+
+  let secondaryApp;
+
+  try {
+    const existentes = await firebaseDB.collection("users")
+      .where("username", "==", username)
+      .get();
+
+    if (!existentes.empty) {
+      alert("Ese nombre de usuario ya está registrado.");
+      return;
+    }
+
+    secondaryApp = firebase.apps.find(
+      app => app.name === "SecondaryUserCreation"
+    );
+
+    if (!secondaryApp) {
+      secondaryApp = firebase.initializeApp(
+        firebaseConfig,
+        "SecondaryUserCreation"
+      );
+    }
+
+    const secondaryAuth = secondaryApp.auth();
+
+    const credential = await secondaryAuth.createUserWithEmailAndPassword(
+      correo,
+      password
+    );
+
+    const uid = credential.user.uid;
+
+    await firebaseDB.collection("users").doc(uid).set({
+      name: nombre,
+      username: username,
+      authEmail: correo,
+      phone: telefono,
+      role: rol,
+      active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await secondaryAuth.signOut();
+
+    document.getElementById("personalNombre").value = "";
+    document.getElementById("personalCorreo").value = "";
+    document.getElementById("personalUsername").value = "";
+    document.getElementById("personalTelefono").value = "";
+    document.getElementById("personalContrasena").value = "";
+
+    alert("Usuario creado correctamente.");
+    await renderPersonal();
+
+  } catch (error) {
+    console.error("Error creando usuario:", error);
+
+    const mensajes = {
+      "auth/email-already-in-use": "Ese correo ya está registrado.",
+      "auth/invalid-email": "El correo electrónico no es válido.",
+      "auth/weak-password": "La contraseña es demasiado débil.",
+      "permission-denied": "Firebase no permitió guardar el perfil. Revisá las reglas."
+    };
+
+    alert(mensajes[error.code] || "No se pudo crear el usuario: " + error.message);
+  }
+}
+
+
+// EDITAR DATOS DEL PERSONAL
+async function editarUsuarioPersonal(uid) {
+  try {
+    const ref = firebaseDB.collection("users").doc(uid);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      alert("No se encontró el usuario.");
+      return;
+    }
+
+    const datos = snap.data();
+
+    const nombre = prompt("Nombre y apellido:", datos.name || "");
+    if (nombre === null) return;
+
+    const telefono = prompt("Teléfono:", datos.phone || "");
+    if (telefono === null) return;
+
+    if (!nombre.trim()) {
+      alert("El nombre no puede quedar vacío.");
+      return;
+    }
+
+    await ref.update({
+      name: nombre.trim(),
+      phone: telefono.trim(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("Datos actualizados correctamente.");
+    await renderPersonal();
+
+  } catch (error) {
+    console.error(error);
+    alert("No se pudieron modificar los datos.");
+  }
+}
+
+
+// ACTIVAR O DESACTIVAR PERSONAL
+async function cambiarEstadoUsuario(uid, actualmenteActivo) {
+  const accion = actualmenteActivo ? "desactivar" : "activar";
+
+  if (!confirm("¿Querés " + accion + " este usuario?")) return;
+
+  try {
+    await firebaseDB.collection("users").doc(uid).update({
+      active: !actualmenteActivo,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("Estado actualizado correctamente.");
+    await renderPersonal();
+
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo cambiar el estado del usuario.");
+  }
+}
+
+
+// ENVIAR CORREO PARA RESTABLECER CONTRASEÑA
+async function restablecerClavePersonal(correoCodificado) {
+  const correo = decodeURIComponent(correoCodificado);
+
+  if (!correo) {
+    alert("Este usuario no tiene un correo registrado.");
+    return;
+  }
+
+  if (!confirm("¿Enviar un correo para restablecer la contraseña de " + correo + "?")) {
+    return;
+  }
+
+  try {
+    await firebaseAuth.sendPasswordResetEmail(correo);
+    alert("Se envió el correo para restablecer la contraseña.");
+
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo enviar el correo: " + error.message);
+  }
+}
+  
  // CARGAR PREVENTISTAS PARA ASIGNAR RANGOS
 async function cargarPreventistasRangos() {
   const select = document.getElementById("clientRangePreventista");
