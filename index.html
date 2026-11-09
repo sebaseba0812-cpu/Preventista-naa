@@ -3065,7 +3065,8 @@ async function actualizarSaldoLiquidacion() {
           `).join("")
     }
   `;
-} catch (error) {
+  }
+  } catch (error) {
     console.error("Error consultando saldo acumulado:", error);
     contenedor.innerHTML =
       "<p>No se pudo consultar el saldo. Revisá Firebase.</p>";
