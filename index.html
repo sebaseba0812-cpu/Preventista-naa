@@ -6723,12 +6723,31 @@ async function generarHojaRutaReparto() {
 
 // CREAR USUARIO SIN CERRAR LA SESIÓN DEL ADMINISTRADOR
 async function crearUsuarioPersonal() {
-  const nombre = document.getElementById("personalNombre").value.trim();
-  const correo = document.getElementById("personalCorreo").value.trim().toLowerCase();
-  const username = document.getElementById("personalUsername").value.trim().toLowerCase();
-  const telefono = document.getElementById("personalTelefono").value.trim();
-  const rol = document.getElementById("personalRol").value;
-  const password = document.getElementById("personalContrasena").value;
+ const idsNecesarios = [
+  "personalNombre",
+  "personalCorreo",
+  "personalUsername",
+  "personalTelefono",
+  "personalRol",
+  "personalContrasena"
+];
+
+const faltantes = idsNecesarios.filter(
+  id => !document.getElementById(id)
+);
+
+if (faltantes.length) {
+  alert("Faltan estos campos en el formulario: " + faltantes.join(", "));
+  console.error("Campos no encontrados:", faltantes);
+  return;
+}
+
+const nombre = document.getElementById("personalNombre").value.trim();
+const correo = document.getElementById("personalCorreo").value.trim().toLowerCase();
+const username = document.getElementById("personalUsername").value.trim().toLowerCase();
+const telefono = document.getElementById("personalTelefono").value.trim();
+const rol = document.getElementById("personalRol").value;
+const password = document.getElementById("personalContrasena").value;
 
   if (!nombre || !correo || !username || !password) {
     alert("Completá nombre, correo, usuario y contraseña.");
