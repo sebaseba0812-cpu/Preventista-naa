@@ -519,9 +519,8 @@ Desde acá el administrador puede cargar y controlar el stock de todos los produ
   Seleccioná un producto para ver su presentación y empaque.
 </div>
 
-<label>Cantidad inicial (en unidades)</label>
-<input id="stockQty" type="number" min="0" step="1" placeholder="Ej.: 600">
-
+<label>Cantidad inicial (en cajas o bultos)</label>
+<input id="stockQty" type="number" min="0" step="1" placeholder="Ej.: 10">
 <button class="primary" style="width:100%;margin-top:10px"
 onclick="addStockProduct()">
 ➕ Agregar al stock
@@ -1428,15 +1427,21 @@ function loadStockProductOptions(){
       div.className = "card";
       div.style.marginTop = "10px";
 
+           const packQty = Number(p.packQty) || 1;
+      const totalUnits = Number(p.quantity) || 0;
+      const cajasCompletas = Math.floor(totalUnits / packQty);
+      const unidadesSueltas = totalUnits % packQty;
+
       div.innerHTML = `
         <strong>📦 ${p.name || ""}</strong>
         <p class="small">
           Presentación: ${p.presentation || ""}<br>
           Unidad: ${p.unit || ""}<br>
-          <strong>Cantidad disponible: ${p.quantity ?? 0}</strong>
+          <strong>Stock disponible: ${cajasCompletas} cajas/bultos (${cajasCompletas * packQty} unidades)</strong>
+          ${unidadesSueltas > 0 ? `<br><strong>Unidades sueltas: ${unidadesSueltas}</strong>` : ""}
+          <br>Total disponible: ${totalUnits} unidades
         </p>
       `;
-
      const actions = document.createElement("div");
 actions.style.marginTop = "10px";
 
@@ -2052,7 +2057,7 @@ await actualizarMenuPorCaja();
     alert("No se pudo cerrar la caja. Revisá los permisos de Firebase.");
   }
 }
-  async function stockEntrada(id){
+ async function stockEntrada(id){
 
   const ref = firebaseDB.collection("stock").doc(id);
   const snap = await ref.get();
@@ -2064,14 +2069,40 @@ await actualizarMenuPorCaja();
 
   const p = snap.data();
   const actual = Number(p.quantity || 0);
+  const packQty = Number(p.packQty) || 1;
 
-  const cantidad = prompt("¿Cuántas unidades ingresaron?");
-if(cantidad === null) return;
+  const cajasTexto = prompt(
+    "¿Cuántas cajas o bultos ingresaron?\nCada empaque trae " + packQty + " unidades.",
+    "0"
+  );
 
-  const ingreso = Number(cantidad);
+  if(cajasTexto === null) return;
 
-  if(!Number.isFinite(ingreso) || ingreso <= 0){
-    alert("Ingresá una cantidad válida.");
+  const cajas = Number(cajasTexto);
+
+  if(!Number.isInteger(cajas) || cajas < 0){
+    alert("Ingresá una cantidad válida de cajas o bultos.");
+    return;
+  }
+
+  const sueltasTexto = prompt(
+    "¿Cuántas unidades sueltas ingresaron?",
+    "0"
+  );
+
+  if(sueltasTexto === null) return;
+
+  const sueltas = Number(sueltasTexto);
+
+  if(!Number.isInteger(sueltas) || sueltas < 0){
+    alert("Ingresá una cantidad válida de unidades sueltas.");
+    return;
+  }
+
+  const ingreso = (cajas * packQty) + sueltas;
+
+  if(ingreso <= 0){
+    alert("Tenés que ingresar alguna cantidad.");
     return;
   }
 
@@ -2082,7 +2113,11 @@ if(cantidad === null) return;
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    alert(`Stock actualizado.\n\n${actual} → ${actual + ingreso}`);
+    alert(
+      "Entrada registrada correctamente.\n\n" +
+      cajas + " cajas/bultos + " + sueltas + " unidades sueltas.\n" +
+      "Total ingresado: " + ingreso + " unidades."
+    );
 
     renderStock();
 
@@ -2104,19 +2139,40 @@ if(cantidad === null) return;
 
   const p = snap.data();
   const actual = Number(p.quantity || 0);
+  const packQty = Number(p.packQty) || 1;
 
-  const cantidad = prompt("¿Cuántas unidades salieron?");
-  if(cantidad === null) return;
+  const cajasTexto = prompt("¿Cuántas cajas o bultos salen?");
+  if(cajasTexto === null) return;
 
-  const salida = Number(cantidad);
+  const cajas = Number(cajasTexto);
 
-  if(!Number.isFinite(salida) || salida <= 0){
-    alert("Ingresá una cantidad válida.");
+  if(!Number.isInteger(cajas) || cajas < 0){
+    alert("Ingresá una cantidad válida de cajas o bultos.");
+    return;
+  }
+
+  const sueltasTexto = prompt("¿Cuántas unidades sueltas salen?");
+  if(sueltasTexto === null) return;
+
+  const sueltas = Number(sueltasTexto);
+
+  if(!Number.isInteger(sueltas) || sueltas < 0){
+    alert("Ingresá una cantidad válida de unidades sueltas.");
+    return;
+  }
+
+  const salida = (cajas * packQty) + sueltas;
+
+  if(salida <= 0){
+    alert("Ingresá una cantidad mayor a cero.");
     return;
   }
 
   if(salida > actual){
-    alert(`No hay suficiente stock.\n\nStock disponible: ${actual}`);
+    alert(`No hay suficiente stock.
+
+Stock disponible: ${actual} unidades
+Salida solicitada: ${salida} unidades`);
     return;
   }
 
@@ -2126,7 +2182,14 @@ if(cantidad === null) return;
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    alert(`Stock actualizado.\n\n${actual} → ${actual - salida}`);
+    alert(`Salida registrada correctamente.
+
+Cajas/bultos: ${cajas}
+Unidades sueltas: ${sueltas}
+Total descontado: ${salida} unidades
+
+Stock restante: ${actual - salida} unidades`);
+
     renderStock();
   }catch(error){
     console.error(error);
@@ -2144,20 +2207,42 @@ if(cantidad === null) return;
 
   const p = snap.data();
   const actual = Number(p.quantity || 0);
+  const packQty = Number(p.packQty) || 1;
 
-  const cantidad = prompt(
-    `Stock actual: ${actual}\n\nIngresá la cantidad correcta:`,
-    actual
+  const cajasActuales = Math.floor(actual / packQty);
+  const sueltasActuales = actual % packQty;
+
+  const cajasTexto = prompt(
+    `Stock actual: ${cajasActuales} cajas/bultos y ${sueltasActuales} unidades sueltas.
+
+Ingresá la cantidad REAL de cajas o bultos:`,
+    cajasActuales
   );
 
-  if(cantidad === null) return;
+  if(cajasTexto === null) return;
 
-  const nuevoStock = Number(cantidad);
+  const cajas = Number(cajasTexto);
 
-  if(!Number.isFinite(nuevoStock) || nuevoStock < 0){
-    alert("Ingresá una cantidad válida.");
+  if(!Number.isInteger(cajas) || cajas < 0){
+    alert("Ingresá una cantidad válida de cajas o bultos.");
     return;
   }
+
+  const sueltasTexto = prompt(
+    "Ingresá la cantidad REAL de unidades sueltas:",
+    sueltasActuales
+  );
+
+  if(sueltasTexto === null) return;
+
+  const sueltas = Number(sueltasTexto);
+
+  if(!Number.isInteger(sueltas) || sueltas < 0){
+    alert("Ingresá una cantidad válida de unidades sueltas.");
+    return;
+  }
+
+  const nuevoStock = (cajas * packQty) + sueltas;
 
   try{
     await ref.update({
@@ -2165,7 +2250,14 @@ if(cantidad === null) return;
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    alert(`Stock ajustado.\n\n${actual} → ${nuevoStock}`);
+    alert(`Stock ajustado correctamente.
+
+Cajas/bultos: ${cajas}
+Unidades sueltas: ${sueltas}
+Total: ${nuevoStock} unidades
+
+Stock anterior: ${actual}
+Stock nuevo: ${nuevoStock}`);
 
     renderStock();
 
@@ -2174,7 +2266,7 @@ if(cantidad === null) return;
     alert("No se pudo ajustar el stock.");
   }
 }
- async function addStockProduct(){
+async function addStockProduct(){
 
   const select = document.getElementById("stockProductSelect");
   const products = getProducts();
@@ -2197,10 +2289,12 @@ if(cantidad === null) return;
   const packQty = Number(product[4]) || 1;
   const qty = Number(document.getElementById("stockQty").value);
 
-  if(!Number.isFinite(qty) || qty < 0 || document.getElementById("stockQty").value === ""){
-    alert("Ingresá una cantidad válida en unidades.");
+  if(!Number.isInteger(qty) || qty <= 0){
+    alert("Ingresá una cantidad válida de cajas o bultos.");
     return;
   }
+
+  const totalUnits = qty * packQty;
 
   try{
 
@@ -2224,12 +2318,14 @@ if(cantidad === null) return;
       presentation: pres,
       unit: unit,
       packQty: packQty,
-      quantity: qty,
+      packages: qty,
+      looseUnits: 0,
+      quantity: totalUnits,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    alert("Producto agregado al stock correctamente.");
+    alert("Producto agregado correctamente: " + qty + " empaques (" + totalUnits + " unidades).");
 
     document.getElementById("stockQty").value = "";
     select.value = "";
