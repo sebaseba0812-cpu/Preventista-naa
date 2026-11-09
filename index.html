@@ -2343,7 +2343,9 @@ async function stockEntrada(id){
     alert("No se pudo registrar la salida. El stock no fue modificado.");
   }
 }
-  async function stockAjustar(id){
+  
+async function stockAjustar(id){
+
   const ref = firebaseDB.collection("stock").doc(id);
   const snap = await ref.get();
 
@@ -2391,39 +2393,93 @@ Ingresá la cantidad REAL de cajas o bultos:`,
 
   const nuevoStock = (cajas * packQty) + sueltas;
 
+  if(nuevoStock === actual){
+    alert("El stock ingresado es igual al stock actual. No hay cambios.");
+    return;
+  }
+
+  const motivo = prompt(
+    "¿Por qué se realiza este ajuste?\n\n" +
+    "Ejemplo: diferencia en conteo físico, error de carga, faltante."
+  );
+
+  if(motivo === null) return;
+
+  if(!motivo.trim()){
+    alert("Tenés que indicar el motivo del ajuste.");
+    return;
+  }
+
+  const observacion = prompt(
+    "Agregá una observación sobre el ajuste:"
+  );
+
+  if(observacion === null) return;
+
+  if(!observacion.trim()){
+    alert("La observación es obligatoria.");
+    return;
+  }
+
+  const usuario = firebase.auth().currentUser;
+
+  if(!usuario){
+    alert("No se pudo identificar al usuario.");
+    return;
+  }
+
+  const movimientoRef = firebaseDB
+    .collection("stockMovements").doc();
+
+  const diferencia = Math.abs(nuevoStock - actual);
+
   try{
-    await ref.update({
+
+    const batch = firebaseDB.batch();
+
+    batch.update(ref, {
       quantity: nuevoStock,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    if(nuevoStock !== actual){
-  await registrarMovimientoStock({
-    type: "AJUSTE",
-    productId: id,
-    productName: p.name || "",
-    quantity: Math.abs(nuevoStock - actual),
-    stockBefore: actual,
-    stockAfter: nuevoStock,
-    reason: "Corrección manual del inventario"
-  });
-}
 
-    alert(`Stock ajustado correctamente.
+    batch.set(movimientoRef, {
+      type: "AJUSTE",
+      productId: id,
+      productName: p.name || "",
+      quantity: diferencia,
+      stockBefore: actual,
+      stockAfter: nuevoStock,
+      reason: motivo.trim(),
+      observation: observacion.trim(),
+      responsible: usuario.displayName ||
+        usuario.email || usuario.uid,
+      createdBy: usuario.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-Cajas/bultos: ${cajas}
-Unidades sueltas: ${sueltas}
-Total: ${nuevoStock} unidades
+    await batch.commit();
 
-Stock anterior: ${actual}
-Stock nuevo: ${nuevoStock}`);
+    alert(
+      "Stock ajustado correctamente.\n\n" +
+      "Stock anterior: " + actual + " unidades\n" +
+      "Stock nuevo: " + nuevoStock + " unidades\n" +
+      "Diferencia: " + diferencia + " unidades"
+    );
 
     renderStock();
 
   }catch(error){
-    console.error(error);
-    alert("No se pudo ajustar el stock.");
+
+    console.error("Error al ajustar stock:", error);
+
+    alert(
+      "No se pudo ajustar el stock.\n" +
+      "El stock no fue modificado."
+    );
+
   }
 }
+
 async function stockRegistrarDano(id){
   const stockRef = firebaseDB.collection("stock").doc(id);
   const danoRef = firebaseDB.collection("stockDamages").doc();
