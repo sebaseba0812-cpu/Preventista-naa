@@ -124,6 +124,16 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
   margin-top: 10px;
 }
 
+#adminClientEditMap {
+  width: 100%;
+  height: 350px;
+  min-height: 300px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  margin-top: 10px;
+  z-index: 1;
+}  
+
 .client-map-help {
   font-size: 12px;
   color: #475569;
@@ -397,6 +407,69 @@ body {
   <button class="primary" style="margin-top:10px" onclick="addClient()">➕ Agregar cliente</button>
 </div>
 <div class="card"><div id="clientList"></div></div>
+   <div class="card hidden" id="adminClientLocations">
+
+  <h3>📍 Administración de ubicaciones</h3>
+
+  <p class="small">
+    Desde acá podés buscar un comercio y corregir su ubicación en el mapa.
+  </p>
+
+  <label>Buscar cliente</label>
+
+  <input
+    id="adminClientSearch"
+    type="text"
+    placeholder="Nombre o número de cliente..."
+    oninput="filtrarClientesAdmin()"
+  >
+
+  <div id="adminClientLocationsList">
+    <div class="empty">
+      Tocá el botón para cargar los clientes.
+    </div>
+  </div>
+
+<div class="card hidden" id="adminLocationEditor">
+
+  <h3>📍 Corregir ubicación del comercio</h3>
+
+  <p id="adminLocationClientName" class="small"></p>
+
+  <p id="adminLocationStatus" class="small">
+    Seleccioná la ubicación correcta en el mapa.
+  </p>
+
+  <div id="adminClientEditMap"></div>
+
+  <div class="client-map-buttons">
+
+    <button
+      type="button"
+      class="secondary"
+      onclick="centrarEditorUbicacion()">
+      🗺️ Ver zona de Posadas
+    </button>
+
+    <button
+      type="button"
+      class="primary"
+      onclick="guardarUbicacionAdmin()">
+      💾 Guardar ubicación
+    </button>
+
+    <button
+      type="button"
+      class="gray"
+      onclick="cerrarEditorUbicacion()">
+      Cancelar
+    </button>
+
+  </div>
+
+</div>
+     
+</div> 
 <div class="card">
 <h2>📲 Clientes WhatsApp</h2>
 <p class="small">Acá aparecen los clientes que tienen un número de WhatsApp registrado. Tocá el botón para abrir WhatsApp con un mensaje de seguimiento.</p>
@@ -4443,7 +4516,18 @@ if(id==="pedido"){
   renderPromotions();
   renderAvailablePromotions();
 }
-if(id==="clientes"){renderClients()}
+if(id==="clientes"){
+
+  renderClients();
+
+  if(user?.role === "admin"){
+    cargarClientesAdminUbicaciones();
+  }else{
+    document.getElementById("adminClientLocations")
+      ?.classList.add("hidden");
+  }
+
+}
 if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
   if(id==="reparto") renderReparto();
@@ -4941,6 +5025,343 @@ function renderClients(){
 
   renderClientWhatsapp();
 }
+
+// CLIENTES DE FIREBASE PARA ADMINISTRAR UBICACIONES
+let clientesAdminUbicaciones = [];
+
+async function cargarClientesAdminUbicaciones(){
+
+  const usuario = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
+
+  const panel = document.getElementById("adminClientLocations");
+  const lista = document.getElementById("adminClientLocationsList");
+
+  if(!panel || !lista) return;
+
+  if(usuario.role !== "admin"){
+    panel.classList.add("hidden");
+    return;
+  }
+
+  panel.classList.remove("hidden");
+  lista.innerHTML = '<div class="empty">Cargando clientes desde Firebase...</div>';
+
+  try{
+
+    const snapshot = await firebaseDB
+      .collection("clients")
+      .get();
+
+    clientesAdminUbicaciones = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    filtrarClientesAdmin();
+
+  }catch(error){
+
+    console.error("Error cargando clientes:", error);
+
+    lista.innerHTML =
+      '<div class="empty">No se pudieron cargar los clientes. Revisá los permisos de Firebase.</div>';
+
+  }
+}
+
+function filtrarClientesAdmin(){
+
+  const buscador = document.getElementById("adminClientSearch");
+  const texto = (buscador?.value || "").trim().toLowerCase();
+
+  const lista = document.getElementById("adminClientLocationsList");
+
+  if(!lista) return;
+
+  const filtrados = clientesAdminUbicaciones.filter(c => {
+
+    const nombre = String(c.name || "").toLowerCase();
+    const numero = String(c.clientNumber || "").toLowerCase();
+    const zona = String(c.zone || "").toLowerCase();
+
+    return nombre.includes(texto) ||
+           numero.includes(texto) ||
+           zona.includes(texto);
+
+  });
+
+  if(!filtrados.length){
+
+    lista.innerHTML =
+      '<div class="empty">No se encontraron clientes.</div>';
+
+    return;
+  }
+
+  lista.innerHTML = filtrados.map(c => {
+
+    const tieneUbicacion =
+      Number.isFinite(Number(c.latitude)) &&
+      Number.isFinite(Number(c.longitude)) &&
+      c.latitude !== "" &&
+      c.longitude !== "";
+
+    return `
+      <div class="product">
+
+        <strong>${esc(c.name || "Cliente sin nombre")}</strong>
+
+        <div class="small">
+          Cliente N.º: ${esc(c.clientNumber || "Sin número")}
+        </div>
+
+        <div class="muted">
+          ${esc(c.zone || "Sin barrio o zona")}
+          · ${esc(c.street || "Sin calle")}
+          ${esc(c.height || "")}
+        </div>
+
+        <div class="small" style="margin-top:6px">
+          ${tieneUbicacion
+            ? "📍 Tiene ubicación registrada"
+            : "⚠️ No tiene ubicación registrada"}
+        </div>
+
+        <button
+          type="button"
+          class="secondary"
+          data-edit-location="${esc(c.id)}"
+          style="margin-top:10px">
+          📍 Editar ubicación
+        </button>
+
+      </div>
+    `;
+
+  }).join("");
+
+  lista.querySelectorAll("[data-edit-location]").forEach(boton => {
+
+    boton.addEventListener("click", function(){
+
+      abrirEditorUbicacionCliente(this.dataset.editLocation);
+
+    });
+
+  });
+
+}
+
+  // EDITOR DE UBICACION PARA ADMINISTRADOR
+
+let adminLocationMap = null;
+let adminLocationMarker = null;
+let adminLocationClient = null;
+
+function abrirEditorUbicacionCliente(id){
+
+  if(user?.role !== "admin"){
+    alert("Solamente el administrador puede modificar ubicaciones.");
+    return;
+  }
+
+  const cliente = clientesAdminUbicaciones.find(
+    c => String(c.id) === String(id)
+  );
+
+  if(!cliente){
+    alert("No se encontró el cliente.");
+    return;
+  }
+
+  adminLocationClient = cliente;
+
+  document.getElementById("adminLocationEditor")
+    .classList.remove("hidden");
+
+  document.getElementById("adminLocationClientName").textContent =
+    cliente.name + " · Cliente N.º " + (cliente.clientNumber || "Sin número");
+
+  document.getElementById("adminLocationStatus").textContent =
+    "Marcá la nueva ubicación o mové el marcador.";
+
+  const lat = Number(cliente.latitude);
+  const lng = Number(cliente.longitude);
+
+  const tieneUbicacion =
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    cliente.latitude !== "" &&
+    cliente.longitude !== "";
+
+  const centro = tieneUbicacion
+    ? [lat, lng]
+    : [POSADAS_LAT, POSADAS_LNG];
+
+  if(!adminLocationMap){
+
+    adminLocationMap = L.map("adminClientEditMap").setView(
+      centro,
+      tieneUbicacion ? 17 : 13
+    );
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        attribution: "&copy; OpenStreetMap"
+      }
+    ).addTo(adminLocationMap);
+
+    adminLocationMap.on("click", function(e){
+      marcarUbicacionAdmin(
+        e.latlng.lat,
+        e.latlng.lng
+      );
+    });
+
+  }else{
+
+    adminLocationMap.setView(
+      centro,
+      tieneUbicacion ? 17 : 13
+    );
+
+  }
+
+  if(tieneUbicacion){
+    marcarUbicacionAdmin(lat, lng);
+  }else{
+    if(adminLocationMarker){
+      adminLocationMap.removeLayer(adminLocationMarker);
+      adminLocationMarker = null;
+    }
+
+    document.getElementById("adminLocationStatus").textContent =
+      "Este cliente no tiene ubicación. Tocá el mapa para marcarla.";
+  }
+
+  setTimeout(() => {
+    adminLocationMap.invalidateSize();
+  }, 300);
+
+}
+
+function marcarUbicacionAdmin(lat, lng){
+
+  if(adminLocationMarker){
+    adminLocationMarker.setLatLng([lat, lng]);
+  }else{
+
+    adminLocationMarker = L.marker(
+      [lat, lng],
+      {draggable:true}
+    ).addTo(adminLocationMap);
+
+    adminLocationMarker.on("dragend", function(){
+
+      const posicion = adminLocationMarker.getLatLng();
+
+      document.getElementById("adminLocationStatus").textContent =
+        "Nueva ubicación seleccionada: " +
+        posicion.lat.toFixed(6) + ", " +
+        posicion.lng.toFixed(6);
+
+    });
+
+  }
+
+  adminLocationMap.setView([lat, lng], 17);
+
+  document.getElementById("adminLocationStatus").textContent =
+    "Nueva ubicación seleccionada: " +
+    lat.toFixed(6) + ", " + lng.toFixed(6);
+
+}
+
+function centrarEditorUbicacion(){
+
+  if(adminLocationMap){
+    adminLocationMap.setView(
+      [POSADAS_LAT, POSADAS_LNG],
+      13
+    );
+  }
+
+}
+
+function cerrarEditorUbicacion(){
+
+  document.getElementById("adminLocationEditor")
+    .classList.add("hidden");
+
+  adminLocationClient = null;
+
+}
+
+async function guardarUbicacionAdmin(){
+
+  if(user?.role !== "admin"){
+    alert("No tenés permiso para modificar ubicaciones.");
+    return;
+  }
+
+  if(!adminLocationClient || !adminLocationMarker){
+    alert("Primero seleccioná una ubicación en el mapa.");
+    return;
+  }
+
+  const posicion = adminLocationMarker.getLatLng();
+
+  const lat = Number(posicion.lat);
+  const lng = Number(posicion.lng);
+
+  if(!Number.isFinite(lat) || !Number.isFinite(lng)){
+    alert("La ubicación seleccionada no es válida.");
+    return;
+  }
+
+  if(!confirm("¿Querés guardar la nueva ubicación de este comercio?")){
+    return;
+  }
+
+  try{
+
+    await firebaseDB
+      .collection("clients")
+      .doc(String(adminLocationClient.id))
+      .update({
+        latitude: lat,
+        longitude: lng,
+        locationUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        locationUpdatedBy: user.uid
+      });
+
+    adminLocationClient.latitude = lat;
+    adminLocationClient.longitude = lng;
+
+    document.getElementById("adminLocationStatus").textContent =
+      "✅ Ubicación actualizada correctamente.";
+
+    alert("La ubicación del comercio se actualizó correctamente.");
+
+    cerrarEditorUbicacion();
+
+    filtrarClientesAdmin();
+
+  }catch(error){
+
+    console.error("Error actualizando ubicación:", error);
+
+    alert(
+      "No se pudo actualizar la ubicación. Revisá las reglas de Firebase."
+    );
+
+  }
+
+}
+  
 function toggleClientPaymentType(id){
   let c=clients.find(x=>String(x.id)===String(id)&&x.user?.uid===user?.uid);
   if(!c)return;
