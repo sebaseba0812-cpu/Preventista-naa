@@ -6467,17 +6467,19 @@ const zona = datosCliente.zone || cliente?.zone || o.zone || "";
 
 const direccion = [calle, altura].filter(Boolean).join(" ");
 
-    const esCuentaCorriente =
-      const vencimientoObj = new Date(fechaObj);
+  const esCuentaCorriente =
+  o.paymentType === "cuenta_corriente";
+
+const vencimientoObj = new Date(fechaObj);
 
 vencimientoObj.setHours(0, 0, 0, 0);
+
 vencimientoObj.setDate(
   vencimientoObj.getDate() + Number(o.creditDays || 0)
 );
 
 const vencimientoTexto =
   vencimientoObj.toLocaleDateString("es-AR");
-      o.paymentType === "cuenta_corriente";
 
     let formaPago = esCuentaCorriente
       ? "CUENTA CORRIENTE"
