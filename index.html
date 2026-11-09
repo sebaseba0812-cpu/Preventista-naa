@@ -5898,10 +5898,9 @@ async function sendDraftToOffice(){
           throw new Error("Número de boleta inválido.");
         }
 
-        const pedidoClient = clients.find(
-          c => String(c.id) === String(draft.clientId) &&
-          c.user?.uid === user?.uid
-        );
+       const pedidoClient = clients.find(
+  c => String(c.id) === String(draft.clientId)
+);
 
         const pedido = {
   ...draft,
