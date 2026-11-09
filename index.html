@@ -5622,15 +5622,12 @@ async function renderOfficeOrders(){
 // DISTRIBUIDORA N.A.A. S.A.S.
 // ==========================================
 
+
 window.imprimirBoletaPedidoOficina = async function(id){
   try {
+    const doc = await firebaseDB.collection("orders").doc(id).get();
 
-    const doc = await firebaseDB
-      .collection("orders")
-      .doc(id)
-      .get();
-
-    if(!doc.exists){
+    if (!doc.exists) {
       alert("No se encontró el pedido.");
       return;
     }
@@ -5638,72 +5635,99 @@ window.imprimirBoletaPedidoOficina = async function(id){
     const o = doc.data();
 
     const cliente = Array.isArray(clients)
-      ? clients.find(c =>
-          String(c.id) === String(o.clientId)
-        )
+      ? clients.find(c => String(c.id) === String(o.clientId))
       : null;
 
-    const fecha = o.createdAt?.toDate
-      ? o.createdAt.toDate().toLocaleDateString("es-AR")
-      : (o.date
-          ? new Date(o.date).toLocaleDateString("es-AR")
-          : new Date().toLocaleDateString("es-AR"));
+    const fechaObj = o.createdAt?.toDate
+      ? o.createdAt.toDate()
+      : (o.date ? new Date(o.date) : new Date());
+
+    const fecha = fechaObj.toLocaleDateString("es-AR");
+    const hora = fechaObj.toLocaleTimeString("es-AR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
 
     const comercio = o.client || cliente?.name || "Sin cliente";
+    const numeroCliente = cliente?.number || cliente?.clientNumber || "";
     const calle = cliente?.street || "";
     const altura = cliente?.height || "";
     const zona = cliente?.zone || "";
 
-    const productos = (o.lines || []).map(p => `
-      <tr>
-        <td>${esc(p.name || "")}
-          ${p.presentation ? " - " + esc(p.presentation) : ""}
-        </td>
-        <td class="center">${p.qty || 0}</td>
-        <td class="right">$${money(p.total || 0)}</td>
-      </tr>
-    `).join("");
+    const productos = (o.lines || []).map(p => {
+      const cantidad = Number(p.qty || 0);
+      const subtotal = Number(p.total || 0);
+      const unitario = cantidad ? subtotal / cantidad : 0;
+
+      return `
+        <tr>
+          <td class="cantidad">${cantidad}</td>
+          <td>${esc(p.name || "")}
+            ${p.presentation ? " - " + esc(p.presentation) : ""}
+          </td>
+          <td class="importe">$${money(unitario)}</td>
+          <td class="importe">$${money(subtotal)}</td>
+        </tr>
+      `;
+    }).join("");
 
     const bonificaciones = (o.bonuses || []).map(p => `
       <tr>
+        <td class="cantidad">${Number(p.qty || 0)}</td>
         <td>${esc(p.name || "")}
           ${p.presentation ? " - " + esc(p.presentation) : ""}
-          <small>(BONIFICADO)</small>
+          <strong>(BONIFICADO)</strong>
         </td>
-        <td class="center">${p.qty || 0}</td>
-        <td class="right">$0,00</td>
+        <td class="importe">$0,00</td>
+        <td class="importe">$0,00</td>
       </tr>
     `).join("");
 
     const comprobante = `
-      <div class="boleta">
-        <div class="encabezado">
-          <div class="marca">N.A.A.</div>
-          <div>
-            <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
-            <div>COMPROBANTE DE PEDIDO</div>
+      <section class="remito">
+        <header class="encabezado">
+          <div class="logo">
+            <div class="logo-texto">N.A.A.</div>
+            <div class="logo-sub">DISTRIBUIDORA</div>
           </div>
+
+          <div class="empresa">
+            <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+            <p>Dirección: Garupá A 31, B° Fátima</p>
+            <p>Teléfono: 3764 833833</p>
+            <p>CUIT: __________________</p>
+            <p>Inicio de actividad: 22/07/2026</p>
+          </div>
+
+          <div class="tipo">
+            <div class="letra">X</div>
+            <strong>REMITO</strong>
+            <span>N.º ${esc(String(o.boletaNumber || "617"))}</span>
+            <b>NO FISCAL</b>
+          </div>
+        </header>
+
+        <div class="fecha">
+          <span><b>Fecha:</b> ${fecha}</span>
+          <span><b>Hora:</b> ${hora}</span>
+          <strong class="copia">ORIGINAL</strong>
         </div>
 
-        <div class="numero">
-          BOLETA Nº ${esc(String(o.boletaNumber || "617"))}
+        <div class="datos-cliente">
+          <div><b>Cliente:</b> ${esc(comercio)}</div>
+          <div><b>N.º de cliente:</b> ${esc(String(numeroCliente))}</div>
+          <div><b>Forma de pago:</b> <strong class="pendiente">PENDIENTE</strong></div>
+          <div><b>Dirección:</b> ${esc(calle)} ${esc(String(altura))}</div>
+          <div><b>Barrio / Zona:</b> ${esc(zona)}</div>
         </div>
 
-        <div class="datos">
-          <b>Fecha:</b> ${fecha}<br>
-          <b>Comercio:</b> ${esc(comercio)}<br>
-          <b>Nº Cliente:</b> ${esc(String(cliente?.number || cliente?.clientNumber || ""))}<br>
-          <b>Calle:</b> ${esc(calle)}
-          ${altura ? " - " + esc(altura) : ""}<br>
-          ${zona ? "<b>Barrio / Zona:</b> " + esc(zona) : ""}
-        </div>
-
-        <table>
+        <table class="detalle">
           <thead>
             <tr>
-              <th>Producto</th>
-              <th>Cant.</th>
-              <th>Total</th>
+              <th>Cantidad</th>
+              <th>Nombre del producto</th>
+              <th>Precio unit.</th>
+              <th>Subtotal</th>
             </tr>
           </thead>
           <tbody>
@@ -5716,23 +5740,30 @@ window.imprimirBoletaPedidoOficina = async function(id){
           TOTAL: $${money(o.total || 0)}
         </div>
 
-        ${o.obs ? `
-          <div class="observaciones">
-            Observaciones: ${esc(o.obs)}
-          </div>
-        ` : ""}
-
-        <div class="pie">
-          Preventista: ${esc(o.preventistaName || o.user || "")}
-          <br>
-          Distribuidora N.A.A. S.A.S.
+        <div class="observaciones">
+          <b>Observaciones:</b> ${esc(o.obs || "")}
         </div>
-      </div>
+
+        <div class="destinatario">
+          <h3>DATOS DEL DESTINATARIO</h3>
+          <p><b>Nombre:</b> ${esc(comercio)}</p>
+          <p><b>N.º de cliente:</b> ${esc(String(numeroCliente))}</p>
+          <p><b>Dirección:</b> ${esc(calle)} ${esc(String(altura))}</p>
+          <p><b>Notas / Horarios:</b> ${esc(cliente?.observations || cliente?.observaciones || "")}</p>
+        </div>
+
+        <footer class="firmas">
+          <div>Firma del cliente: ____________________</div>
+          <div>Firma del preventista: ____________________</div>
+          <p>Preventista: ${esc(o.preventistaName || o.user || "")}</p>
+          <small>Distribuidora N.A.A. S.A.S.</small>
+        </footer>
+      </section>
     `;
 
     const ventana = window.open("", "_blank");
 
-    if(!ventana){
+    if (!ventana) {
       alert("Permití las ventanas emergentes para imprimir.");
       return;
     }
@@ -5742,12 +5773,12 @@ window.imprimirBoletaPedidoOficina = async function(id){
       <html lang="es">
       <head>
         <meta charset="UTF-8">
-        <title>Boleta ${esc(String(o.boletaNumber || ""))}</title>
+        <title>Remito ${esc(String(o.boletaNumber || "617"))}</title>
 
         <style>
           @page {
             size: A4 portrait;
-            margin: 10mm;
+            margin: 8mm;
           }
 
           * {
@@ -5755,109 +5786,185 @@ window.imprimirBoletaPedidoOficina = async function(id){
           }
 
           body {
-            font-family: Arial, sans-serif;
-            color: #111;
             margin: 0;
+            color: #111;
+            font-family: Arial, sans-serif;
           }
 
-          .boleta {
-            height: 133mm;
-            padding: 8mm;
+          .remito {
+            height: 137mm;
+            padding: 5mm;
+            border: 1px solid #222;
             position: relative;
             overflow: hidden;
-            border: 1px solid #777;
-            margin-bottom: 4mm;
+            margin-bottom: 5mm;
+            page-break-inside: avoid;
           }
 
           .encabezado {
-            display: flex;
+            display: grid;
+            grid-template-columns: 29% 45% 26%;
             align-items: center;
-            gap: 12px;
             border-bottom: 2px solid #111;
-            padding-bottom: 10px;
+            padding-bottom: 8px;
+            gap: 5px;
           }
 
-          .marca {
-            width: 55px;
-            height: 55px;
-            border: 2px solid #111;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+          .logo {
+            background: #172c50;
+            color: white;
+            padding: 12px 5px;
+            text-align: center;
+            border-radius: 5px;
+          }
+
+          .logo-texto {
+            font-size: 23px;
+            font-weight: 900;
+          }
+
+          .logo-sub {
+            font-size: 10px;
             font-weight: bold;
-            font-size: 15px;
           }
 
-          h2 {
+          .empresa h2 {
+            font-size: 14px;
             margin: 0 0 5px;
-            font-size: 17px;
           }
 
-          .numero {
-            text-align: right;
+          .empresa p {
+            font-size: 8px;
+            margin: 3px 0;
+          }
+
+          .tipo {
+            border: 1px solid #222;
+            text-align: center;
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+
+          .letra {
+            font-size: 25px;
             font-weight: bold;
-            font-size: 17px;
-            margin: 12px 0;
+            border-bottom: 1px solid #222;
           }
 
-          .datos {
-            font-size: 12px;
-            line-height: 1.7;
+          .tipo strong {
+            font-size: 14px;
           }
 
-          table {
+          .tipo span, .tipo b {
+            font-size: 9px;
+          }
+
+          .fecha {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 2px;
+            border-bottom: 1px solid #333;
+            font-size: 10px;
+          }
+
+          .copia {
+            font-size: 13px;
+          }
+
+          .datos-cliente {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 7px;
+            padding: 9px 4px;
+            border-bottom: 1px solid #333;
+            font-size: 10px;
+          }
+
+          .pendiente {
+            border: 1px solid #111;
+            padding: 3px 7px;
+          }
+
+          .detalle {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 12px;
-            font-size: 11px;
+            margin-top: 9px;
+            font-size: 9px;
           }
 
-          th, td {
+          .detalle th, .detalle td {
             border: 1px solid #555;
-            padding: 6px;
+            padding: 5px;
           }
 
-          th {
+          .detalle th {
             background: #eee;
           }
 
-          .center {
+          .cantidad {
             text-align: center;
+            width: 13%;
           }
 
-          .right {
+          .importe {
             text-align: right;
+            width: 19%;
           }
 
           .total {
             text-align: right;
-            font-size: 19px;
+            font-size: 17px;
             font-weight: bold;
-            margin-top: 15px;
+            padding: 9px 3px;
+            border-bottom: 1px solid #333;
           }
 
           .observaciones {
-            margin-top: 12px;
-            font-size: 11px;
+            font-size: 9px;
+            min-height: 22px;
+            padding: 6px 2px;
           }
 
-          .pie {
-            position: absolute;
-            bottom: 8mm;
-            left: 8mm;
-            right: 8mm;
-            padding-top: 8px;
-            border-top: 1px solid #777;
+          .destinatario {
+            border: 1px solid #555;
+            margin-top: 5px;
+            padding: 5px 8px;
+          }
+
+          .destinatario h3 {
             font-size: 10px;
+            text-align: center;
+            margin: 0 0 5px;
           }
 
-          small {
-            font-weight: bold;
+          .destinatario p {
+            font-size: 8px;
+            margin: 3px 0;
+          }
+
+          .firmas {
+            position: absolute;
+            bottom: 5mm;
+            left: 5mm;
+            right: 5mm;
+            border-top: 1px solid #555;
+            padding-top: 8px;
+            font-size: 9px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 7px;
+          }
+
+          .firmas p, .firmas small {
+            grid-column: 1 / -1;
+            margin: 0;
           }
 
           @media print {
-            .boleta {
+            .remito {
               break-inside: avoid;
             }
           }
@@ -5865,12 +5972,11 @@ window.imprimirBoletaPedidoOficina = async function(id){
       </head>
 
       <body>
-        ${comprobante}
-
-        ${comprobante}
+        ${comprobante.replace('ORIGINAL', 'ORIGINAL')}
+        ${comprobante.replace('ORIGINAL', 'DUPLICADO')}
 
         <script>
-          window.onload = function(){
+          window.onload = function() {
             window.print();
           };
         <\/script>
@@ -5881,13 +5987,11 @@ window.imprimirBoletaPedidoOficina = async function(id){
     ventana.document.close();
 
   } catch(error) {
-
-    console.error(error);
-    alert("Error al generar la boleta: " + error.message);
-
+    console.error("Error al imprimir remito:", error);
+    alert("Error al generar el remito: " + error.message);
   }
-
 };
+
     
     function tarjetaPedido(o){
       const estado = estadoDe(o);
