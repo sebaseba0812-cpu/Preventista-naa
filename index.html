@@ -318,7 +318,22 @@ body {
   <input id="cCreditDays" type="number" min="1" step="1" value="7" placeholder="Ej.: 7">
 </div>
 <label>Referencia / observaciones de ubicación</label><textarea id="cObs" rows="2" placeholder="Ej.: casa verde, frente a la plaza, portón negro..."></textarea>
-<button class="primary" style="margin-top:10px" onclick="addClient()">➕ Agregar cliente</button>
+<div class="card" style="margin-top:12px;background:#f1f5f9">
+  <h3>📍 Ubicación del comercio</h3>
+
+  <p id="clientLocationStatus" class="small">
+    Todavía no se registró la ubicación.
+  </p>
+
+  <button type="button" class="secondary"
+    onclick="obtenerUbicacionCliente()">
+    📍 Obtener ubicación GPS
+  </button>
+
+  <input type="hidden" id="cLatitude">
+  <input type="hidden" id="cLongitude">
+</div>
+  <button class="primary" style="margin-top:10px" onclick="addClient()">➕ Agregar cliente</button>
 </div>
 <div class="card"><div id="clientList"></div></div>
 <div class="card">
@@ -653,6 +668,39 @@ onclick="createPromotion()">
         </p>
       </div>
     </div>
+
+    <div class="card">
+  <h3>🔢 Rangos de números de clientes</h3>
+  <p class="small">
+    Asigná a cada preventista los números de clientes que puede utilizar.
+  </p>
+
+  <label>Preventista</label>
+  <select id="clientRangePreventista" onfocus="cargarPreventistasRangos()">
+    <option value="">Seleccionar preventista</option>
+  </select>
+
+  <label>Desde el número</label>
+  <input type="number" id="clientRangeStart" min="1" placeholder="Ej.: 1">
+
+  <label>Hasta el número</label>
+  <input type="number" id="clientRangeEnd" min="1" placeholder="Ej.: 500">
+
+  <label>Próximo número disponible</label>
+  <input type="number" id="clientRangeNext" min="1" placeholder="Ej.: 1">
+
+  <button type="button" onclick="guardarRangoClientes()">
+    Guardar rango
+  </button>
+
+  <button type="button" class="secondary"
+    onclick="cargarRangoClientes()">
+    Consultar rango
+  </button>
+
+  <p id="clientRangeStatus" class="small"></p>
+</div>
+    
   </div>
 </section> 
 
@@ -4495,28 +4543,168 @@ btn.onclick=function(){removeManualProduct(Number(this.dataset.index));};
 });
 }
 
-function addClient(){
-let name=document.getElementById("cName").value.trim();
-if(!name){alert("Falta el nombre del cliente");return}
-clients.push({
- id:Date.now(),name,
- zone:document.getElementById("cZone").value.trim(),
- street:document.getElementById("cStreet").value.trim(),
- height:document.getElementById("cHeight").value.trim(),
- phone:document.getElementById("cPhone").value.trim(),
- whatsapp:(function(v){let n=String(v||"").replace(/[^\d]/g,""); return n ? "+54 9 "+n.replace(/^549/,"").replace(/^54/,"").replace(/^9/,"") : "";})(document.getElementById("cWhatsapp").value),
- obs:document.getElementById("cObs").value.trim(),
-paymentType:document.getElementById("cPaymentType").value,
-creditDays:Number(document.getElementById("cCreditDays").value||0),
-user
-});
-save();
-["cName","cZone","cStreet","cHeight","cPhone","cWhatsapp","cObs"].forEach(id=>document.getElementById(id).value="");
-document.getElementById("cPaymentType").value="contado";
-document.getElementById("cCreditDays").value="7";
-document.getElementById("cCreditDaysBox").style.display="none";
-renderClients();showSelectedClient();
-alert("Cliente guardado");
+function obtenerUbicacionCliente(){
+  const estado = document.getElementById("clientLocationStatus");
+
+  if(!navigator.geolocation){
+    alert("Este dispositivo no permite obtener la ubicación GPS.");
+    return;
+  }
+
+  estado.textContent = "Obteniendo ubicación...";
+
+  navigator.geolocation.getCurrentPosition(
+    function(position){
+      document.getElementById("cLatitude").value =
+        position.coords.latitude;
+
+      document.getElementById("cLongitude").value =
+        position.coords.longitude;
+
+      estado.textContent =
+        "✅ Ubicación registrada correctamente.";
+
+    },
+    function(error){
+      estado.textContent = "No se pudo obtener la ubicación GPS.";
+      alert("Activá el permiso de ubicación o intentá nuevamente.");
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    }
+  );
+}
+  
+async function addClient(){
+
+  const name = document.getElementById("cName").value.trim();
+
+  if(!name){
+    alert("Falta el nombre del cliente");
+    return;
+  }
+
+  if(!user || !user.uid || !firebaseAuth.currentUser){
+    alert("La sesión no está activa. Volvé a iniciar sesión.");
+    return;
+  }
+
+  const latitude = document.getElementById("cLatitude").value;
+  const longitude = document.getElementById("cLongitude").value;
+
+  if(latitude === "" || longitude === ""){
+    alert("Primero tenés que registrar la ubicación del comercio.");
+    return;
+  }
+
+  const rangeRef = firebaseDB
+    .collection("clientNumberRanges")
+    .doc(user.uid);
+
+  const clientId = Date.now();
+  const clientRef = firebaseDB
+    .collection("clients")
+    .doc(String(clientId));
+
+  const nuevoCliente = {
+    id: clientId,
+    name: name,
+    zone: document.getElementById("cZone").value.trim(),
+    street: document.getElementById("cStreet").value.trim(),
+    height: document.getElementById("cHeight").value.trim(),
+    phone: document.getElementById("cPhone").value.trim(),
+
+    whatsapp: (function(v){
+      let n = String(v || "").replace(/[^\d]/g,"");
+      return n ? "+54 9 " + n.replace(/^549/,"").replace(/^54/,"").replace(/^9/,"") : "";
+    })(document.getElementById("cWhatsapp").value),
+
+    obs: document.getElementById("cObs").value.trim(),
+
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+
+    paymentType: document.getElementById("cPaymentType").value,
+    creditDays: Number(document.getElementById("cCreditDays").value || 0),
+
+    user: {
+      uid: user.uid,
+      name: user.name
+    },
+
+    ownerUid: user.uid,
+    preventistaUid: user.uid
+  };
+
+  try {
+
+    await firebaseDB.runTransaction(async transaction => {
+
+      const rangeSnap = await transaction.get(rangeRef);
+
+      if(!rangeSnap.exists){
+        throw new Error("NO_RANGE");
+      }
+
+      const range = rangeSnap.data();
+      const numero = Number(range.nextNumber);
+
+      if(!Number.isInteger(numero) ||
+         numero < Number(range.startNumber) ||
+         numero > Number(range.endNumber)){
+        throw new Error("RANGE_FINISHED");
+      }
+
+      nuevoCliente.clientNumber = numero;
+
+      transaction.set(clientRef, {
+        ...nuevoCliente,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      transaction.update(rangeRef, {
+        nextNumber: numero + 1
+      });
+
+    });
+
+    clients.push(nuevoCliente);
+    save();
+
+    [
+      "cName","cZone","cStreet","cHeight",
+      "cPhone","cWhatsapp","cObs",
+      "cLatitude","cLongitude"
+    ].forEach(id => {
+      document.getElementById(id).value = "";
+    });
+
+    document.getElementById("clientLocationStatus").textContent =
+      "Todavía no se registró la ubicación.";
+
+    document.getElementById("cPaymentType").value = "contado";
+    document.getElementById("cCreditDays").value = "7";
+    document.getElementById("cCreditDaysBox").style.display = "none";
+
+    renderClients();
+    showSelectedClient();
+
+    alert("Cliente guardado correctamente. Número: " + nuevoCliente.clientNumber);
+
+  } catch(error) {
+
+    console.error("Error guardando cliente:", error);
+
+    if(error.message === "NO_RANGE"){
+      alert("Este preventista todavía no tiene un rango de números asignado.");
+    }else if(error.message === "RANGE_FINISHED"){
+      alert("Se terminó el rango de números de clientes asignado.");
+    }else{
+      alert("No se pudo guardar el cliente en Firebase. Revisá la conexión y los permisos.");
+    }
+  }
 }
 function clientAddress(c){
 let parts=[];
@@ -6521,7 +6709,143 @@ async function generarHojaRutaReparto() {
   }
 }
 
-  
+ // CARGAR PREVENTISTAS PARA ASIGNAR RANGOS
+async function cargarPreventistasRangos() {
+  const select = document.getElementById("clientRangePreventista");
+  if (!select) return;
+
+  try {
+    const snapshot = await firebaseDB.collection("users").get();
+
+    const preventistas = snapshot.docs
+      .map(doc => ({
+        uid: doc.id,
+        ...doc.data()
+      }))
+      .filter(u =>
+        String(u.role || "").toLowerCase() === "preventista" &&
+        u.active !== false
+      )
+      .sort((a, b) =>
+        String(a.name || a.username || "").localeCompare(
+          String(b.name || b.username || ""),
+          "es"
+        )
+      );
+
+    select.innerHTML =
+      '<option value="">Seleccionar preventista</option>';
+
+    preventistas.forEach(p => {
+      const option = document.createElement("option");
+      option.value = p.uid;
+      option.textContent = p.name || p.username || p.uid;
+      select.appendChild(option);
+    });
+
+  } catch (error) {
+    console.error("Error cargando preventistas:", error);
+    alert("No se pudieron cargar los preventistas.");
+  }
+}
+
+
+// GUARDAR RANGO DE CLIENTES
+async function guardarRangoClientes() {
+  const uid = document.getElementById("clientRangePreventista").value;
+
+  const inicio = Number(document.getElementById("clientRangeStart").value);
+  const fin = Number(document.getElementById("clientRangeEnd").value);
+  const siguiente = Number(document.getElementById("clientRangeNext").value);
+
+  const estado = document.getElementById("clientRangeStatus");
+
+  if (!uid) {
+    alert("Seleccioná un preventista.");
+    return;
+  }
+
+  if (
+    !Number.isInteger(inicio) ||
+    !Number.isInteger(fin) ||
+    !Number.isInteger(siguiente) ||
+    inicio < 1 ||
+    fin < inicio ||
+    siguiente < inicio ||
+    siguiente > fin + 1
+  ) {
+    alert("Revisá los números del rango. El próximo debe estar entre el inicio y el final más uno.");
+    return;
+  }
+
+  try {
+    const ref = firebaseDB
+      .collection("clientNumberRanges")
+      .doc(uid);
+
+    const existente = await ref.get();
+
+    const datos = {
+      startNumber: inicio,
+      endNumber: fin,
+      nextNumber: siguiente,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (existente.exists) {
+      await ref.update(datos);
+    } else {
+      await ref.set(datos);
+    }
+
+    estado.textContent = "✅ Rango guardado correctamente.";
+    alert("Rango asignado correctamente.");
+
+  } catch (error) {
+    console.error("Error guardando rango:", error);
+    estado.textContent = "No se pudo guardar el rango.";
+    alert("Error al guardar. Verificá que hayas ingresado como administrador y que las reglas estén publicadas.");
+  }
+}
+
+
+// CONSULTAR RANGO DE UN PREVENTISTA
+async function cargarRangoClientes() {
+  const uid = document.getElementById("clientRangePreventista").value;
+  const estado = document.getElementById("clientRangeStatus");
+
+  if (!uid) {
+    alert("Seleccioná un preventista.");
+    return;
+  }
+
+  try {
+    const doc = await firebaseDB
+      .collection("clientNumberRanges")
+      .doc(uid)
+      .get();
+
+    if (!doc.exists) {
+      estado.textContent = "Este preventista todavía no tiene un rango asignado.";
+      document.getElementById("clientRangeStart").value = "";
+      document.getElementById("clientRangeEnd").value = "";
+      document.getElementById("clientRangeNext").value = "";
+      return;
+    }
+
+    const rango = doc.data();
+
+    document.getElementById("clientRangeStart").value = rango.startNumber;
+    document.getElementById("clientRangeEnd").value = rango.endNumber;
+    document.getElementById("clientRangeNext").value = rango.nextNumber;
+
+    estado.textContent = "Rango consultado correctamente.";
+
+  } catch (error) {
+    console.error("Error consultando rango:", error);
+    alert("No se pudo consultar el rango.");
+  }
+} 
 
   
   async function guardarVehiculoReparto(id){
