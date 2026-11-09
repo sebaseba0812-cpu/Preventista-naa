@@ -5634,10 +5634,7 @@ window.imprimirBoletaPedidoOficina = async function(id) {
   }
 
   try {
-    const doc = await firebaseDB
-      .collection("orders")
-      .doc(id)
-      .get();
+    const doc = await firebaseDB.collection("orders").doc(id).get();
 
     if (!doc.exists) {
       ventana.close();
@@ -5657,18 +5654,41 @@ window.imprimirBoletaPedidoOficina = async function(id) {
       ? o.createdAt.toDate()
       : (o.date ? new Date(o.date) : new Date());
 
-    const fechaTexto = fechaObj.toLocaleDateString("es-AR");
-    const horaTexto = fechaObj.toLocaleTimeString("es-AR", {
-      hour: "2-digit",
-      minute: "2-digit"
+    const fechaTexto = fechaObj.toLocaleString("es-AR", {
+      dateStyle: "short",
+      timeStyle: "short"
     });
 
     const numero = String(o.boletaNumber || "");
     const comercio = o.client || cliente?.name || "Sin cliente";
-    const numeroCliente = cliente?.number || cliente?.clientNumber || "";
-    const calle = cliente?.street || "";
-    const altura = cliente?.height || "";
-    const zona = cliente?.zone || "";
+    const numeroCliente =
+      cliente?.number ||
+      cliente?.clientNumber ||
+      o.clientNumber ||
+      "";
+
+    const calle = cliente?.street || o.street || "";
+    const altura = cliente?.height || o.height || "";
+    const zona = cliente?.zone || o.zone || "";
+
+    const direccion = [calle, altura].filter(Boolean).join(" ");
+
+    const esCuentaCorriente =
+      o.paymentType === "cuenta_corriente";
+
+    let formaPago = esCuentaCorriente
+      ? "CUENTA CORRIENTE"
+      : (
+          o.paymentMethod ||
+          o.paymentMethodName ||
+          o.medioPago ||
+          o.paymentType ||
+          "PENDIENTE"
+        );
+
+    formaPago = String(formaPago)
+      .replaceAll("_", " ")
+      .toUpperCase();
 
     const productos = (o.lines || []).map(p => {
       const cantidad = Number(p.qty || 0);
@@ -5704,7 +5724,6 @@ window.imprimirBoletaPedidoOficina = async function(id) {
     function ejemplar(tipo) {
       return `
         <div class="comprobante">
-
           <div class="marca-agua">
             <img src="${logoUrl}" alt="">
           </div>
@@ -5731,42 +5750,32 @@ window.imprimirBoletaPedidoOficina = async function(id) {
               <span>Inicio de actividad: 22/07/2026</span>
             </div>
 
-            <div class="numero">
-              REMITO X · N° ${esc(numero || "Sin número")}
-            </div>
-
-            <div class="datos">
-              <div>
+            <div class="franja-datos">
+              <div class="cliente">
                 <span>CLIENTE / COMERCIO</span>
                 <strong>${esc(comercio)}</strong>
+                ${direccion ? `<small>DIRECCIÓN: ${esc(direccion)}</small>` : ""}
+                ${zona ? `<small>BARRIO / ZONA: ${esc(zona)}</small>` : ""}
               </div>
 
-              <div>
-                <span>NÚMERO DE CLIENTE</span>
-                <strong>${esc(String(numeroCliente))}</strong>
-              </div>
-
-              <div>
-                <span>FECHA</span>
-                <strong>${esc(fechaTexto)} · ${esc(horaTexto)}</strong>
-              </div>
-
-              <div>
-                <span>FORMA DE PAGO</span>
-                <strong class="pendiente">PENDIENTE</strong>
-              </div>
-
-              <div>
-                <span>DIRECCIÓN</span>
-                <strong>${esc(calle)} ${esc(String(altura))}</strong>
-              </div>
-
-              ${zona ? `
+              <div class="datos-derecha">
                 <div>
-                  <span>BARRIO / ZONA</span>
-                  <strong>${esc(zona)}</strong>
+                  <span>REMITO Nº</span>
+                  <strong>${esc(numero || "Sin número")}</strong>
                 </div>
-              ` : ""}
+                <div>
+                  <span>Nº CLIENTE</span>
+                  <strong>${esc(String(numeroCliente || "—"))}</strong>
+                </div>
+                <div>
+                  <span>FECHA</span>
+                  <strong>${esc(fechaTexto)}</strong>
+                </div>
+                <div>
+                  <span>FORMA DE PAGO</span>
+                  <strong>${esc(formaPago)}</strong>
+                </div>
+              </div>
             </div>
 
             <div class="titulo-tabla">DETALLE DE MERCADERÍA</div>
@@ -5790,22 +5799,18 @@ window.imprimirBoletaPedidoOficina = async function(id) {
               TOTAL: ${liqMoney(Number(o.total || 0))}
             </div>
 
-            <div class="observaciones">
-              <strong>Observaciones:</strong>
-              ${esc(o.obs || "")}
-            </div>
+            ${o.obs ? `
+              <div class="observaciones">
+                <strong>Observaciones:</strong> ${esc(o.obs)}
+              </div>
+            ` : ""}
 
-            <div class="firmas">
-              <div>
-                ______________________
+            ${esCuentaCorriente ? `
+              <div class="firma-cliente">
+                ______________________________
                 <span>Firma y aclaración del cliente</span>
               </div>
-
-              <div>
-                ______________________
-                <span>Firma del preventista</span>
-              </div>
-            </div>
+            ` : ""}
 
             <div class="pie">
               DISTRIBUIDORA N.A.A. S.A.S. · REMITO DE MERCADERÍA
@@ -5845,10 +5850,9 @@ window.imprimirBoletaPedidoOficina = async function(id) {
             width: 100%;
             border: 1.4px solid #183d78;
             border-radius: 7px;
-            padding: 6mm;
+            padding: 5mm;
             position: relative;
             overflow: hidden;
-            margin: 0;
             page-break-inside: avoid;
           }
 
@@ -5884,15 +5888,12 @@ window.imprimirBoletaPedidoOficina = async function(id) {
             align-items: center;
             gap: 10px;
             border-bottom: 2px solid #183d78;
-            padding-bottom: 8px;
+            padding-bottom: 6px;
           }
 
           .logo {
-            width: 145px;
-            height: 55px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 130px;
+            height: 45px;
             flex-shrink: 0;
           }
 
@@ -5900,7 +5901,6 @@ window.imprimirBoletaPedidoOficina = async function(id) {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            display: block;
           }
 
           .empresa {
@@ -5921,7 +5921,6 @@ window.imprimirBoletaPedidoOficina = async function(id) {
           }
 
           .tipo {
-            margin-left: auto;
             background: #183d78;
             color: white;
             padding: 6px 9px;
@@ -5933,73 +5932,91 @@ window.imprimirBoletaPedidoOficina = async function(id) {
           .empresa-datos {
             display: flex;
             flex-wrap: wrap;
-            gap: 5px 14px;
-            padding: 6px 2px;
+            gap: 4px 12px;
+            padding: 4px 2px;
             border-bottom: 1px solid #d7deea;
-            font-size: 8px;
+            font-size: 7px;
             color: #52627a;
           }
 
-          .numero {
-            text-align: right;
-            font-size: 10px;
-            font-weight: bold;
+          .franja-datos {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
             margin-top: 7px;
-            color: #183d78;
           }
 
-          .datos {
-            display: grid;
-            grid-template-columns: 1.4fr 1fr;
-            gap: 7px;
-            margin-top: 8px;
-          }
-
-          .datos div {
+          .cliente {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 3px;
+            max-width: 55%;
+            padding: 5px 8px;
             background: #f4f7fc;
-            padding: 7px;
-            border-radius: 4px;
-            min-width: 0;
+            border-left: 3px solid #183d78;
+            border-radius: 3px;
           }
 
-          .datos span {
-            display: block;
-            font-size: 8px;
+          .cliente span,
+          .datos-derecha span {
+            font-size: 7px;
             color: #52627a;
-            margin-bottom: 4px;
             font-weight: bold;
           }
 
-          .datos strong {
-            font-size: 10px;
+          .cliente strong {
+            font-size: 12px;
             color: #172b4d;
             overflow-wrap: anywhere;
           }
 
-          .pendiente {
-            color: #a05a00 !important;
+          .cliente small {
+            font-size: 8px;
+            color: #52627a;
+          }
+
+          .datos-derecha {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px 10px;
+            min-width: 42%;
+          }
+
+          .datos-derecha div {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 3px 5px;
+            border-bottom: 1px solid #d7deea;
+          }
+
+          .datos-derecha strong {
+            font-size: 9px;
+            color: #172b4d;
           }
 
           .titulo-tabla {
-            margin-top: 10px;
-            padding: 6px;
+            margin-top: 7px;
+            padding: 4px 6px;
             background: #edf3fb;
-            border-left: 4px solid #183d78;
-            font-size: 9px;
+            border-left: 3px solid #183d78;
+            font-size: 8px;
             font-weight: bold;
           }
 
           .detalle {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 5px;
+            margin-top: 3px;
             font-size: 8px;
           }
 
           .detalle th,
           .detalle td {
             border: 1px solid #aab6c8;
-            padding: 5px;
+            padding: 3px 4px;
           }
 
           .detalle th {
@@ -6009,7 +6026,7 @@ window.imprimirBoletaPedidoOficina = async function(id) {
 
           .cantidad {
             text-align: center;
-            width: 12%;
+            width: 10%;
           }
 
           .importe {
@@ -6020,46 +6037,44 @@ window.imprimirBoletaPedidoOficina = async function(id) {
 
           .total {
             text-align: right;
-            font-size: 19px;
+            font-size: 17px;
             font-weight: 900;
             color: #102f65;
-            padding: 9px 3px;
+            padding: 6px 3px;
             border-bottom: 1px solid #d7deea;
           }
 
           .observaciones {
-            font-size: 9px;
-            margin-top: 7px;
-            min-height: 20px;
+            font-size: 8px;
+            margin-top: 5px;
           }
 
-          .firmas {
-            display: flex;
-            justify-content: space-between;
-            text-align: center;
+          .firma-cliente {
             margin-top: auto;
+            align-self: flex-start;
+            width: 48%;
             padding-top: 12px;
+            text-align: center;
             font-size: 9px;
-            color: #172b4d;
           }
 
-          .firmas div {
-            width: 43%;
-          }
-
-          .firmas span {
+          .firma-cliente span {
             display: block;
-            margin-top: 4px;
+            margin-top: 3px;
           }
 
           .pie {
             text-align: center;
             border-top: 1px solid #d7deea;
-            padding-top: 5px;
-            margin-top: 7px;
-            font-size: 8px;
+            padding-top: 4px;
+            margin-top: auto;
+            font-size: 7px;
             color: #52627a;
-            letter-spacing: 0.7px;
+            letter-spacing: 0.6px;
+          }
+
+          .firma-cliente + .pie {
+            margin-top: 7px;
           }
 
           .corte {
@@ -6069,7 +6084,6 @@ window.imprimirBoletaPedidoOficina = async function(id) {
             font-size: 9px;
             color: #52627a;
             border-top: 1px dashed #52627a;
-            margin: 0;
           }
 
           .no-print {
@@ -6116,7 +6130,6 @@ window.imprimirBoletaPedidoOficina = async function(id) {
     alert("No se pudo generar el remito: " + error.message);
   }
 };
-
     
     function tarjetaPedido(o){
       const estado = estadoDe(o);
