@@ -5904,25 +5904,33 @@ async function sendDraftToOffice(){
         );
 
         const pedido = {
-          ...draft,
+  ...draft,
 
-          status:"nuevo",
+  status:"nuevo",
 
-          paymentType:pedidoClient?.paymentType || "contado",
+  clientData: {
+    name: pedidoClient?.name || draft.client || "",
+    clientNumber: pedidoClient?.clientNumber || "",
+    zone: pedidoClient?.zone || "",
+    street: pedidoClient?.street || "",
+    height: pedidoClient?.height || ""
+  },
 
-          creditDays:Number(pedidoClient?.creditDays || 0),
+  paymentType:pedidoClient?.paymentType || "contado",
 
-          paymentStatus:
-            pedidoClient?.paymentType === "cuenta_corriente"
-              ? "pendiente"
-              : "cobrado",
+  creditDays:Number(pedidoClient?.creditDays || 0),
 
-          boletaNumber:nextNumber,
+  paymentStatus:
+    pedidoClient?.paymentType === "cuenta_corriente"
+      ? "pendiente"
+      : "cobrado",
 
-          sentAt:firebase.firestore.FieldValue.serverTimestamp(),
+  boletaNumber:nextNumber,
 
-          createdAt:firebase.firestore.FieldValue.serverTimestamp()
-        };
+  sentAt:firebase.firestore.FieldValue.serverTimestamp(),
+
+  createdAt:firebase.firestore.FieldValue.serverTimestamp()
+};
 
         transaction.update(numberRef,{
           nextInvoiceNumber:nextNumber + 1
@@ -6435,21 +6443,40 @@ window.imprimirBoletaPedidoOficina = async function(id) {
       timeStyle: "short"
     });
 
-    const numero = String(o.boletaNumber || "");
-    const comercio = o.client || cliente?.name || "Sin cliente";
-    const numeroCliente =
-      cliente?.number ||
-      cliente?.clientNumber ||
-      o.clientNumber ||
-      "";
+   const datosCliente = o.clientData || {};
 
-    const calle = cliente?.street || o.street || "";
-    const altura = cliente?.height || o.height || "";
-    const zona = cliente?.zone || o.zone || "";
+const numero = String(o.boletaNumber || "");
+ const nombrePreventista =
+  o.preventistaName ||
+  o.user?.name ||
+  o.user ||
+  "Sin preventista";   
+const comercio =
+  datosCliente.name || o.client || cliente?.name || "Sin cliente";
 
-    const direccion = [calle, altura].filter(Boolean).join(" ");
+const numeroCliente =
+  datosCliente.clientNumber ||
+  cliente?.clientNumber ||
+  cliente?.number ||
+  o.clientNumber ||
+  "";
+
+const calle = datosCliente.street || cliente?.street || o.street || "";
+const altura = datosCliente.height || cliente?.height || o.height || "";
+const zona = datosCliente.zone || cliente?.zone || o.zone || "";
+
+const direccion = [calle, altura].filter(Boolean).join(" ");
 
     const esCuentaCorriente =
+      const vencimientoObj = new Date(fechaObj);
+
+vencimientoObj.setHours(0, 0, 0, 0);
+vencimientoObj.setDate(
+  vencimientoObj.getDate() + Number(o.creditDays || 0)
+);
+
+const vencimientoTexto =
+  vencimientoObj.toLocaleDateString("es-AR");
       o.paymentType === "cuenta_corriente";
 
     let formaPago = esCuentaCorriente
@@ -6550,6 +6577,17 @@ window.imprimirBoletaPedidoOficina = async function(id) {
                 <div>
                   <span>FORMA DE PAGO</span>
                   <strong>${esc(formaPago)}</strong>
+
+                <div>
+  <span>PREVENTISTA</span>
+  <strong>${esc(nombrePreventista)}</strong>
+</div>
+  ${esCuentaCorriente ? `
+  <div>
+    <span>VENCIMIENTO</span>
+    <strong>${esc(vencimientoTexto)}</strong>
+  </div>
+` : ""}              
                 </div>
               </div>
             </div>
