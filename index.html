@@ -3291,7 +3291,11 @@ async function registrarAdelantoLiquidacion() {
 
 // ===== FIN DE REGISTRO DE ADELANTO =====
   
-async function imprimirComprobanteAdelanto(id) {
+
+
+
+
+    function ejemplar(tipo) {async function imprimirComprobanteAdelanto(id) {
   const ventana = window.open("", "_blank");
 
   if (!ventana) {
@@ -3325,10 +3329,6 @@ async function imprimirComprobanteAdelanto(id) {
 
 const logoUrl = "https://raw.githubusercontent.com/sebaseba0812-cpu/Preventista-naa/main/png_logo_on_white_background_a_bold_glossy_blue.png";
 
-
-
-
-    function ejemplar(tipo) {
       return `
         <div class="comprobante">
 
@@ -5623,31 +5623,46 @@ async function renderOfficeOrders(){
 // ==========================================
 
 
-window.imprimirBoletaPedidoOficina = async function(id){
+
+window.imprimirBoletaPedidoOficina = async function(id) {
+  const ventana = window.open("", "_blank");
+
+  if (!ventana) {
+    alert("Permití las ventanas emergentes para imprimir.");
+    return;
+  }
+
   try {
-    const doc = await firebaseDB.collection("orders").doc(id).get();
+    const doc = await firebaseDB
+      .collection("orders")
+      .doc(id)
+      .get();
 
     if (!doc.exists) {
+      ventana.close();
       alert("No se encontró el pedido.");
       return;
     }
 
-    const o = doc.data();
+    const o = doc.data() || {};
 
     const cliente = Array.isArray(clients)
       ? clients.find(c => String(c.id) === String(o.clientId))
       : null;
 
+    const logoUrl = "https://raw.githubusercontent.com/sebaseba0812-cpu/Preventista-naa/main/png_logo_on_white_background_a_bold_glossy_blue.png";
+
     const fechaObj = o.createdAt?.toDate
       ? o.createdAt.toDate()
       : (o.date ? new Date(o.date) : new Date());
 
-    const fecha = fechaObj.toLocaleDateString("es-AR");
-    const hora = fechaObj.toLocaleTimeString("es-AR", {
+    const fechaTexto = fechaObj.toLocaleDateString("es-AR");
+    const horaTexto = fechaObj.toLocaleTimeString("es-AR", {
       hour: "2-digit",
       minute: "2-digit"
     });
 
+    const numero = String(o.boletaNumber || "");
     const comercio = o.client || cliente?.name || "Sin cliente";
     const numeroCliente = cliente?.number || cliente?.clientNumber || "";
     const calle = cliente?.street || "";
@@ -5657,12 +5672,13 @@ window.imprimirBoletaPedidoOficina = async function(id){
     const productos = (o.lines || []).map(p => {
       const cantidad = Number(p.qty || 0);
       const subtotal = Number(p.total || 0);
-      const unitario = cantidad ? subtotal / cantidad : 0;
+      const unitario = cantidad > 0 ? subtotal / cantidad : 0;
 
       return `
         <tr>
           <td class="cantidad">${cantidad}</td>
-          <td>${esc(p.name || "")}
+          <td>
+            ${esc(p.name || "")}
             ${p.presentation ? " - " + esc(p.presentation) : ""}
           </td>
           <td class="importe">$${money(unitario)}</td>
@@ -5674,7 +5690,8 @@ window.imprimirBoletaPedidoOficina = async function(id){
     const bonificaciones = (o.bonuses || []).map(p => `
       <tr>
         <td class="cantidad">${Number(p.qty || 0)}</td>
-        <td>${esc(p.name || "")}
+        <td>
+          ${esc(p.name || "")}
           ${p.presentation ? " - " + esc(p.presentation) : ""}
           <strong>(BONIFICADO)</strong>
         </td>
@@ -5683,89 +5700,119 @@ window.imprimirBoletaPedidoOficina = async function(id){
       </tr>
     `).join("");
 
-    const comprobante = `
-      <section class="remito">
-        <header class="encabezado">
-          <div class="logo">
-            <div class="logo-texto">N.A.A.</div>
-            <div class="logo-sub">DISTRIBUIDORA</div>
+    function ejemplar(tipo) {
+      return `
+        <div class="comprobante">
+
+          <div class="marca-agua">
+            <img src="${logoUrl}" alt="">
           </div>
 
-          <div class="empresa">
-            <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
-            <p>Dirección: Garupá A 31, B° Fátima</p>
-            <p>Teléfono: 3764 833833</p>
-            <p>CUIT: __________________</p>
-            <p>Inicio de actividad: 22/07/2026</p>
+          <div class="contenido">
+
+            <div class="encabezado">
+              <div class="logo">
+                <img src="${logoUrl}" alt="Distribuidora N.A.A.">
+              </div>
+
+              <div class="empresa">
+                <p>REMITO DE MERCADERÍA</p>
+                <span>DISTRIBUIDORA N.A.A. S.A.S.</span>
+              </div>
+
+              <div class="tipo">${tipo}</div>
+            </div>
+
+            <div class="empresa-datos">
+              <span>Dirección: Garupá A 31, B° Fátima</span>
+              <span>Teléfono: 3764 833833</span>
+              <span>CUIT: __________________</span>
+              <span>Inicio de actividad: 22/07/2026</span>
+            </div>
+
+            <div class="numero">
+              REMITO X · N° ${esc(numero || "Sin número")}
+            </div>
+
+            <div class="datos">
+              <div>
+                <span>CLIENTE / COMERCIO</span>
+                <strong>${esc(comercio)}</strong>
+              </div>
+
+              <div>
+                <span>NÚMERO DE CLIENTE</span>
+                <strong>${esc(String(numeroCliente))}</strong>
+              </div>
+
+              <div>
+                <span>FECHA</span>
+                <strong>${esc(fechaTexto)} · ${esc(horaTexto)}</strong>
+              </div>
+
+              <div>
+                <span>FORMA DE PAGO</span>
+                <strong class="pendiente">PENDIENTE</strong>
+              </div>
+
+              <div>
+                <span>DIRECCIÓN</span>
+                <strong>${esc(calle)} ${esc(String(altura))}</strong>
+              </div>
+
+              ${zona ? `
+                <div>
+                  <span>BARRIO / ZONA</span>
+                  <strong>${esc(zona)}</strong>
+                </div>
+              ` : ""}
+            </div>
+
+            <div class="titulo-tabla">DETALLE DE MERCADERÍA</div>
+
+            <table class="detalle">
+              <thead>
+                <tr>
+                  <th>Cant.</th>
+                  <th>Nombre del producto</th>
+                  <th>Precio unit.</th>
+                  <th>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${productos}
+                ${bonificaciones}
+              </tbody>
+            </table>
+
+            <div class="total">
+              TOTAL: ${liqMoney(Number(o.total || 0))}
+            </div>
+
+            <div class="observaciones">
+              <strong>Observaciones:</strong>
+              ${esc(o.obs || "")}
+            </div>
+
+            <div class="firmas">
+              <div>
+                ______________________
+                <span>Firma y aclaración del cliente</span>
+              </div>
+
+              <div>
+                ______________________
+                <span>Firma del preventista</span>
+              </div>
+            </div>
+
+            <div class="pie">
+              DISTRIBUIDORA N.A.A. S.A.S. · REMITO DE MERCADERÍA
+            </div>
+
           </div>
-
-          <div class="tipo">
-            <div class="letra">X</div>
-            <strong>REMITO</strong>
-            <span>N.º ${esc(String(o.boletaNumber || "617"))}</span>
-            <b>NO FISCAL</b>
-          </div>
-        </header>
-
-        <div class="fecha">
-          <span><b>Fecha:</b> ${fecha}</span>
-          <span><b>Hora:</b> ${hora}</span>
-          <strong class="copia">ORIGINAL</strong>
         </div>
-
-        <div class="datos-cliente">
-          <div><b>Cliente:</b> ${esc(comercio)}</div>
-          <div><b>N.º de cliente:</b> ${esc(String(numeroCliente))}</div>
-          <div><b>Forma de pago:</b> <strong class="pendiente">PENDIENTE</strong></div>
-          <div><b>Dirección:</b> ${esc(calle)} ${esc(String(altura))}</div>
-          <div><b>Barrio / Zona:</b> ${esc(zona)}</div>
-        </div>
-
-        <table class="detalle">
-          <thead>
-            <tr>
-              <th>Cantidad</th>
-              <th>Nombre del producto</th>
-              <th>Precio unit.</th>
-              <th>Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${productos}
-            ${bonificaciones}
-          </tbody>
-        </table>
-
-        <div class="total">
-          TOTAL: $${money(o.total || 0)}
-        </div>
-
-        <div class="observaciones">
-          <b>Observaciones:</b> ${esc(o.obs || "")}
-        </div>
-
-        <div class="destinatario">
-          <h3>DATOS DEL DESTINATARIO</h3>
-          <p><b>Nombre:</b> ${esc(comercio)}</p>
-          <p><b>N.º de cliente:</b> ${esc(String(numeroCliente))}</p>
-          <p><b>Dirección:</b> ${esc(calle)} ${esc(String(altura))}</p>
-          <p><b>Notas / Horarios:</b> ${esc(cliente?.observations || cliente?.observaciones || "")}</p>
-        </div>
-
-        <footer class="firmas">
-          <div>Firma del cliente: ____________________</div>
-          <div>Firma del preventista: ____________________</div>
-          <p>Preventista: ${esc(o.preventistaName || o.user || "")}</p>
-          <small>Distribuidora N.A.A. S.A.S.</small>
-        </footer>
-      </section>
-    `;
-
-    const ventana = window.open("", "_blank");
-
-    if (!ventana) {
-      alert("Permití las ventanas emergentes para imprimir.");
-      return;
+      `;
     }
 
     ventana.document.write(`
@@ -5773,12 +5820,12 @@ window.imprimirBoletaPedidoOficina = async function(id){
       <html lang="es">
       <head>
         <meta charset="UTF-8">
-        <title>Remito ${esc(String(o.boletaNumber || "617"))}</title>
+        <title>Remito ${esc(numero)}</title>
 
         <style>
           @page {
             size: A4 portrait;
-            margin: 8mm;
+            margin: 5mm;
           }
 
           * {
@@ -5786,209 +5833,286 @@ window.imprimirBoletaPedidoOficina = async function(id){
           }
 
           body {
-            margin: 0;
-            color: #111;
             font-family: Arial, sans-serif;
+            color: #172b4d;
+            margin: 0;
+            background: white;
           }
 
-          .remito {
-            height: 137mm;
-            padding: 5mm;
-            border: 1px solid #222;
+          .comprobante {
+            height: 135mm;
+            width: 100%;
+            border: 1.4px solid #183d78;
+            border-radius: 7px;
+            padding: 6mm;
             position: relative;
             overflow: hidden;
-            margin-bottom: 5mm;
+            margin: 0;
             page-break-inside: avoid;
           }
 
+          .contenido {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .marca-agua {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 76%;
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0.15;
+          }
+
+          .marca-agua img {
+            display: block;
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+          }
+
           .encabezado {
-            display: grid;
-            grid-template-columns: 29% 45% 26%;
+            display: flex;
             align-items: center;
-            border-bottom: 2px solid #111;
+            gap: 10px;
+            border-bottom: 2px solid #183d78;
             padding-bottom: 8px;
-            gap: 5px;
           }
 
           .logo {
-            background: #172c50;
-            color: white;
-            padding: 12px 5px;
-            text-align: center;
-            border-radius: 5px;
+            width: 145px;
+            height: 55px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
           }
 
-          .logo-texto {
-            font-size: 23px;
-            font-weight: 900;
+          .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
           }
 
-          .logo-sub {
-            font-size: 10px;
-            font-weight: bold;
-          }
-
-          .empresa h2 {
-            font-size: 14px;
-            margin: 0 0 5px;
+          .empresa {
+            flex: 1;
           }
 
           .empresa p {
-            font-size: 8px;
-            margin: 3px 0;
+            margin: 0 0 4px;
+            font-size: 11px;
+            letter-spacing: 1.2px;
+            font-weight: bold;
+            color: #315b91;
+          }
+
+          .empresa span {
+            font-size: 10px;
+            font-weight: bold;
           }
 
           .tipo {
-            border: 1px solid #222;
-            text-align: center;
-            padding: 4px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-          }
-
-          .letra {
-            font-size: 25px;
-            font-weight: bold;
-            border-bottom: 1px solid #222;
-          }
-
-          .tipo strong {
-            font-size: 14px;
-          }
-
-          .tipo span, .tipo b {
+            margin-left: auto;
+            background: #183d78;
+            color: white;
+            padding: 6px 9px;
+            border-radius: 4px;
             font-size: 9px;
+            font-weight: bold;
           }
 
-          .fecha {
+          .empresa-datos {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 7px 2px;
-            border-bottom: 1px solid #333;
+            flex-wrap: wrap;
+            gap: 5px 14px;
+            padding: 6px 2px;
+            border-bottom: 1px solid #d7deea;
+            font-size: 8px;
+            color: #52627a;
+          }
+
+          .numero {
+            text-align: right;
             font-size: 10px;
+            font-weight: bold;
+            margin-top: 7px;
+            color: #183d78;
           }
 
-          .copia {
-            font-size: 13px;
-          }
-
-          .datos-cliente {
+          .datos {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1.4fr 1fr;
             gap: 7px;
-            padding: 9px 4px;
-            border-bottom: 1px solid #333;
+            margin-top: 8px;
+          }
+
+          .datos div {
+            background: #f4f7fc;
+            padding: 7px;
+            border-radius: 4px;
+            min-width: 0;
+          }
+
+          .datos span {
+            display: block;
+            font-size: 8px;
+            color: #52627a;
+            margin-bottom: 4px;
+            font-weight: bold;
+          }
+
+          .datos strong {
             font-size: 10px;
+            color: #172b4d;
+            overflow-wrap: anywhere;
           }
 
           .pendiente {
-            border: 1px solid #111;
-            padding: 3px 7px;
+            color: #a05a00 !important;
+          }
+
+          .titulo-tabla {
+            margin-top: 10px;
+            padding: 6px;
+            background: #edf3fb;
+            border-left: 4px solid #183d78;
+            font-size: 9px;
+            font-weight: bold;
           }
 
           .detalle {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 9px;
-            font-size: 9px;
+            margin-top: 5px;
+            font-size: 8px;
           }
 
-          .detalle th, .detalle td {
-            border: 1px solid #555;
+          .detalle th,
+          .detalle td {
+            border: 1px solid #aab6c8;
             padding: 5px;
           }
 
           .detalle th {
-            background: #eee;
+            background: #edf3fb;
+            color: #172b4d;
           }
 
           .cantidad {
             text-align: center;
-            width: 13%;
+            width: 12%;
           }
 
           .importe {
             text-align: right;
             width: 19%;
+            white-space: nowrap;
           }
 
           .total {
             text-align: right;
-            font-size: 17px;
-            font-weight: bold;
+            font-size: 19px;
+            font-weight: 900;
+            color: #102f65;
             padding: 9px 3px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #d7deea;
           }
 
           .observaciones {
             font-size: 9px;
-            min-height: 22px;
-            padding: 6px 2px;
-          }
-
-          .destinatario {
-            border: 1px solid #555;
-            margin-top: 5px;
-            padding: 5px 8px;
-          }
-
-          .destinatario h3 {
-            font-size: 10px;
-            text-align: center;
-            margin: 0 0 5px;
-          }
-
-          .destinatario p {
-            font-size: 8px;
-            margin: 3px 0;
+            margin-top: 7px;
+            min-height: 20px;
           }
 
           .firmas {
-            position: absolute;
-            bottom: 5mm;
-            left: 5mm;
-            right: 5mm;
-            border-top: 1px solid #555;
-            padding-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            margin-top: auto;
+            padding-top: 12px;
             font-size: 9px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 7px;
+            color: #172b4d;
           }
 
-          .firmas p, .firmas small {
-            grid-column: 1 / -1;
+          .firmas div {
+            width: 43%;
+          }
+
+          .firmas span {
+            display: block;
+            margin-top: 4px;
+          }
+
+          .pie {
+            text-align: center;
+            border-top: 1px solid #d7deea;
+            padding-top: 5px;
+            margin-top: 7px;
+            font-size: 8px;
+            color: #52627a;
+            letter-spacing: 0.7px;
+          }
+
+          .corte {
+            height: 4mm;
+            line-height: 4mm;
+            text-align: center;
+            font-size: 9px;
+            color: #52627a;
+            border-top: 1px dashed #52627a;
             margin: 0;
           }
 
+          .no-print {
+            display: block;
+            margin: 12px auto;
+            padding: 10px 25px;
+            background: #183d78;
+            color: white;
+            border: 0;
+            border-radius: 5px;
+            cursor: pointer;
+          }
+
           @media print {
-            .remito {
-              break-inside: avoid;
+            .no-print {
+              display: none !important;
+            }
+
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
           }
         </style>
       </head>
 
       <body>
-        ${comprobante.replace('ORIGINAL', 'ORIGINAL')}
-        ${comprobante.replace('ORIGINAL', 'DUPLICADO')}
+        ${ejemplar("ORIGINAL")}
+        <div class="corte">✂ CORTAR POR ESTA LÍNEA</div>
+        ${ejemplar("DUPLICADO")}
 
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        <\/script>
+        <button class="no-print" onclick="window.print()">
+          Imprimir remito
+        </button>
       </body>
       </html>
     `);
 
     ventana.document.close();
 
-  } catch(error) {
-    console.error("Error al imprimir remito:", error);
-    alert("Error al generar el remito: " + error.message);
+  } catch (error) {
+    console.error("Error imprimiendo remito:", error);
+    ventana.close();
+    alert("No se pudo generar el remito: " + error.message);
   }
 };
 
