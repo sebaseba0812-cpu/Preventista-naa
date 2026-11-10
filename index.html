@@ -6108,13 +6108,77 @@ function renderClientWhatsapp(){
   }).join("");
 }
 
-function showSelectedClient(){
-let id=document.getElementById("orderClient").value;
-let c=clients.find(x=>String(x.id)===String(id));
-let rec=c?daysSinceLastPurchase(c.id):null;
-let recText=rec?(rec.days===0?"🟢 Compró hoy":rec.days===1?"⏱️ Última compra: ayer":"⏱️ Hace "+rec.days+" días que no compra"):"🛒 Nunca hizo un pedido";
-document.getElementById("selectedClientInfo").innerHTML=c?
-"📍 "+esc(clientAddress(c))+"<br>📞 "+esc(c.phone||"Sin teléfono")+(c.whatsapp?"<br>📲 WhatsApp: "+esc(c.whatsapp):"")+(c.obs?"<br>📝 "+esc(c.obs):"")+"<br><b>"+recText+"</b>":"";
+  async function obtenerSaldoFavorCliente(clientId){
+  if(!clientId){
+    return 0;
+  }
+
+  const snap = await firebaseDB
+    .collection("customerCredits")
+    .where("clientId","==",String(clientId))
+    .get();
+
+  let saldo = 0;
+
+  snap.forEach(doc=>{
+    const credito = doc.data() || {};
+
+    if(credito.status === "disponible"){
+      saldo += Math.max(
+        0,
+        Number(credito.remainingAmount ?? credito.amount ?? 0)
+      );
+    }
+  });
+
+  return saldo;
+}
+
+async function showSelectedClient(){
+
+  let id = document.getElementById("orderClient").value;
+  let c = clients.find(x => String(x.id) === String(id));
+
+  let rec = c ? daysSinceLastPurchase(c.id) : null;
+
+  let recText = rec
+    ? (rec.days === 0
+        ? "🟢 Compró hoy"
+        : rec.days === 1
+          ? "⏱️ Última compra: ayer"
+          : "⏱️ Hace " + rec.days + " días que no compra")
+    : "🛒 Nunca hizo un pedido";
+
+  if(!c){
+    document.getElementById("selectedClientInfo").innerHTML = "";
+    return;
+  }
+
+  try{
+
+    const saldoFavor = await obtenerSaldoFavorCliente(c.id);
+
+    document.getElementById("selectedClientInfo").innerHTML =
+      "📍 " + esc(clientAddress(c)) +
+      "<br>📞 " + esc(c.phone || "Sin teléfono") +
+      (c.whatsapp ? "<br>📲 WhatsApp: " + esc(c.whatsapp) : "") +
+      (c.obs ? "<br>📝 " + esc(c.obs) : "") +
+      "<br><b>" + recText + "</b>" +
+      (saldoFavor > 0
+        ? "<br><b style='color:green'>💰 Saldo a favor disponible: $" +
+          saldoFavor.toLocaleString("es-AR",{minimumFractionDigits:2}) +
+          "</b>"
+        : "");
+
+  }catch(error){
+
+    console.error("Error consultando saldo a favor:", error);
+
+    document.getElementById("selectedClientInfo").innerHTML =
+      "📍 " + esc(clientAddress(c)) +
+      "<br><b>" + recText + "</b>";
+
+  }
 }
 function tierPrice(p,q){
 let price=p[3][0][1];
