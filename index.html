@@ -5059,7 +5059,7 @@ async function renderCurrentAccounts(){
     box.innerHTML = `
       <div class="card">
         <h3>💰 Total pendiente</h3>
-        <div class="total">${dashboardMoney(total)}</div>
+        <div class="total">${dashboardMoney(o.amountDue ?? o.total ?? 0)}
         <div class="muted">${accounts.length} cuenta(s) pendiente(s) de cobro</div>
       </div>
 
@@ -9436,7 +9436,7 @@ async function renderCurrentAccounts(){
     let html=`
       <div class="card">
         <h3>💰 Total pendiente de cobro</h3>
-       <div class="total">${dashboardMoney(o.amountDue ?? o.total ?? 0)}</div>
+       <div class="total">${dashboardMoney(total)}</div>
         <div class="muted">
           ${accounts.length} cuenta${accounts.length===1?"":"s"} pendiente${accounts.length===1?"":"s"}
         </div>
