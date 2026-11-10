@@ -7240,21 +7240,150 @@ function loadDraftToEditor(){
   }
 }
 
+
 async function cambiarEstadoPedidoOficina(id, nuevoEstado){
 
   try{
 
-    await firebaseDB
-      .collection("orders")
-      .doc(String(id))
-      .update({
+    const orderRef = firebaseDB.collection("orders").doc(String(id));
+
+    if(nuevoEstado !== "preparando"){
+      await orderRef.update({
         status: nuevoEstado,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
+      await renderOfficeOrders();
+      return;
+    }
+
+    await firebaseDB.runTransaction(async transaction => {
+
+      const orderSnap = await transaction.get(orderRef);
+
+      if(!orderSnap.exists) throw new Error("No se encontró el pedido.");
+
+      const pedido = orderSnap.data() || {};
+
+      if(pedido.status === "preparando" || pedido.stockDeducted === true){
+        return;
+      }
+
+      if(pedido.status !== "nuevo"){
+        throw new Error("El pedido ya no está pendiente de aceptación.");
+      }
+
+      const items = [
+        ...(Array.isArray(pedido.lines) ? pedido.lines : []),
+        ...(Array.isArray(pedido.bonuses) ? pedido.bonuses : [])
+      ];
+
+      if(!items.length) throw new Error("El pedido no contiene productos.");
+
+      const agrupados = {};
+
+      items.forEach(item => {
+        const name = String(item.name || "").trim();
+        const presentation = String(item.presentation || "").trim();
+        const qty = Number(item.qty || 0);
+
+        if(!name || !presentation || qty <= 0){
+          throw new Error("Hay un producto con datos o cantidad inválida.");
+        }
+
+        const key = name + "|" + presentation;
+
+        if(!agrupados[key]){
+          agrupados[key] = {name, presentation, qty:0};
+        }
+
+        agrupados[key].qty += qty;
+      });
+
+      const operaciones = [];
+
+      for(const item of Object.values(agrupados)){
+
+        const consulta = firebaseDB.collection("stock")
+          .where("name", "==", item.name)
+          .where("presentation", "==", item.presentation);
+
+        const stockSnap = await transaction.get(consulta);
+
+        if(stockSnap.empty){
+          throw new Error("No existe stock registrado para: " + item.name + " (" + item.presentation + ").");
+        }
+
+        if(stockSnap.size > 1){
+          throw new Error("Hay registros de stock duplicados para: " + item.name + ". Revisá el inventario antes de aceptar.");
+        }
+
+        const stockDoc = stockSnap.docs[0];
+        const stock = stockDoc.data() || {};
+        const packQty = Number(stock.packQty) || 1;
+        const unidades = item.qty * packQty;
+        const disponible = Number(stock.quantity || 0);
+
+        if(disponible < unidades){
+          throw new Error(
+            "Stock insuficiente de " + item.name +
+            ". Disponible: " + disponible +
+            " unidades. Necesario: " + unidades + " unidades."
+          );
+        }
+
+        operaciones.push({
+          ref: stockDoc.ref,
+          nombre: item.name,
+          cantidad: unidades,
+          antes: disponible,
+          despues: disponible - unidades
+        });
+      }
+
+      operaciones.forEach(op => {
+        transaction.update(op.ref, {
+          quantity: op.despues,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        const movimientoRef = firebaseDB.collection("stockMovements").doc();
+
+        transaction.set(movimientoRef, {
+          type: "SALIDA_PEDIDO",
+          productName: op.nombre,
+          quantity: op.cantidad,
+          stockBefore: op.antes,
+          stockAfter: op.despues,
+          reason: "Pedido aceptado Nº " + (pedido.boletaNumber || id),
+          orderId: String(id),
+          createdBy: "Oficina",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      transaction.update(orderRef, {
+        status: "preparando",
+        stockDeducted: true,
+        stockDeductedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+    });
+
     await renderOfficeOrders();
+    await renderStock();
+
+    alert("Pedido aceptado. El stock fue descontado correctamente.");
 
   }catch(error){
+
+    console.error(error);
+    alert("No se pudo aceptar el pedido: " + error.message);
+
+  }
+
+}
 
     console.error(error);
 
@@ -7263,6 +7392,7 @@ async function cambiarEstadoPedidoOficina(id, nuevoEstado){
   }
 
 }
+
 
 
 
@@ -7281,102 +7411,180 @@ async function anularPedidoOficina(id){
 
   try{
 
-    const orderRef = firebaseDB
-      .collection("orders")
-      .doc(String(id));
+    const orderRef = firebaseDB.collection("orders").doc(String(id));
 
-    const resultado = await firebaseDB.runTransaction(
-      async transaction => {
+    const resultado = await firebaseDB.runTransaction(async transaction => {
 
-        const orderSnap = await transaction.get(orderRef);
+      const orderSnap = await transaction.get(orderRef);
 
-        if(!orderSnap.exists){
-          throw new Error("No se encontró el pedido.");
-        }
+      if(!orderSnap.exists) throw new Error("No se encontró el pedido.");
 
-        const pedido = orderSnap.data() || {};
+      const pedido = orderSnap.data() || {};
 
-        if(["anulado","anulada","cancelado","canceled"].includes(pedido.status)){
-          return { yaAnulado:true };
-        }
+      if(["anulado","anulada","cancelado","canceled"].includes(pedido.status)){
+        return {yaAnulado:true};
+      }
 
-        const creditUses = Array.isArray(pedido.creditUses)
-          ? pedido.creditUses
-          : [];
+      const creditUses = Array.isArray(pedido.creditUses)
+        ? pedido.creditUses : [];
 
-        const creditRefs = creditUses.map(uso => ({
-          ref: firebaseDB.collection("customerCredits").doc(String(uso.creditId)),
-          amount: Number(uso.amount || 0)
-        }));
+      const creditRefs = creditUses.map(uso => ({
+        ref: firebaseDB.collection("customerCredits").doc(String(uso.creditId)),
+        amount: Number(uso.amount || 0)
+      }));
 
-        // Leer todos los créditos antes de realizar escrituras.
-        const creditSnaps = [];
+      const creditSnaps = [];
 
-        for(const item of creditRefs){
-          creditSnaps.push(
-            await transaction.get(item.ref)
-          );
-        }
+      for(const item of creditRefs){
+        creditSnaps.push(await transaction.get(item.ref));
+      }
 
-        // Devolver los importes utilizados.
-        creditSnaps.forEach((creditSnap,index)=>{
+      const operaciones = [];
 
-          const importe = creditRefs[index].amount;
+      // Devolver mercadería solamente si este pedido la había descontado.
+      if(pedido.stockDeducted === true && pedido.stockRestored !== true){
 
-          if(!creditSnap.exists || importe <= 0){
-            throw new Error("No se pudo localizar un saldo utilizado. No se anuló el pedido.");
+        const items = [
+          ...(Array.isArray(pedido.lines) ? pedido.lines : []),
+          ...(Array.isArray(pedido.bonuses) ? pedido.bonuses : [])
+        ];
+
+        const agrupados = {};
+
+        items.forEach(item => {
+          const name = String(item.name || "").trim();
+          const presentation = String(item.presentation || "").trim();
+          const qty = Number(item.qty || 0);
+
+          if(!name || !presentation || qty <= 0){
+            throw new Error("No se pudo identificar un producto del pedido para devolver al stock.");
           }
 
-          const credito = creditSnap.data() || {};
+          const key = name + "|" + presentation;
 
-          const restante = Number(
-            credito.remainingAmount ?? credito.amount ?? 0
-          );
+          if(!agrupados[key]){
+            agrupados[key] = {name, presentation, qty:0};
+          }
 
-          const utilizado = Number(credito.usedAmount || 0);
+          agrupados[key].qty += qty;
+        });
 
-          transaction.update(creditSnap.ref,{
+        for(const item of Object.values(agrupados)){
 
-            remainingAmount: restante + importe,
+          const consulta = firebaseDB.collection("stock")
+            .where("name", "==", item.name)
+            .where("presentation", "==", item.presentation);
 
-            usedAmount: Math.max(0, utilizado - importe),
+          const stockSnap = await transaction.get(consulta);
 
-            status: "disponible",
+          if(stockSnap.size !== 1){
+            throw new Error("No se encontró un único registro de stock para devolver: " + item.name);
+          }
 
-            restoredAmount: Number(credito.restoredAmount || 0) + importe,
+          const stockDoc = stockSnap.docs[0];
+          const stock = stockDoc.data() || {};
+          const packQty = Number(stock.packQty) || 1;
+          const unidades = item.qty * packQty;
+          const antes = Number(stock.quantity || 0);
 
-            lastRestoredAt: firebase.firestore.FieldValue.serverTimestamp()
-
+          operaciones.push({
+            ref: stockDoc.ref,
+            nombre: item.name,
+            cantidad: unidades,
+            antes,
+            despues: antes + unidades
           });
-
-        });
-
-        transaction.update(orderRef,{
-
-          status: "anulado",
-          estado: "anulado",
-          cancelReason: motivo.trim(),
-          canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          creditRestored: true
-
-        });
-
-        return { yaAnulado:false };
-
+        }
       }
-    );
+
+      // Todas las lecturas se realizan antes de las escrituras.
+      creditSnaps.forEach((creditSnap,index)=>{
+
+        const importe = creditRefs[index].amount;
+
+        if(!creditSnap.exists || importe <= 0){
+          throw new Error("No se pudo localizar un saldo utilizado. No se anuló el pedido.");
+        }
+
+        const credito = creditSnap.data() || {};
+
+        const restante = Number(
+          credito.remainingAmount ?? credito.amount ?? 0
+        );
+
+        const utilizado = Number(credito.usedAmount || 0);
+
+        transaction.update(creditSnap.ref, {
+          remainingAmount: restante + importe,
+          usedAmount: Math.max(0, utilizado - importe),
+          status: "disponible",
+          restoredAmount: Number(credito.restoredAmount || 0) + importe,
+          lastRestoredAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+      });
+
+      operaciones.forEach(op => {
+
+        transaction.update(op.ref, {
+          quantity: op.despues,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        const movimientoRef = firebaseDB.collection("stockMovements").doc();
+
+        transaction.set(movimientoRef, {
+          type: "DEVOLUCION_ANULACION",
+          productName: op.nombre,
+          quantity: op.cantidad,
+          stockBefore: op.antes,
+          stockAfter: op.despues,
+          reason: "Devolución por anulación del pedido Nº " + (pedido.boletaNumber || id),
+          orderId: String(id),
+          createdBy: "Oficina",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+      });
+
+      transaction.update(orderRef, {
+        status: "anulado",
+        estado: "anulado",
+        cancelReason: motivo.trim(),
+        canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        creditRestored: true,
+        stockRestored: pedido.stockDeducted === true
+          ? true
+          : false
+      });
+
+      return {yaAnulado:false, stockDevuelto:operaciones.length > 0};
+
+    });
 
     await renderOfficeOrders();
+    await renderStock();
 
     if(resultado.yaAnulado){
-      alert("Este pedido ya estaba anulado. No se devolvió el saldo nuevamente.");
+      alert("Este pedido ya estaba anulado. No se realizaron devoluciones nuevamente.");
       return;
     }
 
-    alert("Pedido anulado correctamente. Si utilizó saldo a favor, el importe fue restituido al cliente.");
+    alert(
+      resultado.stockDevuelto
+        ? "Pedido anulado. La mercadería y los saldos utilizados fueron devueltos."
+        : "Pedido anulado correctamente. No había stock descontado para devolver."
+    );
 
   }catch(error){
+
+    console.error(error);
+    alert("No se pudo anular el pedido: " + error.message);
+
+  }
+
+}
 
     console.error(error);
 
