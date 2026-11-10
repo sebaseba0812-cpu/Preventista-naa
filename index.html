@@ -7136,7 +7136,6 @@ async function buscarBoletaReclamo(){
     select.innerHTML =
       '<option value="">Seleccioná un producto</option>' +
       lines.map((p,i)=>{
-       lines.map((p,i)=>{
   const packQty = obtenerUnidadesPorEmpaqueReclamo(p);
   const soldPacks = Number(p.qty || 0);
   const soldUnits = soldPacks * packQty;
