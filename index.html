@@ -3437,19 +3437,11 @@ function liqUidPedido(order) {
   return "";
 }
 
+
 async function renderLiquidaciones() {
   const select = document.getElementById("liqPreventista");
-  const mes = document.getElementById("liqMes");
 
   if (!select) return;
-
-  if (mes && !mes.value) {
-    const ahora = new Date();
-    mes.value =
-      ahora.getFullYear() +
-      "-" +
-      String(ahora.getMonth() + 1).padStart(2, "0");
-  }
 
   try {
     const snapshot = await firebaseDB.collection("users").get();
@@ -3460,10 +3452,7 @@ async function renderLiquidaciones() {
       const data = doc.data() || {};
       const role = String(data.role || "preventista").toLowerCase();
 
-      if (
-        role === "preventista" &&
-        data.active !== false
-      ) {
+      if (role === "preventista" && data.active !== false) {
         preventistas.push({
           uid: doc.id,
           name: data.name || data.username || "Preventista"
@@ -3489,6 +3478,7 @@ async function renderLiquidaciones() {
 
     if (preventistas.length === 0) {
       const resultado = document.getElementById("liqResultado");
+
       if (resultado) {
         resultado.innerHTML =
           "<p>No se encontraron preventistas registrados en Firebase.</p>";
@@ -3500,6 +3490,7 @@ async function renderLiquidaciones() {
     alert("No se pudieron cargar los preventistas desde Firebase.");
   }
 }
+
 
 async function cargarConfiguracionLiquidacion() {
   const uid = document.getElementById("liqPreventista")?.value;
