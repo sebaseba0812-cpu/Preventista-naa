@@ -6615,6 +6615,30 @@ async function sendDraftToOffice(){
 
   try{
 
+    const clientId = String(draft.clientId || "");
+
+    // Buscar los saldos disponibles del cliente.
+    const creditsSnap = await firebaseDB
+      .collection("customerCredits")
+      .where("clientId","==",clientId)
+      .get();
+
+    // Preparar los créditos más antiguos primero.
+    const creditRefs = creditsSnap.docs
+      .map(doc => ({
+        ref: doc.ref,
+        data: doc.data()
+      }))
+      .filter(item =>
+        item.data.status === "disponible" &&
+        Number(item.data.remainingAmount ?? item.data.amount ?? 0) > 0
+      )
+      .sort((a,b)=>{
+        const fechaA = a.data.createdAt?.toMillis?.() || 0;
+        const fechaB = b.data.createdAt?.toMillis?.() || 0;
+        return fechaA - fechaB;
+      });
+
     const boletaNumber = await firebaseDB.runTransaction(
       async transaction => {
 
@@ -6622,6 +6646,15 @@ async function sendDraftToOffice(){
 
         if(!numberSnap.exists){
           throw new Error("No existe la configuración de numeración.");
+        }
+
+        // Leer todos los créditos dentro de la transacción.
+        const creditSnaps = [];
+
+        for(const item of creditRefs){
+          creditSnaps.push(
+            await transaction.get(item.ref)
+          );
         }
 
         const nextNumber = Number(
@@ -6632,38 +6665,117 @@ async function sendDraftToOffice(){
           throw new Error("Número de boleta inválido.");
         }
 
-       const pedidoClient = clients.find(
-  c => String(c.id) === String(draft.clientId)
-);
+        const pedidoClient = clients.find(
+          c => String(c.id) === clientId
+        );
 
+        const totalOriginal = Math.max(
+          0,
+          Number(draft.total || 0)
+        );
+
+        let saldoPendiente = totalOriginal;
+        let saldoAplicado = 0;
+
+        const creditUses = [];
+
+        // Calcular cuánto se utiliza de cada saldo.
+        creditSnaps.forEach((creditSnap,index)=>{
+
+          if(!creditSnap.exists || saldoPendiente <= 0){
+            return;
+          }
+
+          const credito = creditSnap.data() || {};
+
+          if(credito.status !== "disponible"){
+            return;
+          }
+
+          const disponible = Math.max(
+            0,
+            Number(credito.remainingAmount ?? credito.amount ?? 0)
+          );
+
+          const utilizar = Math.min(
+            disponible,
+            saldoPendiente
+          );
+
+          if(utilizar <= 0){
+            return;
+          }
+
+          saldoAplicado += utilizar;
+          saldoPendiente -= utilizar;
+
+          creditUses.push({
+            creditId: creditSnap.id,
+            amount: utilizar
+          });
+
+        });
+
+        // Preparar el pedido.
         const pedido = {
-  ...draft,
+          ...draft,
 
-  status:"nuevo",
+          status:"nuevo",
 
- clientData: {
-  name: draft.clientData?.name || pedidoClient?.name || draft.client || "",
-  clientNumber: draft.clientData?.clientNumber || pedidoClient?.clientNumber || "",
-  zone: draft.clientData?.zone || pedidoClient?.zone || "",
-  street: draft.clientData?.street || pedidoClient?.street || "",
-  height: draft.clientData?.height || pedidoClient?.height || ""
-},
+          total:totalOriginal,
+          grossTotal:totalOriginal,
+          creditApplied:saldoAplicado,
+          amountDue:Math.max(0,saldoPendiente),
+          creditUses:creditUses,
 
-  paymentType:pedidoClient?.paymentType || "contado",
+          clientData: {
+            name: draft.clientData?.name || pedidoClient?.name || draft.client || "",
+            clientNumber: draft.clientData?.clientNumber || pedidoClient?.clientNumber || "",
+            zone: draft.clientData?.zone || pedidoClient?.zone || "",
+            street: draft.clientData?.street || pedidoClient?.street || "",
+            height: draft.clientData?.height || pedidoClient?.height || ""
+          },
 
-  creditDays:Number(pedidoClient?.creditDays || 0),
+          paymentType:pedidoClient?.paymentType || "contado",
 
-  paymentStatus:
-    pedidoClient?.paymentType === "cuenta_corriente"
-      ? "pendiente"
-      : "cobrado",
+          creditDays:Number(pedidoClient?.creditDays || 0),
 
-  boletaNumber:nextNumber,
+          paymentStatus:
+            pedidoClient?.paymentType === "cuenta_corriente"
+              ? (saldoPendiente > 0 ? "pendiente" : "cobrado")
+              : "cobrado",
 
-  sentAt:firebase.firestore.FieldValue.serverTimestamp(),
+          boletaNumber:nextNumber,
 
-  createdAt:firebase.firestore.FieldValue.serverTimestamp()
-};
+          sentAt:firebase.firestore.FieldValue.serverTimestamp(),
+
+          createdAt:firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Actualizar cada saldo utilizado.
+        creditUses.forEach(uso=>{
+
+          const index = creditSnaps.findIndex(
+            snap => snap.id === uso.creditId
+          );
+
+          if(index === -1) return;
+
+          const credito = creditSnaps[index].data() || {};
+
+          const restante = Math.max(
+            0,
+            Number(credito.remainingAmount ?? credito.amount ?? 0) - uso.amount
+          );
+
+          transaction.update(creditSnaps[index].ref,{
+            remainingAmount:restante,
+            usedAmount:Number(credito.usedAmount || 0) + uso.amount,
+            status:restante <= 0 ? "utilizado" : "disponible",
+            lastUsedAt:firebase.firestore.FieldValue.serverTimestamp()
+          });
+
+        });
 
         transaction.update(numberRef,{
           nextInvoiceNumber:nextNumber + 1
@@ -7853,9 +7965,18 @@ const vencimientoTexto =
             </table>
 
             <div class="total">
-              TOTAL: ${liqMoney(Number(o.total || 0))}
-            </div>
+  TOTAL DE MERCADERÍA: ${liqMoney(Number(o.grossTotal ?? o.total ?? 0))}
+</div>
 
+${Number(o.creditApplied || 0) > 0 ? `
+  <div class="total" style="color:#15803d;margin-top:6px">
+    SALDO A FAVOR APLICADO: -${liqMoney(Number(o.creditApplied))}
+  </div>
+` : ""}
+
+<div class="total" style="margin-top:8px;font-size:18px">
+  TOTAL A COBRAR: ${liqMoney(Number(o.amountDue ?? o.total ?? 0))}
+</div>
             ${o.obs ? `
               <div class="observaciones">
                 <strong>Observaciones:</strong> ${esc(o.obs)}
@@ -8263,7 +8384,19 @@ const bonificaciones = Array.isArray(o.bonuses)
     </div>
   ` : ""}
 </div>
-          <div style="margin-top:10px">💰 Total: <b>$${money(o.total || 0)}</b></div>
+         <div style="margin-top:10px">
+  💰 Total de productos: <b>$${money(o.grossTotal ?? o.total ?? 0)}</b>
+</div>
+
+${Number(o.creditApplied || 0) > 0 ? `
+  <div style="margin-top:5px;color:#15803d">
+    🎁 Saldo a favor aplicado: <b>-$${money(o.creditApplied)}</b>
+  </div>
+` : ""}
+
+<div style="margin-top:5px;font-size:16px">
+  💵 Total a cobrar: <b>$${money(o.amountDue ?? o.total ?? 0)}</b>
+</div>
           ${o.paymentType === "cuenta_corriente" ? `
             <div style="margin-top:8px">
               <span class="badge">🟠 Cuenta corriente</span>
@@ -9178,13 +9311,12 @@ async function renderCurrentAccounts(){
     accounts.sort((a,b)=>a.daysLeft-b.daysLeft);
 
     const total=accounts.reduce(
-      (sum,o)=>sum+Number(o.total||0),0
-    );
-
+  (sum,o)=>sum+Number(o.amountDue ?? o.total ?? 0),0
+);
     let html=`
       <div class="card">
         <h3>💰 Total pendiente de cobro</h3>
-        <div class="total">${dashboardMoney(total)}</div>
+        <div class="total">${dashboardMoney(o.amountDue ?? o.total ?? 0)}</div>
         <div class="muted">
           ${accounts.length} cuenta${accounts.length===1?"":"s"} pendiente${accounts.length===1?"":"s"}
         </div>
@@ -9376,6 +9508,11 @@ const NAA_OFICINA_WA = "5493764833833";
 
 function buildOrderTextForOffice(o){
   const c = clients.find(x=>String(x.id)===String(o.clientId));
+
+  const totalOriginal = Number(o.grossTotal ?? o.total ?? 0);
+  const saldoAplicado = Number(o.creditApplied || 0);
+  const totalCobrar = Number(o.amountDue ?? o.total ?? 0);
+
   let text = "DISTRIBUIDORA N.A.A. S.A.S.\n";
   text += "PEDIDO\n";
   text += "Preventista: " + user + "\n";
@@ -9385,10 +9522,20 @@ function buildOrderTextForOffice(o){
   text += "Altura / Mz-Casa: " + (c?.height || "Sin dato") + "\n";
   text += "Teléfono: " + (c?.phone || "Sin dato") + "\n";
   text += "Referencia: " + (c?.obs || "Sin dato") + "\n\n";
+
   (o.lines || []).forEach(l=>{
-    text += l.qty + " x " + l.name + " " + l.presentation + " = $" + money(l.total) + "\n";
+    text += l.qty + " x " + l.name + " " + l.presentation +
+      " = $" + money(l.total) + "\n";
   });
-  text += "\nTOTAL: $" + money(o.total);
+
+  text += "\nTOTAL DE MERCADERÍA: $" + money(totalOriginal);
+
+  if(saldoAplicado > 0){
+    text += "\nSALDO A FAVOR APLICADO: -$" + money(saldoAplicado);
+  }
+
+  text += "\nTOTAL A COBRAR: $" + money(totalCobrar);
+
   return text;
 }
 
