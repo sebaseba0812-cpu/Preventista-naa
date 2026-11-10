@@ -7035,6 +7035,17 @@ function claimAdminOnly(){
   return true;
 }
 
+  function obtenerUnidadesPorEmpaqueReclamo(linea){
+  const productos = getProducts();
+
+  const producto = productos.find(p =>
+    String(p[0]).trim() === String(linea.name || "").trim() &&
+    String(p[1]).trim() === String(linea.presentation || "").trim()
+  );
+
+  return Math.max(1, Number(producto?.[4]) || 1);
+}
+
 async function buscarBoletaReclamo(){
   if(!claimAdminOnly()) return;
 
@@ -7091,17 +7102,22 @@ async function buscarBoletaReclamo(){
       .where("orderId", "==", o.id)
       .get();
 
-    claimSnap.forEach(doc=>{
-      const c = doc.data() || {};
+   claimSnap.forEach(doc=>{
+  const c = doc.data() || {};
+  const estado = String(c.status || "pendiente").toLowerCase();
 
-      if(["pendiente","aprobado"].includes(
-        String(c.status || "pendiente").toLowerCase()
-      )){
-        const k = String(c.lineIndex);
-        claimExistingByLine[k] =
-          (claimExistingByLine[k] || 0) + Number(c.quantity || 0);
-      }
-    });
+  if(["pendiente","aprobado","pendiente_reposicion"].includes(estado)){
+    const k = String(c.lineIndex);
+    const linea = lines[Number(c.lineIndex)] || {};
+    const packQty = obtenerUnidadesPorEmpaqueReclamo(linea);
+
+    const unidadesReclamadas = Number(c.quantityUnits) ||
+      (Number(c.quantity || 0) * packQty);
+
+    claimExistingByLine[k] =
+      (claimExistingByLine[k] || 0) + unidadesReclamadas;
+  }
+});
 
     const fechaVal = o.createdAt?.toDate
       ? o.createdAt.toDate()
@@ -7120,17 +7136,21 @@ async function buscarBoletaReclamo(){
     select.innerHTML =
       '<option value="">Seleccioná un producto</option>' +
       lines.map((p,i)=>{
-        const sold = Number(p.qty || 0);
-        const already = Number(claimExistingByLine[String(i)] || 0);
-        const remaining = Math.max(0,sold-already);
+       lines.map((p,i)=>{
+  const packQty = obtenerUnidadesPorEmpaqueReclamo(p);
+  const soldPacks = Number(p.qty || 0);
+  const soldUnits = soldPacks * packQty;
+  const already = Number(claimExistingByLine[String(i)] || 0);
+  const remaining = Math.max(0,soldUnits-already);
 
-        const label =
-          `${p.name || "Producto"}` +
-          `${p.presentation ? " - " + p.presentation : ""}` +
-          ` · Vendido: ${sold} · Disponible para reclamar: ${remaining}`;
+  const label =
+    `${p.name || "Producto"}` +
+    `${p.presentation ? " - " + p.presentation : ""}` +
+    ` · Vendido: ${soldUnits} unidades` +
+    ` · Disponible: ${remaining} unidades`;
 
-        return `<option value="${i}" ${remaining <= 0 ? "disabled" : ""}>${esc(label)}</option>`;
-      }).join("");
+  return `<option value="${i}" ${remaining <= 0 ? "disabled" : ""}>${esc(label)}</option>`;
+}).join("");
 
     fields.classList.remove("hidden");
 
@@ -7158,19 +7178,26 @@ function actualizarProductoReclamo(){
   const index = Number(select.value);
   const p = claimOrderSelected.lines[index] || {};
 
-  const sold = Number(p.qty || 0);
+  const packQty = obtenerUnidadesPorEmpaqueReclamo(p);
+  const soldPacks = Number(p.qty || 0);
+  const soldUnits = soldPacks * packQty;
+
   const claimed = Number(claimExistingByLine[String(index)] || 0);
-  const remaining = Math.max(0,sold-claimed);
-  const unitPrice = sold > 0 ? Number(p.total || 0) / sold : 0;
+  const remaining = Math.max(0,soldUnits-claimed);
+
+  const unitPrice = soldUnits > 0
+    ? Number(p.total || 0) / soldUnits
+    : 0;
 
   document.getElementById("claimQty").max = String(remaining);
   document.getElementById("claimQty").value = remaining > 0 ? 1 : 0;
 
   out.textContent =
-    `Cantidad vendida: ${sold}. Ya reclamada: ${claimed}. ` +
-    `Disponible: ${remaining}. Precio unitario original: $${money(unitPrice)}.`;
+    `Vendidos: ${soldPacks} cajas/bultos (${soldUnits} unidades). ` +
+    `Ya reclamadas: ${claimed} unidades. ` +
+    `Disponibles: ${remaining} unidades. ` +
+    `Valor por unidad: $${money(unitPrice)}.`;
 }
-
 async function guardarReclamo(){
   if(!claimAdminOnly() || !claimOrderSelected) return;
 
@@ -7184,13 +7211,18 @@ async function guardarReclamo(){
   const index = Number(select.value);
   const p = claimOrderSelected.lines[index] || {};
 
+  // La cantidad reclamada se expresa en unidades individuales.
   const qty = Number(document.getElementById("claimQty").value || 0);
-  const sold = Number(p.qty || 0);
+
+  const packQty = obtenerUnidadesPorEmpaqueReclamo(p);
+  const soldPacks = Number(p.qty || 0);
+  const soldUnits = soldPacks * packQty;
+
   const claimed = Number(claimExistingByLine[String(index)] || 0);
-  const remaining = Math.max(0,sold-claimed);
+  const remaining = Math.max(0, soldUnits - claimed);
 
   if(!Number.isInteger(qty) || qty < 1 || qty > remaining){
-    alert(`La cantidad debe ser de 1 a ${remaining}, según la boleta original y los reclamos ya cargados.`);
+    alert(`La cantidad debe ser de 1 a ${remaining} unidades, según la boleta original y los reclamos ya cargados.`);
     return;
   }
 
@@ -7203,22 +7235,37 @@ async function guardarReclamo(){
   }
 
   const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
-  const unitPrice = sold > 0 ? Number(p.total || 0) / sold : 0;
+
+  // Valor proporcional de una unidad según la boleta original.
+  const unitPrice = soldUnits > 0
+    ? Number(p.total || 0) / soldUnits
+    : 0;
 
   const claim = {
     orderId: claimOrderSelected.id,
     boletaNumber: Number(claimOrderSelected.boletaNumber),
     clientId: claimOrderSelected.clientId || "",
     clientName: claimOrderSelected.clientData?.name || claimOrderSelected.client || "Sin cliente",
+
     lineIndex: index,
     productName: p.name || "Producto",
     presentation: p.presentation || "",
+
+    // Cantidades y empaque para auditoría.
+    quantityUnits: qty,
     quantity: qty,
+    packagingQuantity: packQty,
+    quantityPacksEquivalent: qty / packQty,
+    soldPacks: soldPacks,
+    soldUnits: soldUnits,
+
     originalUnitPrice: unitPrice,
     originalLineTotal: unitPrice * qty,
+
     reason: reason,
     physicalReturn: returned,
     observations: document.getElementById("claimObservations").value.trim(),
+
     status: "pendiente",
     createdBy: user.name || user.username || "Administrador",
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -7227,7 +7274,7 @@ async function guardarReclamo(){
   try{
     await firebaseDB.collection("claims").add(claim);
 
-    alert("Reclamo guardado como pendiente. Todavía no genera nota de crédito ni modifica stock o comisiones.");
+    alert("Reclamo guardado como pendiente. Se registraron las unidades y su valor proporcional. Todavía no genera nota de crédito ni modifica stock o comisiones.");
 
     document.getElementById("claimObservations").value = "";
     document.getElementById("claimInvoiceNumber").value = "";
@@ -7245,6 +7292,121 @@ async function guardarReclamo(){
   }
 }
 
+  async function gestionarReclamo(claimId){
+  if(!claimAdminOnly()) return;
+
+  try{
+    const ref = firebaseDB.collection("claims").doc(claimId);
+    const snap = await ref.get();
+
+    if(!snap.exists){
+      alert("No se encontró el reclamo.");
+      return;
+    }
+
+    const c = snap.data() || {};
+    const estado = String(c.status || "pendiente");
+
+    if(estado !== "pendiente"){
+      alert("Este reclamo ya fue gestionado.");
+      return;
+    }
+
+    const accion = prompt(
+      "GESTIONAR RECLAMO\n\n" +
+      "1 - Autorizar reclamo\n" +
+      "2 - Rechazar reclamo\n\n" +
+      "Ingresá 1 o 2:"
+    );
+
+    if(accion === null) return;
+
+    if(accion !== "1" && accion !== "2"){
+      alert("Opción no válida.");
+      return;
+    }
+
+    const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+    const administrador = user.name || user.username || "Administrador";
+
+    if(accion === "2"){
+      const motivo = prompt("Indicá el motivo del rechazo:");
+
+      if(motivo === null) return;
+
+      if(!motivo.trim()){
+        alert("Tenés que indicar el motivo del rechazo.");
+        return;
+      }
+
+      await ref.update({
+        status: "rechazado",
+        rejectionReason: motivo.trim(),
+        resolvedBy: administrador,
+        resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      alert("Reclamo rechazado.");
+      await renderClaims();
+      return;
+    }
+
+  const solucion = prompt(
+  "ELEGIR SOLUCIÓN\n\n" +
+  "1 - Reposición de mercadería\n" +
+  "2 - Saldo a favor del cliente\n" +
+  "3 - Devolución de dinero en efectivo\n" +
+  "4 - Devolución de dinero por transferencia\n\n" +
+  "Ingresá una opción del 1 al 4:"
+);
+
+if(solucion === null) return;
+
+if(!["1","2","3","4"].includes(solucion)){
+  alert("Opción no válida.");
+  return;
+}
+
+const importe = Number(c.originalLineTotal || 0);
+
+const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+const administrador = user.name || user.username || "Administrador";
+
+let datosActualizacion = {
+  approvedBy: administrador,
+  approvedAt: firebase.firestore.FieldValue.serverTimestamp()
+};
+
+if(solucion === "1"){
+  datosActualizacion.status = "pendiente_reposicion";
+  datosActualizacion.resolution = "reposicion";
+}
+
+if(solucion === "2"){
+  datosActualizacion.status = "pendiente_saldo_favor";
+  datosActualizacion.resolution = "saldo_favor";
+  datosActualizacion.creditAmount = importe;
+}
+
+if(solucion === "3" || solucion === "4"){
+  datosActualizacion.status = "pendiente_devolucion";
+  datosActualizacion.resolution = "devolucion_dinero";
+  datosActualizacion.refundMethod =
+    solucion === "3" ? "efectivo" : "transferencia";
+  datosActualizacion.refundAmount = importe;
+}
+
+await ref.update(datosActualizacion);
+
+alert("Reclamo autorizado. Quedó registrado con la solución elegida.");
+
+await renderClaims();
+  }catch(error){
+    console.error("Error gestionando reclamo:", error);
+    alert("No se pudo gestionar el reclamo. Revisá Firebase.");
+  }
+}
+  
 async function renderClaims(){
   const box = document.getElementById("claimsList");
   if(!box) return;
@@ -7281,15 +7443,29 @@ async function renderClaims(){
         otro:"Otro"
       }[c.reason] || c.reason || "Sin motivo";
 
-      const fecha = c.createdAt?.toDate
-        ? c.createdAt.toDate().toLocaleString("es-AR")
-        : "Fecha pendiente";
+     const fecha = c.createdAt?.toDate
+  ? c.createdAt.toDate().toLocaleString("es-AR")
+  : "Fecha pendiente";
 
+const cantidadTexto = c.quantityUnits !== undefined
+  ? `${Number(c.quantityUnits)} unidades`
+  : `${Number(c.quantity || 0)} bultos (registro anterior)`;
       return `
         <div class="product" style="margin-bottom:8px">
           <b>Boleta Nº ${esc(String(c.boletaNumber || ""))} · ${esc(String(c.clientName || "Sin cliente"))}</b>
-          <div>${esc(String(c.productName || "Producto"))}${c.presentation ? " - " + esc(String(c.presentation)) : ""} · Cantidad: ${Number(c.quantity || 0)}</div>
-          <div class="small">Motivo: ${esc(motivo)} · Estado: <b>${esc(estado.toUpperCase())}</b></div>
+         <div>${esc(String(c.productName || "Producto"))}${c.presentation ? " - " + esc(String(c.presentation)) : ""} · Cantidad reclamada: ${esc(cantidadTexto)}</div>
+         <div class="small">
+  Motivo: ${esc(motivo)} · Estado:
+  <b>${esc(estado.replaceAll("_"," ").toUpperCase())}</b>
+</div>
+
+${estado === "pendiente" ? `
+  <button class="primary"
+    style="width:100%;margin-top:8px"
+    onclick="gestionarReclamo('${esc(c.id)}')">
+    Gestionar reclamo
+  </button>
+` : ""}
           <div class="small">Importe según precio original: $${money(Number(c.originalLineTotal || 0))} · ${esc(fecha)}</div>
           ${c.observations ? `<div class="small">Observación: ${esc(String(c.observations))}</div>` : ""}
         </div>
