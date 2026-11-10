@@ -6789,13 +6789,18 @@ async function sendDraftToOffice(){
 
     localStorage.removeItem("NAA_DRAFT_ORDER");
 
-    orders.unshift({
-      id:orderRef.id,
-      ...draft,
-      status:"nuevo",
-      boletaNumber:boletaNumber
-    });
+   const pedidoSnap = await orderRef.get();
 
+if(!pedidoSnap.exists){
+  throw new Error("El pedido se guardó, pero no se pudo recuperar para actualizar la pantalla.");
+}
+
+const pedidoGuardado = pedidoSnap.data();
+
+orders.unshift({
+  id:orderRef.id,
+  ...pedidoGuardado
+});
     save();
 
     cart = {};
