@@ -1078,6 +1078,62 @@ let cart={};
 let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]");
 
 let productOverrides=JSON.parse(localStorage.getItem("NAA_PRODUCT_OVERRIDES")||"{}");
+let productStatusById = {};
+
+function productFirebaseId(name, presentation){
+  return encodeURIComponent(name + "|" + presentation);
+}
+
+function productIsActive(product){
+  return productStatusById[productFirebaseId(product[0], product[1])] !== false;
+}
+
+async function cargarEstadosProductosFirebase(){
+  try{
+    const snap = await firebaseDB.collection("products").get();
+    productStatusById = {};
+    snap.forEach(doc => {
+      const data = doc.data() || {};
+      productStatusById[doc.id] = data.active !== false;
+    });
+    renderProducts();
+    renderCatalogEditor();
+    renderManualProducts();
+    loadPromotionProductOptions();
+  }catch(error){
+    console.error("No se pudieron cargar los estados de productos:", error);
+  }
+}
+
+async function toggleProductActive(name, presentation){
+  const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+  if(usuario.role !== "admin"){
+    alert("Solo el administrador puede cambiar el estado de los productos.");
+    return;
+  }
+  const id = productFirebaseId(name, presentation);
+  const nuevoEstado = productStatusById[id] === false;
+  if(!confirm("¿Querés " + (nuevoEstado ? "activar" : "inactivar") + " " + name + " - " + presentation + "?")) return;
+  try{
+    await firebaseDB.collection("products").doc(id).set({
+      name: name,
+      presentation: presentation,
+      active: nuevoEstado,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      statusUpdatedBy: usuario.uid || null
+    }, {merge:true});
+    productStatusById[id] = nuevoEstado;
+    renderProducts();
+    renderCatalogEditor();
+    loadPromotionProductOptions();
+    alert(nuevoEstado
+      ? "Producto activado. Ya vuelve a aparecer para los preventistas."
+      : "Producto inactivado. Ya no aparecerá en el catálogo de pedidos.");
+  }catch(error){
+    console.error("Error cambiando estado del producto:", error);
+    alert("No se pudo cambiar el estado. Revisá los permisos de Firebase.");
+  }
+}  
 function getProducts(){
   return PRODUCTS.map(p=>{
     const key=p[0]+"|"+p[1];
@@ -1102,19 +1158,23 @@ function getProducts(){
     const products = getProducts();
 
     for(const p of products){
-      const id = encodeURIComponent(p[0] + '|' + p[1]);
+      const id = productFirebaseId(p[0], p[1]);
+      const productRef = firebaseDB.collection('products').doc(id);
+      const existing = await productRef.get();
+      const existingData = existing.exists ? existing.data() : {};
 
-      await firebaseDB.collection('products').doc(id).set({
+      await productRef.set({
         name: p[0],
         presentation: p[1],
         unit: p[2],
         prices: p[3].map(t => ({from: t[0], price: t[1]})),
         packagingQuantity: Number(p[4]) || 1,
-        active: true,
+        active: existing.exists ? existingData.active !== false : true,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
     }
 
+    await cargarEstadosProductosFirebase();
     alert('Productos sincronizados correctamente con Firebase.');
   }catch(error){
     console.error(error);
@@ -1123,7 +1183,7 @@ function getProducts(){
 }
 
   function loadPromotionProductOptions(){
-  const products=getProducts();
+  const products=getProducts().filter(productIsActive);
   const buySelect=document.getElementById("promoBuyProduct");
   const giftSelect=document.getElementById("promoGiftProduct");
 
@@ -5091,16 +5151,24 @@ function renderCatalogEditor(){
   const built=PRODUCTS.map((p,i)=>({p:getProducts()[i], original:p, type:"base", index:i}));
   const manual=customProducts.map((p,i)=>({p, original:p, type:"manual", index:i}));
   const all=built.concat(manual);
+
   box.innerHTML=all.map((item,j)=>{
     const p=item.p;
     const prices=p[3]||[];
+    const activo=productIsActive(p);
+
     return '<div class="product" style="margin-bottom:12px">'+
       '<div><b>'+esc(p[0])+'</b> <span class="badge">'+esc(p[1])+'</span></div>'+
       '<div class="muted">'+esc(p[2])+' · '+(Number(p[4])||1)+' unidades por empaque · '+prices.map(t=>"desde "+t[0]+" → $"+money(t[1])).join(" · ")+'</div>'+
-      '<button class="secondary catalog-edit" type="button" data-edit-index="'+j+'" style="margin-top:8px">✏️ Editar</button>'+
-      '</div>';
+      '<div class="'+(activo?'activebuy':'inactive')+'">'+(activo?'ACTIVO':'INACTIVO')+'</div>'+
+      '<div class="row" style="margin-top:8px">'+
+      '<button class="secondary catalog-edit" type="button" data-edit-index="'+j+'">✏️ Editar</button>'+
+      '<button class="'+(activo?'danger':'primary')+' catalog-toggle" type="button" data-name="'+encodeURIComponent(p[0])+'" data-pres="'+encodeURIComponent(p[1])+'">'+(activo?'⏸ Inactivar':'▶ Activar')+'</button>'+
+      '</div></div>';
   }).join("") || '<div class="empty">No hay productos.</div>';
+
   box.querySelectorAll(".catalog-edit").forEach(btn=>btn.onclick=()=>editCatalogProduct(Number(btn.dataset.editIndex)));
+  box.querySelectorAll(".catalog-toggle").forEach(btn=>btn.onclick=()=>toggleProductActive(decodeURIComponent(btn.dataset.name),decodeURIComponent(btn.dataset.pres)));
 }
 function editCatalogProduct(j){
   if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
@@ -5999,7 +6067,7 @@ return price;
 function keyFor(p){return encodeURIComponent(p[0]+"|"+p[1])}
 function renderProducts(){
 let q=(document.getElementById("productSearch").value||"").toLowerCase();
-let list=getProducts().filter(p=>(p[0]+" "+p[1]).toLowerCase().includes(q));
+let list=getProducts().filter(p=>productIsActive(p)&&(p[0]+" "+p[1]).toLowerCase().includes(q));
 document.getElementById("products").innerHTML=list.map((p,i)=>{
 let key=p[0]+"|"+p[1], safeKey=encodeURIComponent(key), image=productImage(p);
 return '<div class="product">'+
