@@ -7292,7 +7292,7 @@ async function guardarReclamo(){
   }
 }
 
-  async function gestionarReclamo(claimId){
+ async function gestionarReclamo(claimId){
   if(!claimAdminOnly()) return;
 
   try{
@@ -7305,12 +7305,14 @@ async function guardarReclamo(){
     }
 
     const c = snap.data() || {};
-    const estado = String(c.status || "pendiente");
 
-    if(estado !== "pendiente"){
+    if(c.status !== "pendiente"){
       alert("Este reclamo ya fue gestionado.");
       return;
     }
+
+    const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+    const administrador = user.name || user.username || "Administrador";
 
     const accion = prompt(
       "GESTIONAR RECLAMO\n\n" +
@@ -7321,13 +7323,10 @@ async function guardarReclamo(){
 
     if(accion === null) return;
 
-    if(accion !== "1" && accion !== "2"){
+    if(!["1","2"].includes(accion)){
       alert("Opción no válida.");
       return;
     }
-
-    const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
-    const administrador = user.name || user.username || "Administrador";
 
     if(accion === "2"){
       const motivo = prompt("Indicá el motivo del rechazo:");
@@ -7351,59 +7350,112 @@ async function guardarReclamo(){
       return;
     }
 
-  const solucion = prompt(
-  "ELEGIR SOLUCIÓN\n\n" +
-  "1 - Reposición de mercadería\n" +
-  "2 - Saldo a favor del cliente\n" +
-  "3 - Devolución de dinero en efectivo\n" +
-  "4 - Devolución de dinero por transferencia\n\n" +
-  "Ingresá una opción del 1 al 4:"
-);
+    const solucion = prompt(
+      "ELEGIR SOLUCIÓN\n\n" +
+      "1 - Reposición de mercadería\n" +
+      "2 - Saldo a favor del cliente\n" +
+      "3 - Devolución de dinero en efectivo\n" +
+      "4 - Devolución de dinero por transferencia\n\n" +
+      "Ingresá una opción del 1 al 4:"
+    );
 
-if(solucion === null) return;
+    if(solucion === null) return;
 
-if(!["1","2","3","4"].includes(solucion)){
-  alert("Opción no válida.");
-  return;
-}
+    if(!["1","2","3","4"].includes(solucion)){
+      alert("Opción no válida.");
+      return;
+    }
 
-const importe = Number(c.originalLineTotal || 0);
+    const importe = Number(c.originalLineTotal || 0);
 
-const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
-const administrador = user.name || user.username || "Administrador";
+    if(importe <= 0){
+      alert("El importe del reclamo no es válido.");
+      return;
+    }
 
-let datosActualizacion = {
-  approvedBy: administrador,
-  approvedAt: firebase.firestore.FieldValue.serverTimestamp()
-};
+    if(solucion === "1"){
+      await ref.update({
+        status: "pendiente_reposicion",
+        resolution: "reposicion",
+        approvedBy: administrador,
+        approvedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
 
-if(solucion === "1"){
-  datosActualizacion.status = "pendiente_reposicion";
-  datosActualizacion.resolution = "reposicion";
-}
+    if(solucion === "2"){
+      const creditRef = firebaseDB
+        .collection("customerCredits")
+        .doc(claimId);
 
-if(solucion === "2"){
-  datosActualizacion.status = "pendiente_saldo_favor";
-  datosActualizacion.resolution = "saldo_favor";
-  datosActualizacion.creditAmount = importe;
-}
+      await firebaseDB.runTransaction(async transaction => {
+        const claimActual = await transaction.get(ref);
+        const creditActual = await transaction.get(creditRef);
 
-if(solucion === "3" || solucion === "4"){
-  datosActualizacion.status = "pendiente_devolucion";
-  datosActualizacion.resolution = "devolucion_dinero";
-  datosActualizacion.refundMethod =
-    solucion === "3" ? "efectivo" : "transferencia";
-  datosActualizacion.refundAmount = importe;
-}
+        if(!claimActual.exists){
+          throw new Error("El reclamo ya no existe.");
+        }
 
-await ref.update(datosActualizacion);
+        if(claimActual.data().status !== "pendiente"){
+          throw new Error("El reclamo ya fue gestionado.");
+        }
 
-alert("Reclamo autorizado. Quedó registrado con la solución elegida.");
+        if(creditActual.exists){
+          throw new Error("Ya existe un saldo a favor para este reclamo.");
+        }
 
-await renderClaims();
+        transaction.set(creditRef,{
+          claimId: claimId,
+          orderId: c.orderId || "",
+          originalBoletaNumber: c.boletaNumber || "",
+          clientId: c.clientId || "",
+          clientName: c.clientName || "Sin cliente",
+          amount: importe,
+          initialAmount: importe,
+          usedAmount: 0,
+          remainingAmount: importe,
+          status: "disponible",
+          createdBy: administrador,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        transaction.update(ref,{
+          status: "saldo_acreditado",
+          resolution: "saldo_favor",
+          creditAmount: importe,
+          creditCreated: true,
+          approvedBy: administrador,
+          approvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      alert(
+        "¡Saldo a favor registrado!\n\n" +
+        "Cliente: " + (c.clientName || "Sin cliente") + "\n" +
+        "Importe: $" + money(importe) + "\n\n" +
+        "Quedó disponible en Firebase."
+      );
+    }
+
+    if(solucion === "3" || solucion === "4"){
+      await ref.update({
+        status: "pendiente_devolucion",
+        resolution: "devolucion_dinero",
+        refundMethod: solucion === "3" ? "efectivo" : "transferencia",
+        refundAmount: importe,
+        approvedBy: administrador,
+        approvedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    if(solucion !== "2"){
+      alert("Reclamo autorizado. Quedó registrado con la solución elegida.");
+    }
+
+    await renderClaims();
+
   }catch(error){
-    console.error("Error gestionando reclamo:", error);
-    alert("No se pudo gestionar el reclamo. Revisá Firebase.");
+    console.error("Error gestionando reclamo:",error);
+    alert("No se pudo gestionar el reclamo: " + error.message);
   }
 }
   
