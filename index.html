@@ -6591,6 +6591,8 @@ function saveDraft(){
 
 async function sendDraftToOffice(){
 
+ 
+
   const draftRaw = localStorage.getItem("NAA_DRAFT_ORDER");
 
   if(!draftRaw){
@@ -6613,6 +6615,13 @@ async function sendDraftToOffice(){
     .collection("orders")
     .doc();
 
+  if(window.sendingDraft){
+  alert("El pedido ya se está enviando. Esperá un momento.");
+  return;
+}
+
+window.sendingDraft = true;
+  
   try{
 
     const clientId = String(draft.clientId || "");
@@ -6639,7 +6648,7 @@ async function sendDraftToOffice(){
         return fechaA - fechaB;
       });
 
-    const boletaNumber = await firebaseDB.runTransaction(
+    const resultadoEnvio = await firebaseDB.runTransaction(
       async transaction => {
 
         const numberSnap = await transaction.get(numberRef);
@@ -6781,26 +6790,29 @@ async function sendDraftToOffice(){
           nextInvoiceNumber:nextNumber + 1
         });
 
-        transaction.set(orderRef,pedido);
+       transaction.set(orderRef,pedido);
 
-        return nextNumber;
+return {
+  boletaNumber: nextNumber,
+  pedidoLocal: {
+    ...pedido,
+    sentAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  }
+};
       }
     );
 
-    localStorage.removeItem("NAA_DRAFT_ORDER");
-
-   const pedidoSnap = await orderRef.get();
-
-if(!pedidoSnap.exists){
-  throw new Error("El pedido se guardó, pero no se pudo recuperar para actualizar la pantalla.");
-}
-
-const pedidoGuardado = pedidoSnap.data();
+ const boletaNumber = resultadoEnvio.boletaNumber;
 
 orders.unshift({
-  id:orderRef.id,
-  ...pedidoGuardado
+  id: orderRef.id,
+  ...resultadoEnvio.pedidoLocal
 });
+
+save();
+
+localStorage.removeItem("NAA_DRAFT_ORDER");
     save();
 
     cart = {};
@@ -6819,7 +6831,7 @@ orders.unshift({
       "Boleta Nº " + boletaNumber
     );
 
-  }catch(error){
+    }catch(error){
 
     console.error(error);
 
@@ -6827,6 +6839,10 @@ orders.unshift({
       "No se pudo enviar el pedido.\n\n" +
       error.message
     );
+
+  }finally{
+
+    window.sendingDraft = false;
 
   }
 }
@@ -9321,7 +9337,7 @@ async function renderCurrentAccounts(){
     let html=`
       <div class="card">
         <h3>💰 Total pendiente de cobro</h3>
-        <div class="total">${dashboardMoney(o.amountDue ?? o.total ?? 0)}</div>
+       <div class="total">${dashboardMoney(o.amountDue ?? o.total ?? 0)}</div>
         <div class="muted">
           ${accounts.length} cuenta${accounts.length===1?"":"s"} pendiente${accounts.length===1?"":"s"}
         </div>
@@ -9446,7 +9462,17 @@ let text="DISTRIBUIDORA N.A.A. S.A.S.\nPEDIDO\n"+
 "Teléfono: "+(c?.phone||"Sin dato")+"\n"+
 "Referencia: "+(c?.obs||"Sin dato")+"\n\n";
 o.lines.forEach(l=>text+=l.qty+" x "+l.name+" "+l.presentation+" = $"+money(l.total)+"\n");
-text+="\nTOTAL: $"+money(o.total);
+const totalMercaderia = Number(o.grossTotal ?? o.total ?? 0);
+const saldoAplicado = Number(o.creditApplied ?? 0);
+const totalACobrar = Number(o.amountDue ?? o.total ?? 0);
+
+text += "\nTOTAL MERCADERÍA: $" + money(totalMercaderia);
+
+if(saldoAplicado > 0){
+  text += "\nSALDO A FAVOR APLICADO: -$" + money(saldoAplicado);
+}
+
+text += "\nTOTAL A COBRAR: $" + money(totalACobrar);
 let ok=await share(text);
 if(ok){
 o.sentAt=new Date().toISOString();
