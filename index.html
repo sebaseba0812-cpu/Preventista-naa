@@ -3686,7 +3686,7 @@ async function calcularLiquidacion() {
     let totalLiquidacion = 0;
 
     if (modalidad === "bulto") {
-  pagoBase = totalBultos * valorBulto;
+  pagoBase = bultoBase * valorBulto;
 
   comisionExcedente =
     ventasExcedentes * (porcentajeExcedente / 100);
@@ -9398,6 +9398,7 @@ async function renderCurrentAccounts(){
       if(o.paymentStatus==="cobrado")return;
       if(o.status==="canceled"||o.status==="anulado")return;
       if(o.status==="borrador")return;
+      if(!["preparando","preparado","entregado"].includes(o.status))return;
 
       const saleDate=o.createdAt?.toDate
         ? o.createdAt.toDate()
