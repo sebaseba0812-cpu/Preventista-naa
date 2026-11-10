@@ -277,6 +277,7 @@ body {
 <nav>
 <button class="active" onclick="show('pedido',this)">🛒 Pedido</button>
 <button id="pedidosOficinaNavBtn" style="display:none" onclick="show('pedidosOficina',this)">📥 Oficina <span id="officePendingCount" class="nav-count" style="display:none">0</span></button>
+<button id="reclamosNavBtn" style="display:none" onclick="show('reclamos',this)">🧾 Reclamos</button>
   <button onclick="show('clientes',this)">🏪 Clientes</button>
 <button onclick="show('historial',this)">📋 Historial</button>
 <button id="productosNavBtn" onclick="show('productos',this)">📦 Productos</button>
@@ -327,7 +328,59 @@ body {
   <button class="primary" style="flex:1" onclick="sendDraftToOffice()">📤 Enviar a oficina</button>
 </div></div>
 </section>
+<section id="reclamos" class="screen">
+  <div class="card">
+    <h2>🧾 Reclamos y devoluciones</h2>
+    <p class="small">Carga exclusiva de administración. Ingresá el número de la boleta original para recuperar el cliente y los productos vendidos.</p>
 
+    <label>Número de boleta original</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="claimInvoiceNumber" type="number" min="1" placeholder="Ej.: 125" style="flex:1" onkeydown="if(event.key==='Enter')buscarBoletaReclamo()">
+      <button class="primary" onclick="buscarBoletaReclamo()">Buscar</button>
+    </div>
+
+    <p id="claimLookupStatus" class="small"></p>
+    <div id="claimOrderInfo" class="product hidden"></div>
+
+    <div id="claimProductFields" class="hidden">
+      <label>Producto de la boleta</label>
+      <select id="claimProductSelect" onchange="actualizarProductoReclamo()">
+        <option value="">Seleccioná un producto</option>
+      </select>
+
+      <div id="claimProductInfo" class="small"></div>
+
+      <label>Cantidad reclamada</label>
+      <input id="claimQty" type="number" min="1" step="1" value="1">
+
+      <label>Motivo</label>
+      <select id="claimReason">
+        <option value="danado">Producto dañado</option>
+        <option value="faltante">Producto faltante</option>
+        <option value="otro">Otro motivo</option>
+      </select>
+
+      <label>¿El producto físico volvió al depósito?</label>
+      <select id="claimReturned">
+        <option value="no">No</option>
+        <option value="si">Sí</option>
+        <option value="no_aplica">No aplica / faltante</option>
+      </select>
+
+      <label>Observaciones</label>
+      <textarea id="claimObservations" rows="2" placeholder="Detalle del reclamo informado a la oficina"></textarea>
+
+      <button class="primary" style="width:100%;margin-top:10px" onclick="guardarReclamo()">Guardar reclamo pendiente</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Reclamos cargados</h3>
+    <div id="claimsList">
+      <div class="empty">Cargando reclamos...</div>
+    </div>
+  </div>
+</section>
 <section id="pedidosOficina" class="screen">
 
 <div class="card">
@@ -3280,9 +3333,10 @@ if(promoForm){
     ["cajaNavBtn", !esAdmin],
     ["cuentasCorrientesNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
     ["repartoNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
-    ["personalNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
-    ["pedidosOficinaNavBtn", !esAdmin]
-  ].forEach(([id, ocultar]) => {
+   ["personalNavBtn", !esAdmin || !NAA_CAJA_ABIERTA],
+["pedidosOficinaNavBtn", !esAdmin],
+["reclamosNavBtn", !esAdmin]
+].forEach(([id, ocultar]) => {
     document.getElementById(id)?.classList.toggle("hidden", ocultar);
   });
 }
@@ -5065,6 +5119,7 @@ function show(id,btn){
     "cuentasCorrientes",
     "reparto",
     "personal",
+     "reclamos", 
     "pedidosOficina"
   ];
 
@@ -5144,7 +5199,8 @@ if(id==="cierre"){
     renderClosure();
   }
 }
- if(id==="pedidosOficina")renderOfficeOrders(); 
+ if(id==="pedidosOficina")renderOfficeOrders();
+  if(id==="reclamos")renderClaims();
 }
 
 function renderCatalogEditor(){
@@ -6965,7 +7021,288 @@ function setOfficePendingCount(count){
   }
 }
 
-    
+ // ===== RECLAMOS Y DEVOLUCIONES (ADMINISTRACIÓN) =====
+
+let claimOrderSelected = null;
+let claimExistingByLine = {};
+
+function claimAdminOnly(){
+  const u = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+  if(u.role !== "admin"){
+    alert("Esta sección es exclusiva del administrador.");
+    return false;
+  }
+  return true;
+}
+
+async function buscarBoletaReclamo(){
+  if(!claimAdminOnly()) return;
+
+  const input = document.getElementById("claimInvoiceNumber");
+  const status = document.getElementById("claimLookupStatus");
+  const info = document.getElementById("claimOrderInfo");
+  const fields = document.getElementById("claimProductFields");
+  const numero = String(input?.value || "").trim();
+
+  claimOrderSelected = null;
+  claimExistingByLine = {};
+
+  fields?.classList.add("hidden");
+  info?.classList.add("hidden");
+
+  if(!numero){
+    status.textContent = "Ingresá un número de boleta.";
+    return;
+  }
+
+  status.textContent = "Buscando boleta...";
+
+  try{
+    const snap = await firebaseDB.collection("orders")
+      .where("boletaNumber", "==", Number(numero))
+      .get();
+
+    const matches = [];
+    snap.forEach(doc => matches.push({id:doc.id,...doc.data()}));
+
+    const valid = matches.filter(o =>
+      !["anulado","anulada","cancelado","canceled","borrador"]
+      .includes(String(o.status || "").toLowerCase())
+    );
+
+    if(valid.length !== 1){
+      status.textContent = valid.length > 1
+        ? "Hay más de una boleta con ese número. No se puede cargar el reclamo automáticamente."
+        : "No se encontró una boleta válida con ese número.";
+      return;
+    }
+
+    claimOrderSelected = valid[0];
+
+    const o = claimOrderSelected;
+    const lines = Array.isArray(o.lines) ? o.lines : [];
+
+    if(!lines.length){
+      status.textContent = "La boleta existe, pero no tiene productos registrados.";
+      return;
+    }
+
+    const claimSnap = await firebaseDB.collection("claims")
+      .where("orderId", "==", o.id)
+      .get();
+
+    claimSnap.forEach(doc=>{
+      const c = doc.data() || {};
+
+      if(["pendiente","aprobado"].includes(
+        String(c.status || "pendiente").toLowerCase()
+      )){
+        const k = String(c.lineIndex);
+        claimExistingByLine[k] =
+          (claimExistingByLine[k] || 0) + Number(c.quantity || 0);
+      }
+    });
+
+    const fechaVal = o.createdAt?.toDate
+      ? o.createdAt.toDate()
+      : new Date(o.date || Date.now());
+
+    info.innerHTML =
+      `<b>Boleta Nº ${esc(String(o.boletaNumber))}</b><br>` +
+      `Cliente: <b>${esc(String(o.clientData?.name || o.client || "Sin cliente"))}</b><br>` +
+      `Fecha: ${fechaVal.toLocaleDateString("es-AR")}<br>` +
+      `Total original: $${money(Number(o.total || 0))}`;
+
+    info.classList.remove("hidden");
+
+    const select = document.getElementById("claimProductSelect");
+
+    select.innerHTML =
+      '<option value="">Seleccioná un producto</option>' +
+      lines.map((p,i)=>{
+        const sold = Number(p.qty || 0);
+        const already = Number(claimExistingByLine[String(i)] || 0);
+        const remaining = Math.max(0,sold-already);
+
+        const label =
+          `${p.name || "Producto"}` +
+          `${p.presentation ? " - " + p.presentation : ""}` +
+          ` · Vendido: ${sold} · Disponible para reclamar: ${remaining}`;
+
+        return `<option value="${i}" ${remaining <= 0 ? "disabled" : ""}>${esc(label)}</option>`;
+      }).join("");
+
+    fields.classList.remove("hidden");
+
+    status.textContent =
+      "Boleta encontrada. Revisá el cliente y elegí el producto reclamado.";
+
+    actualizarProductoReclamo();
+
+  }catch(error){
+    console.error("Error buscando boleta para reclamo:",error);
+    status.textContent =
+      "No se pudo consultar la boleta. Revisá la conexión y los permisos de Firebase.";
+  }
+}
+
+function actualizarProductoReclamo(){
+  const out = document.getElementById("claimProductInfo");
+  const select = document.getElementById("claimProductSelect");
+
+  if(!claimOrderSelected || !select || select.value === ""){
+    out.textContent = "";
+    return;
+  }
+
+  const index = Number(select.value);
+  const p = claimOrderSelected.lines[index] || {};
+
+  const sold = Number(p.qty || 0);
+  const claimed = Number(claimExistingByLine[String(index)] || 0);
+  const remaining = Math.max(0,sold-claimed);
+  const unitPrice = sold > 0 ? Number(p.total || 0) / sold : 0;
+
+  document.getElementById("claimQty").max = String(remaining);
+  document.getElementById("claimQty").value = remaining > 0 ? 1 : 0;
+
+  out.textContent =
+    `Cantidad vendida: ${sold}. Ya reclamada: ${claimed}. ` +
+    `Disponible: ${remaining}. Precio unitario original: $${money(unitPrice)}.`;
+}
+
+async function guardarReclamo(){
+  if(!claimAdminOnly() || !claimOrderSelected) return;
+
+  const select = document.getElementById("claimProductSelect");
+
+  if(!select || select.value === ""){
+    alert("Seleccioná el producto reclamado.");
+    return;
+  }
+
+  const index = Number(select.value);
+  const p = claimOrderSelected.lines[index] || {};
+
+  const qty = Number(document.getElementById("claimQty").value || 0);
+  const sold = Number(p.qty || 0);
+  const claimed = Number(claimExistingByLine[String(index)] || 0);
+  const remaining = Math.max(0,sold-claimed);
+
+  if(!Number.isInteger(qty) || qty < 1 || qty > remaining){
+    alert(`La cantidad debe ser de 1 a ${remaining}, según la boleta original y los reclamos ya cargados.`);
+    return;
+  }
+
+  const reason = document.getElementById("claimReason").value;
+  const returned = document.getElementById("claimReturned").value;
+
+  if(reason === "faltante" && returned === "si"){
+    alert("Un producto faltante no puede figurar como devuelto físicamente. Elegí ‘No aplica / faltante’.");
+    return;
+  }
+
+  const user = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+  const unitPrice = sold > 0 ? Number(p.total || 0) / sold : 0;
+
+  const claim = {
+    orderId: claimOrderSelected.id,
+    boletaNumber: Number(claimOrderSelected.boletaNumber),
+    clientId: claimOrderSelected.clientId || "",
+    clientName: claimOrderSelected.clientData?.name || claimOrderSelected.client || "Sin cliente",
+    lineIndex: index,
+    productName: p.name || "Producto",
+    presentation: p.presentation || "",
+    quantity: qty,
+    originalUnitPrice: unitPrice,
+    originalLineTotal: unitPrice * qty,
+    reason: reason,
+    physicalReturn: returned,
+    observations: document.getElementById("claimObservations").value.trim(),
+    status: "pendiente",
+    createdBy: user.name || user.username || "Administrador",
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try{
+    await firebaseDB.collection("claims").add(claim);
+
+    alert("Reclamo guardado como pendiente. Todavía no genera nota de crédito ni modifica stock o comisiones.");
+
+    document.getElementById("claimObservations").value = "";
+    document.getElementById("claimInvoiceNumber").value = "";
+    document.getElementById("claimLookupStatus").textContent = "";
+    document.getElementById("claimOrderInfo").classList.add("hidden");
+    document.getElementById("claimProductFields").classList.add("hidden");
+
+    claimOrderSelected = null;
+
+    await renderClaims();
+
+  }catch(error){
+    console.error("Error guardando reclamo:",error);
+    alert("No se pudo guardar el reclamo. Verificá los permisos de la colección claims en Firebase.");
+  }
+}
+
+async function renderClaims(){
+  const box = document.getElementById("claimsList");
+  if(!box) return;
+
+  if(!claimAdminOnly()){
+    box.innerHTML = "";
+    return;
+  }
+
+  box.innerHTML = '<div class="empty">Cargando reclamos...</div>';
+
+  try{
+    const snap = await firebaseDB.collection("claims").get();
+    const items = [];
+
+    snap.forEach(doc=>items.push({id:doc.id,...doc.data()}));
+
+    items.sort((a,b)=>{
+      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+      const db = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+      return db-da;
+    });
+
+    if(!items.length){
+      box.innerHTML = '<div class="empty">Todavía no hay reclamos cargados.</div>';
+      return;
+    }
+
+    box.innerHTML = items.map(c=>{
+      const estado = String(c.status || "pendiente");
+      const motivo = {
+        danado:"Dañado",
+        faltante:"Faltante",
+        otro:"Otro"
+      }[c.reason] || c.reason || "Sin motivo";
+
+      const fecha = c.createdAt?.toDate
+        ? c.createdAt.toDate().toLocaleString("es-AR")
+        : "Fecha pendiente";
+
+      return `
+        <div class="product" style="margin-bottom:8px">
+          <b>Boleta Nº ${esc(String(c.boletaNumber || ""))} · ${esc(String(c.clientName || "Sin cliente"))}</b>
+          <div>${esc(String(c.productName || "Producto"))}${c.presentation ? " - " + esc(String(c.presentation)) : ""} · Cantidad: ${Number(c.quantity || 0)}</div>
+          <div class="small">Motivo: ${esc(motivo)} · Estado: <b>${esc(estado.toUpperCase())}</b></div>
+          <div class="small">Importe según precio original: $${money(Number(c.originalLineTotal || 0))} · ${esc(fecha)}</div>
+          ${c.observations ? `<div class="small">Observación: ${esc(String(c.observations))}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+
+  }catch(error){
+    console.error("Error cargando reclamos:",error);
+    box.innerHTML = '<div class="empty">No se pudieron cargar los reclamos. Revisá los permisos de Firebase.</div>';
+  }
+}
+
+// ===== FIN RECLAMOS Y DEVOLUCIONES =====   
   
 async function renderOfficeOrders(){
   const list = document.getElementById("officeOrdersList");
@@ -8706,6 +9043,8 @@ if(document.getElementById("roleLabel")) document.getElementById("roleLabel").te
 }
 if(user.role === "admin" && document.getElementById("adminBanner")) document.getElementById("adminBanner").classList.remove("hidden");
  if(user.role==="admin" && document.getElementById("pedidosOficinaNavBtn"))
+ if(user.role==="admin" && document.getElementById("reclamosNavBtn"))
+  document.getElementById("reclamosNavBtn").style.display="inline-block";  
   document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";
       if(user.role==="admin" && document.getElementById("cuentasCorrientesNavBtn"))
   document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block"; 
