@@ -6611,10 +6611,20 @@ async function sendDraftToOffice(){
     .collection("settings")
     .doc("numbering");
 
-  const orderRef = firebaseDB
+  if(!draft.sendId){
+  draft.sendId = firebaseDB
     .collection("orders")
-    .doc();
+    .doc().id;
 
+  localStorage.setItem(
+    "NAA_DRAFT_ORDER",
+    JSON.stringify(draft)
+  );
+}
+
+const orderRef = firebaseDB
+  .collection("orders")
+  .doc(draft.sendId);
   if(window.sendingDraft){
   alert("El pedido ya se está enviando. Esperá un momento.");
   return;
@@ -6649,10 +6659,21 @@ window.sendingDraft = true;
       });
 
     const resultadoEnvio = await firebaseDB.runTransaction(
-      async transaction => {
+     async transaction => {
 
-        const numberSnap = await transaction.get(numberRef);
+  // Comprobar si este borrador ya fue enviado anteriormente.
+  const pedidoExistenteSnap = await transaction.get(orderRef);
 
+  if(pedidoExistenteSnap.exists){
+    const pedidoExistente = pedidoExistenteSnap.data();
+
+    return {
+      boletaNumber: pedidoExistente.boletaNumber,
+      pedidoLocal: pedidoExistente
+    };
+  }
+
+  const numberSnap = await transaction.get(numberRef);
         if(!numberSnap.exists){
           throw new Error("No existe la configuración de numeración.");
         }
@@ -7111,6 +7132,7 @@ async function cambiarEstadoPedidoOficina(id, nuevoEstado){
 }
 
 
+
 async function anularPedidoOficina(id){
 
   const motivo = prompt(
@@ -7120,30 +7142,106 @@ async function anularPedidoOficina(id){
   if(motivo === null) return;
 
   if(!motivo.trim()){
-
     alert("Ingresá un motivo para anular el pedido.");
-
     return;
   }
 
   try{
 
-    await firebaseDB
+    const orderRef = firebaseDB
       .collection("orders")
-      .doc(String(id))
-      .update({
+      .doc(String(id));
 
-        status: "anulado",
-        estado: "anulado",
-        cancelReason: motivo.trim(),
-        canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    const resultado = await firebaseDB.runTransaction(
+      async transaction => {
 
-      });
+        const orderSnap = await transaction.get(orderRef);
+
+        if(!orderSnap.exists){
+          throw new Error("No se encontró el pedido.");
+        }
+
+        const pedido = orderSnap.data() || {};
+
+        if(["anulado","anulada","cancelado","canceled"].includes(pedido.status)){
+          return { yaAnulado:true };
+        }
+
+        const creditUses = Array.isArray(pedido.creditUses)
+          ? pedido.creditUses
+          : [];
+
+        const creditRefs = creditUses.map(uso => ({
+          ref: firebaseDB.collection("customerCredits").doc(String(uso.creditId)),
+          amount: Number(uso.amount || 0)
+        }));
+
+        // Leer todos los créditos antes de realizar escrituras.
+        const creditSnaps = [];
+
+        for(const item of creditRefs){
+          creditSnaps.push(
+            await transaction.get(item.ref)
+          );
+        }
+
+        // Devolver los importes utilizados.
+        creditSnaps.forEach((creditSnap,index)=>{
+
+          const importe = creditRefs[index].amount;
+
+          if(!creditSnap.exists || importe <= 0){
+            throw new Error("No se pudo localizar un saldo utilizado. No se anuló el pedido.");
+          }
+
+          const credito = creditSnap.data() || {};
+
+          const restante = Number(
+            credito.remainingAmount ?? credito.amount ?? 0
+          );
+
+          const utilizado = Number(credito.usedAmount || 0);
+
+          transaction.update(creditSnap.ref,{
+
+            remainingAmount: restante + importe,
+
+            usedAmount: Math.max(0, utilizado - importe),
+
+            status: "disponible",
+
+            restoredAmount: Number(credito.restoredAmount || 0) + importe,
+
+            lastRestoredAt: firebase.firestore.FieldValue.serverTimestamp()
+
+          });
+
+        });
+
+        transaction.update(orderRef,{
+
+          status: "anulado",
+          estado: "anulado",
+          cancelReason: motivo.trim(),
+          canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          creditRestored: true
+
+        });
+
+        return { yaAnulado:false };
+
+      }
+    );
 
     await renderOfficeOrders();
 
-    alert("Pedido anulado correctamente.");
+    if(resultado.yaAnulado){
+      alert("Este pedido ya estaba anulado. No se devolvió el saldo nuevamente.");
+      return;
+    }
+
+    alert("Pedido anulado correctamente. Si utilizó saldo a favor, el importe fue restituido al cliente.");
 
   }catch(error){
 
@@ -7154,6 +7252,7 @@ async function anularPedidoOficina(id){
   }
 
 }
+
  async function marcarCobradoOficina(id){
   if(!confirm("¿Marcar esta cuenta corriente como COBRADA?"))return;
   const ref=firebaseDB.collection("orders").doc(String(id));
