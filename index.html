@@ -9901,57 +9901,311 @@ const direccion = clienteDatos
 }
 
 
-  function closureData(){
-  let a=new Date(document.getElementById("from").value+"T00:00:00");
-  let b=new Date(document.getElementById("to").value+"T23:59:59");
+ 
 
-  let mine=orders.filter(o=>o.user?.uid===user?.uid);
+async function closureData(){
 
-  
-let inRange=o=>{
-  let fecha;
-  let valorFecha;
+  const desdeTexto = document.getElementById("from")?.value;
+  const hastaTexto = document.getElementById("to")?.value;
 
-  if(o.paymentType==="cuenta_corriente" && o.paymentStatus==="cobrado"){
-    valorFecha=o.paymentDate||o.updatedAt||o.date;
-  }else{
-    valorFecha=o.date;
+  const uid = user?.uid;
+
+  if(!uid || !desdeTexto || !hastaTexto){
+    return {
+      valid: [],
+      can: [],
+      totalBultos: 0,
+      totalVentas: 0,
+      bultosBase: 0,
+      bultosExcedentes: 0,
+      ventasExcedentes: 0,
+      pagoBase: 0,
+      comisionExcedente: 0,
+      totalProvisorio: 0,
+      objetivo: 750,
+      valorBulto: 534.75,
+      porcentajeExcedente: 4
+    };
   }
 
-  fecha=valorFecha?.toDate
-    ? valorFecha.toDate()
-    : new Date(valorFecha);
+  const desde = new Date(desdeTexto + "T00:00:00");
+  const hasta = new Date(hastaTexto + "T23:59:59");
 
-  return !isNaN(fecha.getTime()) && fecha>=a && fecha<=b;
-};
+  let config = {...LIQ_DEFAULTS};
 
+  try{
+    const configDoc = await firebaseDB
+      .collection("liquidationSettings")
+      .doc(uid)
+      .get();
 
-  let valid=mine.filter(o=>{
-    if(o.status==="canceled"||o.status==="anulado")return false;
-
-    if(o.paymentType==="cuenta_corriente" && o.paymentStatus!=="cobrado"){
-      return false;
+    if(configDoc.exists){
+      config = {...config, ...configDoc.data()};
     }
 
-    return inRange(o);
+  }catch(error){
+    console.error("Error leyendo configuración:", error);
+  }
+
+  const objetivo = Number(config.targetBultos ?? 750);
+  const valorBulto = Number(config.payPerBulto ?? 534.75);
+  const porcentajeExcedente = Number(config.excessPercent ?? 4);
+
+  let pedidos = [];
+
+  try{
+
+    const snapshot = await firebaseDB
+      .collection("orders")
+      .where("ownerUid", "==", uid)
+      .get();
+
+    pedidos = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+  }catch(error){
+
+    console.error("Error actualizando pedidos del cierre:", error);
+
+    pedidos = Array.isArray(orders)
+      ? orders.filter(o => liqUidPedido(o) === uid)
+      : [];
+
+  }
+
+  const valid = [];
+  const can = [];
+
+  pedidos.forEach(o => {
+
+    const estado = String(o.status || "").toLowerCase();
+
+    const fecha = (
+      liqEsCuentaCorriente(o) &&
+      String(o.paymentStatus || "").toLowerCase() === "cobrado"
+    )
+      ? liqDate(o.paymentDate || o.updatedAt || o.date || o.createdAt)
+      : liqDate(o.date || o.createdAt);
+
+    if(!fecha || fecha < desde || fecha > hasta) return;
+
+    if(
+      estado.includes("anulad") ||
+      estado.includes("cancel")
+    ){
+      can.push(o);
+      return;
+    }
+
+    if(
+      estado.includes("borrador") ||
+      estado.includes("draft")
+    ){
+      return;
+    }
+
+    // Las cuentas corrientes solo suman cuando están cobradas.
+    if(
+      liqEsCuentaCorriente(o) &&
+      String(o.paymentStatus || "").toLowerCase() !== "cobrado"
+    ){
+      return;
+    }
+
+    valid.push(o);
+
   });
 
-  let can=mine.filter(o=>{
-    if(o.status!=="canceled"&&o.status!=="anulado")return false;
-
-    return inRange(o);
+  valid.sort((a,b) => {
+    return liqFechaPedido(a) - liqFechaPedido(b);
   });
 
-  let total=valid.reduce((s,o)=>s+Number(o.total||0),0);
-  let pt=Number(document.getElementById("commission").value||4);
+  let totalBultos = 0;
+  let totalVentas = 0;
+  let bultosBase = 0;
+  let bultosExcedentes = 0;
+  let ventasExcedentes = 0;
 
-  return {mine,valid,can,total,pt,com:total*pt/100};
+  valid.forEach(order => {
+
+    const lineas = Array.isArray(order.lines)
+      ? order.lines
+      : [];
+
+    lineas.forEach(line => {
+
+      const cantidad = Number(line.qty || 0);
+      const importe = Number(line.total || 0);
+
+      if(cantidad <= 0) return;
+
+      totalBultos += cantidad;
+      totalVentas += importe;
+
+      const espacioBase = Math.max(
+        0,
+        objetivo - bultosBase
+      );
+
+      const cantidadBase = Math.min(
+        cantidad,
+        espacioBase
+      );
+
+      const cantidadExcedente = cantidad - cantidadBase;
+
+      bultosBase += cantidadBase;
+      bultosExcedentes += cantidadExcedente;
+
+      if(cantidadExcedente > 0){
+        ventasExcedentes +=
+          importe * (cantidadExcedente / cantidad);
+      }
+
+    });
+
+  });
+
+  const pagoBase = bultosBase * valorBulto;
+
+  const comisionExcedente =
+    ventasExcedentes * (porcentajeExcedente / 100);
+
+  const totalProvisorio =
+    pagoBase + comisionExcedente;
+
+  return {
+    valid,
+    can,
+    totalBultos,
+    totalVentas,
+    bultosBase,
+    bultosExcedentes,
+    ventasExcedentes,
+    pagoBase,
+    comisionExcedente,
+    totalProvisorio,
+    objetivo,
+    valorBulto,
+    porcentajeExcedente
+  };
+
 }
 
-function renderClosure(){
-let d=closureData();
-document.getElementById("closureMetrics").innerHTML='<div class="card"><div class="row"><div><b>Ventas válidas</b><div class="total">$'+money(d.total)+'</div></div><div><b>Comisión '+d.pt+'%</b><div class="total">$'+money(d.com)+'</div></div></div><hr><div>Pedidos válidos: '+d.valid.length+' · Anulados: '+d.can.length+'</div></div>';
+
+async function renderClosure(){
+
+  const box = document.getElementById("closureMetrics");
+
+  if(!box) return;
+
+  box.innerHTML =
+    '<div class="card">Calculando cierre del mes...</div>';
+
+  try{
+
+    const d = await closureData();
+
+    const faltan = Math.max(
+      0,
+      d.objetivo - d.totalBultos
+    );
+
+    box.innerHTML = `
+
+      <div class="card">
+
+        <h3>📊 Cierre mensual provisorio</h3>
+
+        <div class="row">
+
+          <div>
+            <b>Bultos acumulados</b>
+            <div class="total">
+              ${d.totalBultos.toLocaleString("es-AR")}
+            </div>
+          </div>
+
+          <div>
+            <b>Objetivo mensual</b>
+            <div class="total">
+              ${d.objetivo.toLocaleString("es-AR")}
+            </div>
+          </div>
+
+        </div>
+
+        <hr>
+
+        <p>
+          <b>Bultos que faltan:</b>
+          ${faltan.toLocaleString("es-AR")}
+        </p>
+
+        <p>
+          <b>Bultos dentro del objetivo:</b>
+          ${d.bultosBase.toLocaleString("es-AR")}
+        </p>
+
+        <p>
+          <b>Bultos excedentes:</b>
+          ${d.bultosExcedentes.toLocaleString("es-AR")}
+        </p>
+
+        <hr>
+
+        <p>
+          <b>Ventas válidas:</b>
+          $${money(d.totalVentas)}
+        </p>
+
+        <p>
+          <b>Pago por bultos:</b>
+          $${money(d.pagoBase)}
+        </p>
+
+        <p>
+          <b>Comisión del excedente (${d.porcentajeExcedente}%):</b>
+          $${money(d.comisionExcedente)}
+        </p>
+
+        <hr>
+
+        <h3>💰 Comisión provisoria acumulada</h3>
+
+        <div class="total">
+          $${money(d.totalProvisorio)}
+        </div>
+
+        <p>
+          Pedidos válidos: ${d.valid.length}
+          · Anulados: ${d.can.length}
+        </p>
+
+        <small>
+          Este cálculo es provisional. Las cuentas corrientes
+          se incorporan cuando Administración las marca como cobradas.
+        </small>
+
+      </div>
+
+    `;
+
+  }catch(error){
+
+    console.error("Error calculando cierre:", error);
+
+    box.innerHTML =
+      '<div class="card">No se pudo calcular el cierre. Revisá la conexión.</div>';
+
+  }
+
 }
+
+
+
 
 async function renderCurrentAccounts(){
 
@@ -10154,10 +10408,51 @@ o.sentAt=new Date().toISOString();
 save();renderHistory();showToast("📤 Pedido marcado como enviado");
 }
 }
-function shareClosure(){
-let d=closureData();
-share("DISTRIBUIDORA N.A.A. S.A.S.\nCIERRE QUINCENAL\nPreventista: "+user+"\nDesde: "+document.getElementById("from").value+"\nHasta: "+document.getElementById("to").value+"\nVentas: $"+money(d.total)+"\nPedidos válidos: "+d.valid.length+"\nAnulados: "+d.can.length+"\nComisión "+d.pt+"%: $"+money(d.comm));
+
+async function shareClosure(){
+
+  try{
+
+    const d = await closureData();
+
+    const nombre =
+      user?.name ||
+      user?.username ||
+      "Preventista";
+
+    const desde = document.getElementById("from").value;
+    const hasta = document.getElementById("to").value;
+
+    const texto =
+      "DISTRIBUIDORA N.A.A. S.A.S.\n" +
+      "CIERRE MENSUAL PROVISORIO\n\n" +
+      "Preventista: " + nombre + "\n" +
+      "Desde: " + desde + "\n" +
+      "Hasta: " + hasta + "\n\n" +
+      "BULTOS ACUMULADOS: " + d.totalBultos + "\n" +
+      "Objetivo mensual: " + d.objetivo + "\n" +
+      "Bultos excedentes: " + d.bultosExcedentes + "\n\n" +
+      "Ventas válidas: $" + money(d.totalVentas) + "\n" +
+      "Pago por bultos: $" + money(d.pagoBase) + "\n" +
+      "Comisión por excedente: $" + money(d.comisionExcedente) + "\n\n" +
+      "TOTAL PROVISORIO: $" + money(d.totalProvisorio) + "\n\n" +
+      "Pedidos válidos: " + d.valid.length + "\n" +
+      "Pedidos anulados: " + d.can.length + "\n\n" +
+      "Las cuentas corrientes se incorporan al cierre cuando son cobradas.\n" +
+      "Este cierre es provisional y puede modificarse.";
+
+    await share(texto);
+
+  }catch(error){
+
+    console.error("Error compartiendo cierre:", error);
+
+    alert("No se pudo preparar el cierre para compartir.");
+
+  }
+
 }
+
 async function share(text){
 if(navigator.share){
 try{await navigator.share({text});return true}catch(e){return false}
