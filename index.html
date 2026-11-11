@@ -8538,37 +8538,42 @@ const vencimientoTexto =
       .replaceAll("_", " ")
       .toUpperCase();
 
-    const productos = (o.lines || []).map(p => {
-      const cantidad = Number(p.qty || 0);
-      const subtotal = Number(p.total || 0);
-      const unitario = cantidad > 0 ? subtotal / cantidad : 0;
+   const productos = (o.lines || []).map(p => {
+  const cantidad = Number(p.qty || 0);
+  const unidadesPorEmpaque = obtenerUnidadesPorEmpaqueReclamo(p);
+  const subtotal = Number(p.total || 0);
+  const unitario = cantidad > 0 ? subtotal / cantidad : 0;
 
-      return `
-        <tr>
-          <td class="cantidad">${cantidad}</td>
-          <td>
-            ${esc(p.name || "")}
-            ${p.presentation ? " - " + esc(p.presentation) : ""}
-          </td>
-          <td class="importe">$${money(unitario)}</td>
-          <td class="importe">$${money(subtotal)}</td>
-        </tr>
-      `;
-    }).join("");
+  return `
+    <tr>
+      <td class="cantidad">${unidadesPorEmpaque} un. × ${cantidad}</td>
+      <td>
+        ${esc(p.name || "")}
+        ${p.presentation ? " - " + esc(p.presentation) : ""}
+      </td>
+      <td class="importe">$${money(unitario)}</td>
+      <td class="importe">$${money(subtotal)}</td>
+    </tr>
+  `;
+}).join("");
 
-    const bonificaciones = (o.bonuses || []).map(p => `
-      <tr>
-        <td class="cantidad">${Number(p.qty || 0)}</td>
-        <td>
-          ${esc(p.name || "")}
-          ${p.presentation ? " - " + esc(p.presentation) : ""}
-          <strong>(BONIFICADO)</strong>
-        </td>
-        <td class="importe">$0,00</td>
-        <td class="importe">$0,00</td>
-      </tr>
-    `).join("");
+const bonificaciones = (o.bonuses || []).map(p => {
+  const cantidad = Number(p.qty || 0);
+  const unidadesPorEmpaque = obtenerUnidadesPorEmpaqueReclamo(p);
 
+  return `
+    <tr>
+      <td class="cantidad">${unidadesPorEmpaque} un. × ${cantidad}</td>
+      <td>
+        ${esc(p.name || "")}
+        ${p.presentation ? " - " + esc(p.presentation) : ""}
+        <strong>(BONIFICADO)</strong>
+      </td>
+      <td class="importe">$0,00</td>
+      <td class="importe">$0,00</td>
+    </tr>
+  `;
+}).join("");
     function ejemplar(tipo) {
       return `
         <div class="comprobante">
