@@ -2372,20 +2372,17 @@ async function registrarMovimientoStock(datos){
 }
   
 
+
 async function stockEntrada(id){
 
-  const cantidad = prompt("¿Cuántas unidades ingresaron?");
-  if(cantidad === null) return;
+  const usuarioLocal = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
 
-  const ingreso = Number(cantidad);
-
-  if(!Number.isInteger(ingreso) || ingreso <= 0){
-    alert("Ingresá una cantidad entera válida.");
+  if(usuarioLocal.role !== "admin"){
+    alert("Solo el administrador puede registrar entradas.");
     return;
   }
-
-  const observacion = prompt("Observación de la entrada (opcional):");
-  if(observacion === null) return;
 
   const usuario = firebase.auth().currentUser;
 
@@ -2398,19 +2395,72 @@ async function stockEntrada(id){
 
   try{
 
+    const snapInicial = await ref.get();
+
+    if(!snapInicial.exists){
+      throw new Error("No se encontró el producto en stock.");
+    }
+
+    const producto = snapInicial.data() || {};
+    const packQty = Number(producto.packQty) || 1;
+
+    const cajasTexto = prompt(
+      "Producto: " + producto.name +
+      "\nEmpaque: " + packQty + " unidades" +
+      "\n\n¿Cuántas cajas o bultos ingresaron?",
+      "0"
+    );
+
+    if(cajasTexto === null) return;
+
+    const cajas = Number(cajasTexto);
+
+    if(!Number.isInteger(cajas) || cajas < 0){
+      alert("Ingresá una cantidad válida de cajas o bultos.");
+      return;
+    }
+
+    const sueltasTexto = prompt(
+      "¿Cuántas unidades sueltas ingresaron?",
+      "0"
+    );
+
+    if(sueltasTexto === null) return;
+
+    const sueltas = Number(sueltasTexto);
+
+    if(!Number.isInteger(sueltas) || sueltas < 0){
+      alert("Ingresá una cantidad válida de unidades sueltas.");
+      return;
+    }
+
+    const ingreso = (cajas * packQty) + sueltas;
+
+    if(ingreso <= 0){
+      alert("La entrada debe ser mayor a cero.");
+      return;
+    }
+
+    const observacion = prompt(
+      "Observación de la entrada (opcional):"
+    );
+
+    if(observacion === null) return;
+
     await firebaseDB.runTransaction(async transaction => {
 
-      const snap = await transaction.get(ref);
+      const stockSnap = await transaction.get(ref);
 
-      if(!snap.exists){
-        throw new Error("No se encontró el producto en stock.");
+      if(!stockSnap.exists){
+        throw new Error("El producto ya no existe en stock.");
       }
 
-      const p = snap.data();
-      const actual = Number(p.quantity || 0);
+      const stock = stockSnap.data() || {};
+      const actual = Number(stock.quantity || 0);
       const nuevoStock = actual + ingreso;
 
-      const movimientoRef = firebaseDB.collection("stockMovements").doc();
+      const movimientoRef =
+        firebaseDB.collection("stockMovements").doc();
 
       transaction.update(ref,{
         quantity: nuevoStock,
@@ -2420,13 +2470,16 @@ async function stockEntrada(id){
       transaction.set(movimientoRef,{
         type: "ENTRADA",
         productId: id,
-        productName: p.name || "",
+        productName: stock.name || "",
         quantity: ingreso,
+        packages: cajas,
+        looseUnits: sueltas,
         stockBefore: actual,
         stockAfter: nuevoStock,
         reason: "Entrada de mercadería",
         observation: observacion.trim(),
-        responsible: usuario.displayName || usuario.email || usuario.uid,
+        responsible:
+          usuario.displayName || usuario.email || usuario.uid,
         createdBy: usuario.uid,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -2434,96 +2487,33 @@ async function stockEntrada(id){
     });
 
     await renderStock();
+    await renderStockHistory();
 
-    if(typeof renderStockHistory === "function"){
-      await renderStockHistory();
-    }
-
-    alert("Entrada registrada correctamente.");
+    alert(
+      "Entrada registrada correctamente.\n\n" +
+      "Bultos/cajas: " + cajas +
+      "\nUnidades sueltas: " + sueltas +
+      "\nTotal ingresado: " + ingreso + " unidades."
+    );
 
   }catch(error){
 
-    console.error(error);
+    console.error("Error registrando entrada:", error);
+
     alert("No se pudo registrar la entrada: " + error.message);
 
   }
 }
+
+
 async function stockSalida(id){
 
-  const ref = firebaseDB.collection("stock").doc(id);
-  const snap = await ref.get();
-
-  if(!snap.exists){
-    alert("No se encontró el producto.");
-    return;
-  }
-
-  const p = snap.data();
-  const actual = Number(p.quantity || 0);
-  const packQty = Number(p.packQty) || 1;
-
-  const cajasTexto = prompt("¿Cuántas cajas o bultos salen?", "0");
-  if(cajasTexto === null) return;
-
-  const cajas = Number(cajasTexto);
-
-  if(!Number.isInteger(cajas) || cajas < 0){
-    alert("Ingresá una cantidad válida.");
-    return;
-  }
-
-  const sueltasTexto = prompt("¿Cuántas unidades sueltas salen?", "0");
-  if(sueltasTexto === null) return;
-
-  const sueltas = Number(sueltasTexto);
-
-  if(!Number.isInteger(sueltas) || sueltas < 0){
-    alert("Ingresá una cantidad válida.");
-    return;
-  }
-
-  const salida = (cajas * packQty) + sueltas;
-
-  if(salida <= 0){
-    alert("Ingresá una cantidad mayor a cero.");
-    return;
-  }
-
-  if(salida > actual){
-    alert("Stock insuficiente. Disponible: " + actual + " unidades.");
-    return;
-  }
-
-  const motivoTexto = prompt(
-    "MOTIVO DE SALIDA:\n\n" +
-    "1 - Retiro de socios\n" +
-    "2 - Uso interno\n" +
-    "3 - Mercadería para otro depósito\n" +
-    "4 - Entrega especial\n" +
-    "5 - Otro motivo"
+  const usuarioLocal = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
   );
 
-  if(motivoTexto === null) return;
-
-  const motivos = {
-    "1":"Retiro de socios",
-    "2":"Uso interno",
-    "3":"Mercadería para otro depósito",
-    "4":"Entrega especial",
-    "5":"Otro motivo"
-  };
-
-  const motivo = motivos[motivoTexto.trim()];
-
-  if(!motivo){
-    alert("Seleccioná un motivo válido.");
-    return;
-  }
-
-  const observacion = prompt("Detallá quién retira o el motivo de la salida:");
-
-  if(observacion === null || !observacion.trim()){
-    alert("La observación es obligatoria.");
+  if(usuarioLocal.role !== "admin"){
+    alert("Solo el administrador puede registrar salidas.");
     return;
   }
 
@@ -2534,85 +2524,162 @@ async function stockSalida(id){
     return;
   }
 
-  const nuevoStock = actual - salida;
-  const movimientoRef = firebaseDB.collection("stockMovements").doc();
+  const ref = firebaseDB.collection("stock").doc(id);
 
   try{
 
-    const batch = firebaseDB.batch();
+    const snap = await ref.get();
 
-    batch.update(ref,{
-      quantity:nuevoStock,
-      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    if(!snap.exists){
+      throw new Error("No se encontró el producto.");
+    }
+
+    const p = snap.data() || {};
+    const packQty = Number(p.packQty) || 1;
+
+    const cajasTexto = prompt(
+      "Producto: " + p.name +
+      "\nEmpaque: " + packQty + " unidades" +
+      "\n\n¿Cuántas cajas o bultos salen?",
+      "0"
+    );
+
+    if(cajasTexto === null) return;
+
+    const cajas = Number(cajasTexto);
+
+    if(!Number.isInteger(cajas) || cajas < 0){
+      alert("Ingresá una cantidad válida.");
+      return;
+    }
+
+    const sueltasTexto = prompt(
+      "¿Cuántas unidades sueltas salen?",
+      "0"
+    );
+
+    if(sueltasTexto === null) return;
+
+    const sueltas = Number(sueltasTexto);
+
+    if(!Number.isInteger(sueltas) || sueltas < 0){
+      alert("Ingresá una cantidad válida.");
+      return;
+    }
+
+    const salida = (cajas * packQty) + sueltas;
+
+    if(salida <= 0){
+      alert("La salida debe ser mayor a cero.");
+      return;
+    }
+
+    const motivoTexto = prompt(
+      "MOTIVO DE SALIDA:\n\n" +
+      "1 - Retiro de socios\n" +
+      "2 - Uso interno\n" +
+      "3 - Mercadería para otro depósito\n" +
+      "4 - Entrega especial\n" +
+      "5 - Otro motivo"
+    );
+
+    if(motivoTexto === null) return;
+
+    const motivos = {
+      "1":"Retiro de socios",
+      "2":"Uso interno",
+      "3":"Mercadería para otro depósito",
+      "4":"Entrega especial",
+      "5":"Otro motivo"
+    };
+
+    const motivo = motivos[motivoTexto.trim()];
+
+    if(!motivo){
+      alert("Seleccioná un motivo válido.");
+      return;
+    }
+
+    const observacion = prompt(
+      "Detallá quién retira o el motivo de la salida:"
+    );
+
+    if(observacion === null || !observacion.trim()){
+      alert("La observación es obligatoria.");
+      return;
+    }
+
+    await firebaseDB.runTransaction(async transaction => {
+
+      const stockSnap = await transaction.get(ref);
+
+      if(!stockSnap.exists){
+        throw new Error("El producto ya no existe.");
+      }
+
+      const stock = stockSnap.data() || {};
+      const actual = Number(stock.quantity || 0);
+
+      if(salida > actual){
+        throw new Error(
+          "Stock insuficiente. Disponible: " +
+          actual + " unidades. Necesario: " + salida
+        );
+      }
+
+      const nuevoStock = actual - salida;
+
+      const movimientoRef =
+        firebaseDB.collection("stockMovements").doc();
+
+      transaction.update(ref,{
+        quantity: nuevoStock,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      transaction.set(movimientoRef,{
+        type: "SALIDA",
+        productId: id,
+        productName: stock.name || "",
+        quantity: salida,
+        packages: cajas,
+        looseUnits: sueltas,
+        stockBefore: actual,
+        stockAfter: nuevoStock,
+        reason: motivo,
+        observation: observacion.trim(),
+        responsible:
+          usuario.displayName || usuario.email || usuario.uid,
+        createdBy: usuario.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
     });
-
-    batch.set(movimientoRef,{
-      type:"SALIDA",
-      productId:id,
-      productName:p.name || "",
-      quantity:salida,
-      stockBefore:actual,
-      stockAfter:nuevoStock,
-      reason:motivo,
-      observation:observacion.trim(),
-      responsible:usuario.displayName || usuario.email || usuario.uid,
-      createdBy:usuario.uid,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    await batch.commit();
 
     await renderStock();
+    await renderStockHistory();
 
-    alert("Salida registrada correctamente. Stock restante: " + nuevoStock);
+    alert("Salida registrada correctamente.");
 
   }catch(error){
 
-    console.error(error);
+    console.error("Error registrando salida:", error);
+
     alert("No se pudo registrar la salida: " + error.message);
 
   }
 }
+
   
+
 async function stockAjustar(id){
 
-  const ref = firebaseDB.collection("stock").doc(id);
-
-  const snap = await ref.get();
-
-  if(!snap.exists){
-    alert("No se encontró el producto.");
-    return;
-  }
-
-  const p = snap.data();
-  const actual = Number(p.quantity || 0);
-
-  const cantidad = prompt(
-    "Producto: " + p.name +
-    "\nStock actual: " + actual +
-    "\n\nIngresá la cantidad correcta en unidades:",
-    actual
+  const usuarioLocal = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
   );
 
-  if(cantidad === null) return;
-
-  const nuevoStock = Number(cantidad);
-
-  if(!Number.isInteger(nuevoStock) || nuevoStock < 0){
-    alert("Ingresá una cantidad entera válida.");
-    return;
-  }
-
-  if(nuevoStock === actual){
-    alert("La cantidad ingresada es igual al stock actual.");
-    return;
-  }
-
-  const observacion = prompt("Motivo del ajuste:");
-
-  if(observacion === null || !observacion.trim()){
-    alert("Debés indicar el motivo del ajuste.");
+  if(usuarioLocal.role !== "admin"){
+    alert("Solo el administrador puede ajustar el inventario.");
     return;
   }
 
@@ -2623,7 +2690,56 @@ async function stockAjustar(id){
     return;
   }
 
+  const ref = firebaseDB.collection("stock").doc(id);
+
   try{
+
+    const snap = await ref.get();
+
+    if(!snap.exists){
+      alert("No se encontró el producto.");
+      return;
+    }
+
+    const producto = snap.data();
+    const actual = Number(producto.quantity || 0);
+
+    const cantidad = prompt(
+      "PRODUCTO: " + (producto.name || "") +
+      "\nStock actual: " + actual +
+      "\n\nIngresá la cantidad REAL en unidades individuales:",
+      actual
+    );
+
+    if(cantidad === null) return;
+
+    if(cantidad.trim() === ""){
+      alert("Ingresá una cantidad.");
+      return;
+    }
+
+    const nuevoStock = Number(cantidad);
+
+    if(!Number.isInteger(nuevoStock) || nuevoStock < 0){
+      alert("Ingresá una cantidad entera válida.");
+      return;
+    }
+
+    if(nuevoStock === actual){
+      alert("La cantidad ingresada es igual al stock actual.");
+      return;
+    }
+
+    const observacion = prompt(
+      "Indicá el motivo del ajuste de inventario:"
+    );
+
+    if(observacion === null) return;
+
+    if(!observacion.trim()){
+      alert("Debés indicar el motivo del ajuste.");
+      return;
+    }
 
     await firebaseDB.runTransaction(async transaction => {
 
@@ -2638,7 +2754,8 @@ async function stockAjustar(id){
 
       if(antes !== actual){
         throw new Error(
-          "El stock cambió mientras realizabas el ajuste. Volvé a intentarlo."
+          "El stock cambió mientras realizabas el ajuste. " +
+          "Volvé a intentarlo para evitar diferencias."
         );
       }
 
@@ -2659,7 +2776,8 @@ async function stockAjustar(id){
         stockAfter: nuevoStock,
         reason: "Ajuste manual de inventario",
         observation: observacion.trim(),
-        responsible: usuario.displayName || usuario.email || usuario.uid,
+        responsible:
+          usuario.displayName || usuario.email || usuario.uid,
         createdBy: usuario.uid,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -2672,7 +2790,11 @@ async function stockAjustar(id){
       await renderStockHistory();
     }
 
-    alert("Ajuste registrado correctamente.");
+    alert(
+      "Ajuste registrado correctamente.\n\n" +
+      "Stock anterior: " + actual +
+      "\nStock nuevo: " + nuevoStock
+    );
 
   }catch(error){
 
@@ -2681,22 +2803,47 @@ async function stockAjustar(id){
 
   }
 }
+
+
 async function stockRegistrarDano(id){
+
+  const usuarioLocal = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
+
+  if(usuarioLocal.role !== "admin"){
+    alert("Solo el administrador puede registrar mercadería dañada.");
+    return;
+  }
+
+  const usuario = firebase.auth().currentUser;
+
+  if(!usuario){
+    alert("No se pudo identificar al usuario.");
+    return;
+  }
+
   const stockRef = firebaseDB.collection("stock").doc(id);
   const danoRef = firebaseDB.collection("stockDamages").doc();
   const movimientoRef = firebaseDB.collection("stockMovements").doc();
 
   try{
+
     const cantidadTexto = prompt(
       "¿Cuántas unidades individuales están dañadas?"
     );
 
     if(cantidadTexto === null) return;
 
+    if(cantidadTexto.trim() === ""){
+      alert("Ingresá una cantidad.");
+      return;
+    }
+
     const cantidad = Number(cantidadTexto);
 
     if(!Number.isInteger(cantidad) || cantidad <= 0){
-      alert("Ingresá una cantidad válida.");
+      alert("Ingresá una cantidad entera válida.");
       return;
     }
 
@@ -2711,7 +2858,8 @@ async function stockRegistrarDano(id){
       return;
     }
 
-    await firebaseDB.runTransaction(async (transaction) => {
+    await firebaseDB.runTransaction(async transaction => {
+
       const snap = await transaction.get(stockRef);
 
       if(!snap.exists){
@@ -2723,16 +2871,19 @@ async function stockRegistrarDano(id){
 
       if(cantidad > stockActual){
         throw new Error(
-          `No hay suficiente stock. Disponible: ${stockActual} unidades.`
+          "Stock insuficiente. Disponible: " +
+          stockActual + " unidades."
         );
       }
 
-      transaction.update(stockRef, {
-        quantity: stockActual - cantidad,
+      const nuevoStock = stockActual - cantidad;
+
+      transaction.update(stockRef,{
+        quantity: nuevoStock,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      transaction.set(danoRef, {
+      transaction.set(danoRef,{
         productId: id,
         name: producto.name || "",
         presentation: producto.presentation || "",
@@ -2741,36 +2892,52 @@ async function stockRegistrarDano(id){
         reason: motivo.trim(),
         status: "pendiente",
         replacementPending: true,
+        responsible:
+          usuario.displayName || usuario.email || usuario.uid,
+        createdBy: usuario.uid,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      transaction.set(movimientoRef, {
-  type: "DAÑO",
-  productId: id,
-  productName: producto.name || "",
-  quantity: cantidad,
-  stockBefore: stockActual,
-  stockAfter: stockActual - cantidad,
-  reason: motivo.trim(),
-  responsible: firebase.auth().currentUser?.displayName ||
-    firebase.auth().currentUser?.email || "No identificado",
-  createdBy: firebase.auth().currentUser?.uid || null,
-  createdAt: firebase.firestore.FieldValue.serverTimestamp()
-});
+
+      transaction.set(movimientoRef,{
+        type: "DAÑO",
+        productId: id,
+        productName: producto.name || "",
+        quantity: cantidad,
+        stockBefore: stockActual,
+        stockAfter: nuevoStock,
+        reason: motivo.trim(),
+        responsible:
+          usuario.displayName || usuario.email || usuario.uid,
+        createdBy: usuario.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
     });
 
+    await renderStock();
+
+    if(typeof renderStockHistory === "function"){
+      await renderStockHistory();
+    }
+
     alert(
-      "Daño registrado correctamente.\\n\\n" +
+      "Daño registrado correctamente.\n\n" +
       "Unidades dañadas: " + cantidad +
-      "\\nQuedó pendiente la reposición."
+      "\nQuedó pendiente la reposición."
     );
 
-    renderStock();
-
   }catch(error){
-    console.error(error);
-    alert(error.message || "No se pudo registrar el daño.");
+
+    console.error("Error registrando mercadería dañada:",error);
+
+    alert(
+      "No se pudo registrar el daño: " +
+      (error.message || "Error desconocido.")
+    );
+
   }
 }
+
 
 async function renderStockHistory(){
 
@@ -7115,9 +7282,7 @@ localStorage.removeItem("NAA_DRAFT_ORDER");
 
   alert("Pedido anulado correctamente.");
 }
-function anularPedidoOficina(id){
-  cancelOrder(id);
-}
+
 async function renderHistory(){
   const cont = document.getElementById("history");
   if(!cont) return;
