@@ -3664,6 +3664,7 @@ function liqEsCuentaCorriente(order) {
 function liqEsPedidoValido(order) {
   const status = String(order.status || "").toLowerCase();
 
+  // No incluir pedidos anulados, cancelados ni borradores.
   if (
     status.includes("anulad") ||
     status.includes("cancel") ||
@@ -3673,6 +3674,18 @@ function liqEsPedidoValido(order) {
     return false;
   }
 
+  // Solo cuentan los pedidos aceptados por Administración.
+  const estadosAceptados = [
+    "preparando",
+    "preparado",
+    "entregado"
+  ];
+
+  if (!estadosAceptados.includes(status)) {
+    return false;
+  }
+
+  // Las cuentas corrientes solo cuentan cuando están cobradas.
   if (
     liqEsCuentaCorriente(order) &&
     String(order.paymentStatus || "").toLowerCase() !== "cobrado"
