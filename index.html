@@ -9976,8 +9976,9 @@ async function closureData(){
   const modalidad = "bulto";
 
   const snapshot = await firebaseDB
-    .collection("orders")
-    .get();
+  .collection("orders")
+  .where("ownerUid", "==", uid)
+  .get();
 
   const pedidos = snapshot.docs
     .map(doc => ({
