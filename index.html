@@ -9920,33 +9920,39 @@ async function closureData(){
 
   const desdeTexto = document.getElementById("from")?.value;
   const hastaTexto = document.getElementById("to")?.value;
-
   const uid = user?.uid;
 
+  const vacio = {
+    valid: [],
+    can: [],
+    pending: [],
+    totalBultos: 0,
+    totalVentas: 0,
+    bultosBase: 0,
+    bultosExcedentes: 0,
+    ventasExcedentes: 0,
+    pagoBase: 0,
+    comisionExcedente: 0,
+    comisionTotal: 0,
+    totalProvisorio: 0,
+    objetivo: 750,
+    valorBulto: 534.75,
+    porcentajeExcedente: 4,
+    porcentajeTotal: 6,
+    modalidad: "bulto"
+  };
+
   if(!uid || !desdeTexto || !hastaTexto){
-    return {
-      valid: [],
-      can: [],
-      totalBultos: 0,
-      totalVentas: 0,
-      bultosBase: 0,
-      bultosExcedentes: 0,
-      ventasExcedentes: 0,
-      pagoBase: 0,
-      comisionExcedente: 0,
-      totalProvisorio: 0,
-      objetivo: 750,
-      valorBulto: 534.75,
-      porcentajeExcedente: 4
-    };
+    return vacio;
   }
 
   const desde = new Date(desdeTexto + "T00:00:00");
-  const hasta = new Date(hastaTexto + "T23:59:59");
+  const hasta = new Date(hastaTexto + "T23:59:59.999");
 
   let config = {...LIQ_DEFAULTS};
 
   try{
+
     const configDoc = await firebaseDB
       .collection("liquidationSettings")
       .doc(uid)
@@ -9957,58 +9963,52 @@ async function closureData(){
     }
 
   }catch(error){
-    console.error("Error leyendo configuración:", error);
+    console.error("Error leyendo configuración:",error);
   }
 
   const objetivo = Number(config.targetBultos ?? 750);
   const valorBulto = Number(config.payPerBulto ?? 534.75);
   const porcentajeExcedente = Number(config.excessPercent ?? 4);
+  const porcentajeTotal = Number(config.totalPercent ?? 6);
+  const modalidad = config.mode || "bulto";
 
-  let pedidos = [];
+  const snapshot = await firebaseDB
+    .collection("orders")
+    .get();
 
-  try{
-
-    const snapshot = await firebaseDB
-      .collection("orders")
-      .where("ownerUid", "==", uid)
-      .get();
-
-    pedidos = snapshot.docs.map(doc => ({
+  const pedidos = snapshot.docs
+    .map(doc => ({
       id: doc.id,
       ...doc.data()
-    }));
-
-  }catch(error){
-
-    console.error("Error actualizando pedidos del cierre:", error);
-
-    pedidos = Array.isArray(orders)
-      ? orders.filter(o => liqUidPedido(o) === uid)
-      : [];
-
-  }
+    }))
+    .filter(o => liqUidPedido(o) === uid);
 
   const valid = [];
   const can = [];
+  const pending = [];
 
   pedidos.forEach(o => {
 
     const estado = String(o.status || "").toLowerCase();
 
-    const fecha = (
-      liqEsCuentaCorriente(o) &&
-      String(o.paymentStatus || "").toLowerCase() === "cobrado"
-    )
-      ? liqDate(o.paymentDate || o.updatedAt || o.date || o.createdAt)
-      : liqDate(o.date || o.createdAt);
-
-    if(!fecha || fecha < desde || fecha > hasta) return;
-
-    if(
+    const anulada =
       estado.includes("anulad") ||
-      estado.includes("cancel")
-    ){
-      can.push(o);
+      estado.includes("cancel");
+
+    if(anulada){
+
+      const fechaAnulacion = liqDate(
+        o.date || o.createdAt
+      );
+
+      if(
+        fechaAnulacion &&
+        fechaAnulacion >= desde &&
+        fechaAnulacion <= hasta
+      ){
+        can.push(o);
+      }
+
       return;
     }
 
@@ -10019,10 +10019,29 @@ async function closureData(){
       return;
     }
 
-    // Las cuentas corrientes solo suman cuando están cobradas.
+    if(!liqEsPedidoValido(o)){
+
+      const fechaPendiente = liqDate(
+        o.date || o.createdAt
+      );
+
+      if(
+        fechaPendiente &&
+        fechaPendiente >= desde &&
+        fechaPendiente <= hasta
+      ){
+        pending.push(o);
+      }
+
+      return;
+    }
+
+    const fecha = liqFechaPedido(o);
+
     if(
-      liqEsCuentaCorriente(o) &&
-      String(o.paymentStatus || "").toLowerCase() !== "cobrado"
+      !fecha ||
+      fecha < desde ||
+      fecha > hasta
     ){
       return;
     }
@@ -10031,9 +10050,9 @@ async function closureData(){
 
   });
 
-  valid.sort((a,b) => {
-    return liqFechaPedido(a) - liqFechaPedido(b);
-  });
+  valid.sort((a,b) =>
+    liqFechaPedido(a) - liqFechaPedido(b)
+  );
 
   let totalBultos = 0;
   let totalVentas = 0;
@@ -10067,14 +10086,17 @@ async function closureData(){
         espacioBase
       );
 
-      const cantidadExcedente = cantidad - cantidadBase;
+      const cantidadExcedente =
+        cantidad - cantidadBase;
 
       bultosBase += cantidadBase;
       bultosExcedentes += cantidadExcedente;
 
       if(cantidadExcedente > 0){
+
         ventasExcedentes +=
           importe * (cantidadExcedente / cantidad);
+
       }
 
     });
@@ -10084,14 +10106,21 @@ async function closureData(){
   const pagoBase = bultosBase * valorBulto;
 
   const comisionExcedente =
-    ventasExcedentes * (porcentajeExcedente / 100);
+    ventasExcedentes *
+    (porcentajeExcedente / 100);
+
+  const comisionTotal =
+    totalVentas * (porcentajeTotal / 100);
 
   const totalProvisorio =
-    pagoBase + comisionExcedente;
+    modalidad === "comision"
+      ? comisionTotal
+      : pagoBase + comisionExcedente;
 
   return {
     valid,
     can,
+    pending,
     totalBultos,
     totalVentas,
     bultosBase,
@@ -10099,10 +10128,13 @@ async function closureData(){
     ventasExcedentes,
     pagoBase,
     comisionExcedente,
+    comisionTotal,
     totalProvisorio,
     objetivo,
     valorBulto,
-    porcentajeExcedente
+    porcentajeExcedente,
+    porcentajeTotal,
+    modalidad
   };
 
 }
@@ -10115,36 +10147,103 @@ async function renderClosure(){
   if(!box) return;
 
   box.innerHTML =
-    '<div class="card">Calculando cierre del mes...</div>';
+    '<div class="card">Calculando cierre...</div>';
 
   try{
 
     const d = await closureData();
 
+    const formato = valor =>
+      Number(valor || 0).toLocaleString("es-AR");
+
+    const dinero = valor =>
+      "$" + money(Number(valor || 0));
+
     const faltan = Math.max(
       0,
-      d.objetivo - d.totalBultos
+      Number(d.objetivo || 0) - Number(d.totalBultos || 0)
     );
+
+    const esComision = d.modalidad === "comision";
+
+    let detallePago = "";
+
+    if(esComision){
+
+      detallePago = `
+        <p>
+          <b>Ventas válidas:</b>
+          ${dinero(d.totalVentas)}
+        </p>
+
+        <p>
+          <b>Porcentaje de comisión:</b>
+          ${Number(d.porcentajeTotal || 0)}%
+        </p>
+
+        <p>
+          <b>Comisión calculada:</b>
+          ${dinero(d.comisionTotal)}
+        </p>
+      `;
+
+    }else{
+
+      detallePago = `
+        <p>
+          <b>Objetivo mensual:</b>
+          ${formato(d.objetivo)} bultos
+        </p>
+
+        <p>
+          <b>Bultos que faltan:</b>
+          ${formato(faltan)}
+        </p>
+
+        <p>
+          <b>Bultos dentro del objetivo:</b>
+          ${formato(d.bultosBase)}
+        </p>
+
+        <p>
+          <b>Bultos excedentes:</b>
+          ${formato(d.bultosExcedentes)}
+        </p>
+
+        <hr>
+
+        <p>
+          <b>Pago por bultos:</b>
+          ${dinero(d.pagoBase)}
+        </p>
+
+        <p>
+          <b>Comisión del excedente (${Number(d.porcentajeExcedente || 0)}%):</b>
+          ${dinero(d.comisionExcedente)}
+        </p>
+      `;
+
+    }
 
     box.innerHTML = `
 
       <div class="card">
 
-        <h3>📊 Cierre mensual provisorio</h3>
+        <h3>📊 Cierre del preventista</h3>
 
         <div class="row">
 
           <div>
             <b>Bultos acumulados</b>
             <div class="total">
-              ${d.totalBultos.toLocaleString("es-AR")}
+              ${formato(d.totalBultos)}
             </div>
           </div>
 
           <div>
-            <b>Objetivo mensual</b>
+            <b>Ventas válidas</b>
             <div class="total">
-              ${d.objetivo.toLocaleString("es-AR")}
+              ${dinero(d.totalVentas)}
             </div>
           </div>
 
@@ -10152,54 +10251,40 @@ async function renderClosure(){
 
         <hr>
 
-        <p>
-          <b>Bultos que faltan:</b>
-          ${faltan.toLocaleString("es-AR")}
-        </p>
-
-        <p>
-          <b>Bultos dentro del objetivo:</b>
-          ${d.bultosBase.toLocaleString("es-AR")}
-        </p>
-
-        <p>
-          <b>Bultos excedentes:</b>
-          ${d.bultosExcedentes.toLocaleString("es-AR")}
-        </p>
-
-        <hr>
-
-        <p>
-          <b>Ventas válidas:</b>
-          $${money(d.totalVentas)}
-        </p>
-
-        <p>
-          <b>Pago por bultos:</b>
-          $${money(d.pagoBase)}
-        </p>
-
-        <p>
-          <b>Comisión del excedente (${d.porcentajeExcedente}%):</b>
-          $${money(d.comisionExcedente)}
-        </p>
+        ${detallePago}
 
         <hr>
 
         <h3>💰 Comisión provisoria acumulada</h3>
 
         <div class="total">
-          $${money(d.totalProvisorio)}
+          ${dinero(d.totalProvisorio)}
         </div>
 
+        <hr>
+
+        <h3>📋 Estado de los pedidos</h3>
+
         <p>
-          Pedidos válidos: ${d.valid.length}
-          · Anulados: ${d.can.length}
+          <b>Pedidos aceptados:</b>
+          ${(d.valid || []).length}
+        </p>
+
+        <p>
+          <b>Pedidos pendientes:</b>
+          ${(d.pending || []).length}
+        </p>
+
+        <p>
+          <b>Pedidos anulados:</b>
+          ${(d.can || []).length}
         </p>
 
         <small>
-          Este cálculo es provisional. Las cuentas corrientes
-          se incorporan cuando Administración las marca como cobradas.
+          Los pedidos pendientes todavía no generan comisión.
+          Los pedidos anulados no se computan en el cierre.
+          Las cuentas corrientes se incorporan cuando Administración
+          las marca como cobradas.
         </small>
 
       </div>
@@ -10216,6 +10301,7 @@ async function renderClosure(){
   }
 
 }
+
 
 
 
