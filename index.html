@@ -3536,13 +3536,17 @@ async function actualizarMenuPorCaja(){
   const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
   const esAdmin = usuario.role === "admin";
 
-  try {
-    const estado = await obtenerEstadoCajaActual();
-    NAA_CAJA_ABIERTA = !!estado.abierta;
-  } catch(error) {
-    console.error("Error verificando caja:", error);
-    NAA_CAJA_ABIERTA = false;
+    if(esAdmin){
+    try {
+      const estado = await obtenerEstadoCajaActual();
+      NAA_CAJA_ABIERTA = !!estado.abierta;
+    } catch(error) {
+      console.error("Error verificando caja:", error);
+      NAA_CAJA_ABIERTA = false;
     }
+  } else {
+    NAA_CAJA_ABIERTA = false;
+  }
     const promoForm = document.getElementById("promoFormAdmin");
 
 if(promoForm){
@@ -4943,7 +4947,7 @@ cargarEstadosProductosFirebase();
   renderManualProducts();
   renderCatalogEditor();
   renderClosure();
-  renderLiquidaciones();
+  if(user?.role === "admin") renderLiquidaciones();
   updateOfficeBadge();
 
   if(user?.role==="admin")startOfficeBadgeListener();
