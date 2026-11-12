@@ -987,7 +987,7 @@ onclick="createPromotion()">
 <div id="preventistaClosureBox">
 
 <div class="card">
-<h2>📋 Cierre quincenal</h2>
+<h2>📋 Acumulado mensual</h2>
 
 <div class="row">
 <div>
@@ -9969,7 +9969,7 @@ async function closureData(){
   const valorBulto = Number(config.payPerBulto ?? 534.75);
   const porcentajeExcedente = Number(config.excessPercent ?? 4);
   const porcentajeTotal = Number(config.totalPercent ?? 6);
-  const modalidad = config.mode || "bulto";
+  const modalidad = "bulto";
 
   const snapshot = await firebaseDB
     .collection("orders")
@@ -10188,19 +10188,19 @@ async function renderClosure(){
 
     }else{
 
-      detallePago = `
+     detallePago = `
         <p>
           <b>Objetivo mensual:</b>
           ${formato(d.objetivo)} bultos
         </p>
 
         <p>
-          <b>Bultos que faltan:</b>
-          ${formato(faltan)}
+          <b>Valor por cada bulto:</b>
+          ${dinero(d.valorBulto)}
         </p>
 
         <p>
-          <b>Bultos dentro del objetivo:</b>
+          <b>Bultos acumulados dentro del objetivo:</b>
           ${formato(d.bultosBase)}
         </p>
 
@@ -10212,16 +10212,15 @@ async function renderClosure(){
         <hr>
 
         <p>
-          <b>Pago por bultos:</b>
+          <b>Pago acumulado por bultos:</b>
           ${dinero(d.pagoBase)}
         </p>
 
         <p>
-          <b>Comisión del excedente (${Number(d.porcentajeExcedente || 0)}%):</b>
+          <b>Adicional por excedente:</b>
           ${dinero(d.comisionExcedente)}
         </p>
       `;
-
     }
 
     box.innerHTML = `
@@ -10254,7 +10253,7 @@ async function renderClosure(){
 
         <hr>
 
-        <h3>💰 Comisión provisoria acumulada</h3>
+       <h3>💰 Pago estimado acumulado</h3>
 
         <div class="total">
           ${dinero(d.totalProvisorio)}
