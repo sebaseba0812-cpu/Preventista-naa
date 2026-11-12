@@ -3565,17 +3565,16 @@ if(promoForm){
 
   // Secciones exclusivas del administrador
   // Promociones NO está acá: el preventista puede verlas
-  const soloAdmin = [
-    "productos",
-    "stock",
-    "proveedores",
-    "caja",
-    "cuentasCorrientes",
-    "reparto",
-    "personal",
-    "cierre",
-    "liquidaciones"
-  ];
+ const soloAdmin = [
+  "productos",
+  "stock",
+  "proveedores",
+  "caja",
+  "cuentasCorrientes",
+  "reparto",
+  "personal",
+  "liquidaciones"
+];
 
   document.querySelectorAll("nav button").forEach(boton => {
     const onclick = boton.getAttribute("onclick") || "";
