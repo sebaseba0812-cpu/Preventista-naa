@@ -4438,6 +4438,12 @@ if(promoForm){
 ].forEach(([id, ocultar]) => {
     document.getElementById(id)?.classList.toggle("hidden", ocultar);
   });
+  const ventaDirectaBtn = document.getElementById("ventaDirectaNavBtn");
+
+if(ventaDirectaBtn){
+  ventaDirectaBtn.style.display =
+    esAdmin && NAA_CAJA_ABIERTA ? "block" : "none";
+}
 }
  // ===== LIQUIDACIONES DE PREVENTISTAS =====
 
