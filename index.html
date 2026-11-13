@@ -293,6 +293,11 @@ body {
   🟠 Cuentas corrientes
 </button>
   <button id="repartoNavBtn" style="display:inline-block" onclick="show('reparto',this)">🚚 Reparto</button>
+  <button id="rendicionNavBtn"
+  style="display:none"
+  onclick="show('rendicionBoletas',this)">
+  🧾 Rendición de boletas
+</button>
   <button id="personalNavBtn"
   style="display:none"
   onclick="show('personal',this)">
@@ -864,6 +869,28 @@ onclick="createPromotion()">
     </div>
   </div>
 </section> 
+
+  
+<section id="rendicionBoletas" class="screen">
+  <div class="card">
+    <h2>🧾 Rendición de boletas</h2>
+    <p class="small">
+      Control de boletas entregadas por los repartidores
+      y recibidas en la oficina.
+    </p>
+
+    <div id="rendicionBoletasLista">
+      <p class="small">Presioná actualizar para consultar las boletas.</p>
+    </div>
+
+    <button class="secondary"
+      style="width:100%;margin-top:10px"
+      onclick="renderRendicionBoletas()">
+      🔄 Actualizar rendiciones
+    </button>
+  </div>
+</section>
+
 
   <section id="personal" class="screen">
   <div class="card">
@@ -5855,6 +5882,7 @@ function show(id,btn){
     "caja",
     "cuentasCorrientes",
     "reparto",
+     "rendicionBoletas", 
     "personal",
      "reclamos", 
     "pedidosOficina"
@@ -5891,6 +5919,9 @@ document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
 document.getElementById(id).classList.add("active");
 document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
 if(btn) btn.classList.add("active");
+if(id === "rendicionBoletas"){
+  renderRendicionBoletas();
+}  
 if(id==="pedido"){
   renderClients();
   renderProducts();
@@ -11228,7 +11259,9 @@ if(user.role === "admin" && document.getElementById("adminBanner")) document.get
       if(user.role==="admin" && document.getElementById("cuentasCorrientesNavBtn"))
   document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block"; 
     if(user.role === "admin" && document.getElementById("repartoNavBtn"))
-  document.getElementById("repartoNavBtn").style.display="inline-block";     
+  document.getElementById("repartoNavBtn").style.display="inline-block"; 
+     if(user.role === "admin" && document.getElementById("rendicionNavBtn"))
+  document.getElementById("rendicionNavBtn").style.display="inline-block";    
 if(user.role === "admin" && document.getElementById("personalNavBtn"))
     document.getElementById("personalNavBtn").style.display="inline-block";
          setTimeout(init,0)}
