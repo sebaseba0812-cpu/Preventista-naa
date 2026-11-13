@@ -786,6 +786,57 @@ onclick="createPromotion()">
   </button>
 </div>
 
+  
+<div class="card" style="margin-top:15px">
+  <h3>📊 Historial y balances de caja</h3>
+
+  <p class="small">
+    Consultá cómo cerró la distribuidora en cualquier fecha
+    o período anterior.
+  </p>
+
+  <div class="row">
+    <label>Desde
+      <input type="date" id="cajaHistorialDesde">
+    </label>
+
+    <label>Hasta
+      <input type="date" id="cajaHistorialHasta">
+    </label>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <button class="secondary"
+      onclick="consultarHistorialCaja('hoy')">
+      📅 Hoy
+    </button>
+
+    <button class="secondary"
+      onclick="consultarHistorialCaja('semana')">
+      📆 Semana
+    </button>
+  </div>
+
+  <div class="row" style="margin-top:8px">
+    <button class="secondary"
+      onclick="consultarHistorialCaja('mes')">
+      🗓️ Mes
+    </button>
+
+    <button class="primary"
+      onclick="consultarHistorialCaja('personalizado')">
+      🔎 Consultar fechas
+    </button>
+  </div>
+
+  <div id="cajaHistorialResultado" style="margin-top:15px">
+    <p class="small">
+      Seleccioná un período para consultar los balances.
+    </p>
+  </div>
+</div>
+  
+
     <button class="primary" onclick="cerrarCaja()">Cerrar caja</button>
   </div>
 </section>
@@ -2072,6 +2123,280 @@ async function obtenerEventosCaja(){
 
   return eventos;
 }
+
+
+function fechaEventoCaja(evento){
+  if(evento?.createdAt?.toDate){
+    return evento.createdAt.toDate();
+  }
+
+  if(evento?.createdAt instanceof Date){
+    return evento.createdAt;
+  }
+
+  return null;
+}
+
+function fechaLocalCaja(fecha){
+  const anio = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2,"0");
+  const dia = String(fecha.getDate()).padStart(2,"0");
+
+  return `${anio}-${mes}-${dia}`;
+}
+
+function formatoFechaHoraCaja(fecha){
+  if(!fecha) return "Sin registrar";
+
+  return fecha.toLocaleString("es-AR",{
+    day:"2-digit",
+    month:"2-digit",
+    year:"numeric",
+    hour:"2-digit",
+    minute:"2-digit"
+  });
+}
+
+async function consultarHistorialCaja(periodo){
+  const contenedor = document.getElementById("cajaHistorialResultado");
+  if(!contenedor) return;
+
+  try{
+    const ahora = new Date();
+    let desde = new Date(ahora);
+    let hasta = new Date(ahora);
+
+    if(periodo === "hoy"){
+      // Se mantiene el día actual.
+    }
+
+    if(periodo === "semana"){
+      const dia = desde.getDay();
+      const diferencia = dia === 0 ? 6 : dia - 1;
+      desde.setDate(desde.getDate() - diferencia);
+    }
+
+    if(periodo === "mes"){
+      desde = new Date(ahora.getFullYear(),ahora.getMonth(),1);
+    }
+
+    if(periodo === "personalizado"){
+      const valorDesde = document.getElementById("cajaHistorialDesde")?.value;
+      const valorHasta = document.getElementById("cajaHistorialHasta")?.value;
+
+      if(!valorDesde || !valorHasta){
+        alert("Seleccioná las dos fechas para consultar.");
+        return;
+      }
+
+      desde = new Date(valorDesde + "T00:00:00");
+      hasta = new Date(valorHasta + "T23:59:59.999");
+
+      if(desde > hasta){
+        alert("La fecha inicial no puede ser posterior a la fecha final.");
+        return;
+      }
+    }
+
+    const inicio = new Date(desde);
+    inicio.setHours(0,0,0,0);
+
+    const fin = new Date(hasta);
+    fin.setHours(23,59,59,999);
+
+    const inputDesde = document.getElementById("cajaHistorialDesde");
+    const inputHasta = document.getElementById("cajaHistorialHasta");
+
+    if(inputDesde) inputDesde.value = fechaLocalCaja(inicio);
+    if(inputHasta) inputHasta.value = fechaLocalCaja(fin);
+
+    contenedor.innerHTML = '<p class="small">Consultando historial...</p>';
+
+    const eventos = await obtenerEventosCaja();
+
+    const aperturas = eventos.filter(e => e.tipo === "apertura");
+    const cierres = eventos.filter(e => e.tipo === "cierre");
+    const movimientos = eventos.filter(e => e.tipo === "movimiento");
+
+    const turnos = aperturas
+      .map(apertura => {
+        const fechaApertura = fechaEventoCaja(apertura);
+        if(!fechaApertura) return null;
+
+        const eventosTurno = eventos.filter(
+          e => e.sesionId === apertura.sesionId
+        );
+
+        const cierre = cierres.find(
+          e => e.sesionId === apertura.sesionId
+        );
+
+        const movimientosTurno = movimientos.filter(
+          e => e.sesionId === apertura.sesionId
+        );
+
+        let ingresosEfectivo = 0;
+        let ingresosTransferencia = 0;
+        let egresosEfectivo = 0;
+        let egresosTransferencia = 0;
+
+        movimientosTurno.forEach(m => {
+          const importe = Number(m.importe || 0);
+
+          if(m.movimiento === "ingreso"){
+            if(m.medio === "efectivo") ingresosEfectivo += importe;
+            if(m.medio === "transferencia") ingresosTransferencia += importe;
+          }
+
+          if(m.movimiento === "egreso"){
+            if(m.medio === "efectivo") egresosEfectivo += importe;
+            if(m.medio === "transferencia") egresosTransferencia += importe;
+          }
+        });
+
+        const efectivoCalculado =
+          Number(apertura.efectivoInicial || 0) +
+          ingresosEfectivo - egresosEfectivo;
+
+        const transferenciaCalculada =
+          Number(apertura.transferenciaInicial || 0) +
+          ingresosTransferencia - egresosTransferencia;
+
+        const fechaCierre = cierre ? fechaEventoCaja(cierre) : null;
+
+        return {
+          sesionId: apertura.sesionId,
+          fechaApertura,
+          fechaCierre,
+          cierre,
+          abierta: !cierre,
+          efectivoInicial: Number(apertura.efectivoInicial || 0),
+          transferenciaInicial: Number(apertura.transferenciaInicial || 0),
+          ingresosEfectivo,
+          ingresosTransferencia,
+          egresosEfectivo,
+          egresosTransferencia,
+          efectivo: cierre
+            ? Number(cierre.efectivoFinal ?? efectivoCalculado)
+            : efectivoCalculado,
+          transferencia: cierre
+            ? Number(cierre.transferenciaFinal ?? transferenciaCalculada)
+            : transferenciaCalculada,
+          totalIngresos: ingresosEfectivo + ingresosTransferencia,
+          totalEgresos: egresosEfectivo + egresosTransferencia,
+          usuarioApertura: apertura.usuario || "No informado",
+          usuarioCierre: cierre?.usuario || ""
+        };
+      })
+      .filter(t =>
+        t.fechaApertura >= inicio &&
+        t.fechaApertura <= fin
+      )
+      .sort((a,b) => a.fechaApertura - b.fechaApertura);
+
+    if(!turnos.length){
+      contenedor.innerHTML = `
+        <p class="small">
+          No se encontraron turnos de caja en el período seleccionado.
+        </p>
+      `;
+      return;
+    }
+
+    const dias = {};
+
+    turnos.forEach(t => {
+      const clave = fechaLocalCaja(t.fechaApertura);
+
+      if(!dias[clave]){
+        dias[clave] = {
+          turnos: 0,
+          ingresos: 0,
+          egresos: 0,
+          efectivo: 0,
+          transferencia: 0
+        };
+      }
+
+      dias[clave].turnos++;
+      dias[clave].ingresos += t.totalIngresos;
+      dias[clave].egresos += t.totalEgresos;
+      dias[clave].efectivo += t.efectivo;
+      dias[clave].transferencia += t.transferencia;
+    });
+
+    const totalIngresos = turnos.reduce((s,t) => s + t.totalIngresos,0);
+    const totalEgresos = turnos.reduce((s,t) => s + t.totalEgresos,0);
+    const totalEfectivo = turnos.reduce((s,t) => s + t.efectivo,0);
+    const totalTransferencia = turnos.reduce((s,t) => s + t.transferencia,0);
+
+    const resumenDias = Object.entries(dias)
+      .sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([dia,d]) => `
+        <div class="card" style="margin-top:8px">
+          <h4>📅 ${dia.split("-").reverse().join("/")}</h4>
+          <p>Turnos: <strong>${d.turnos}</strong></p>
+          <p>Ingresos: <strong>${money(d.ingresos)}</strong></p>
+          <p>Egresos: <strong>${money(d.egresos)}</strong></p>
+          <p>Efectivo final: <strong>${money(d.efectivo)}</strong></p>
+          <p>Transferencias finales: <strong>${money(d.transferencia)}</strong></p>
+          <p>Total final: <strong>${money(d.efectivo + d.transferencia)}</strong></p>
+        </div>
+      `).join("");
+
+    const detalleTurnos = turnos.map((t,i) => `
+      <div class="card" style="margin-top:10px">
+        <h4>🧾 Turno ${i + 1}</h4>
+        <p class="small">Apertura: ${formatoFechaHoraCaja(t.fechaApertura)}</p>
+        <p class="small">Cierre: ${formatoFechaHoraCaja(t.fechaCierre)}</p>
+        <p class="small">Abrió: ${esc(t.usuarioApertura)}</p>
+        <p class="small">Cerró: ${esc(t.usuarioCierre || "Turno todavía abierto")}</p>
+        <hr>
+        <p>Ingresos: <strong>${money(t.totalIngresos)}</strong></p>
+        <p>Egresos: <strong>${money(t.totalEgresos)}</strong></p>
+        <p>Ingresos en efectivo: ${money(t.ingresosEfectivo)}</p>
+        <p>Ingresos por transferencia: ${money(t.ingresosTransferencia)}</p>
+        <p>Egresos en efectivo: ${money(t.egresosEfectivo)}</p>
+        <p>Egresos por transferencia: ${money(t.egresosTransferencia)}</p>
+        <hr>
+        <p>Efectivo final: <strong>${money(t.efectivo)}</strong></p>
+        <p>Transferencias finales: <strong>${money(t.transferencia)}</strong></p>
+        <p>Total final: <strong>${money(t.efectivo + t.transferencia)}</strong></p>
+        ${t.abierta ? '<p class="small">⚠️ Este turno todavía no tiene cierre registrado.</p>' : ''}
+      </div>
+    `).join("");
+
+    contenedor.innerHTML = `
+      <h3>📊 Balance del período</h3>
+      <p class="small">
+        Desde ${fechaLocalCaja(inicio).split("-").reverse().join("/")}
+        hasta ${fechaLocalCaja(fin).split("-").reverse().join("/")}
+      </p>
+
+      <div class="card">
+        <p>Turnos registrados: <strong>${turnos.length}</strong></p>
+        <p>Total de ingresos: <strong>${money(totalIngresos)}</strong></p>
+        <p>Total de egresos: <strong>${money(totalEgresos)}</strong></p>
+        <p>Efectivo final acumulado: <strong>${money(totalEfectivo)}</strong></p>
+        <p>Transferencias finales acumuladas: <strong>${money(totalTransferencia)}</strong></p>
+        <h3>Total final acumulado: ${money(totalEfectivo + totalTransferencia)}</h3>
+      </div>
+
+      <h3 style="margin-top:18px">Balance por día</h3>
+      ${resumenDias}
+
+      <h3 style="margin-top:18px">Detalle de cada turno</h3>
+      ${detalleTurnos}
+    `;
+
+  }catch(error){
+    console.error("Error al consultar historial de caja:",error);
+    contenedor.innerHTML = `
+      <p class="small">No se pudo consultar el historial de caja.</p>
+    `;
+  }
+}
+  
 
 function calcularSaldoCaja(eventos){
   let efectivo = 0;
@@ -9580,7 +9905,9 @@ async function renderReparto(){
         currency: "ARS"
       });
 
-      const vehiculo = String(p.vehiculoReparto || "");
+      const vehiculo = String(
+  p.vehiculoReparto || p.repartoVehiculo || ""
+);
 
       let contenido = `
         <div class="card">
@@ -9691,10 +10018,11 @@ async function renderReparto(){
 }
 
 
+
 async function registrarSalidaReparto(vehiculo){
   const confirmacion = confirm(
     "¿Confirmás la salida del Vehículo " + vehiculo +
-    " con todas sus boletas preparadas y asignadas?"
+    " con las boletas preparadas y pendientes asignadas?"
   );
 
   if(!confirmacion) return;
@@ -9704,17 +10032,39 @@ async function registrarSalidaReparto(vehiculo){
 
     const pedidos = snap.docs.filter(doc => {
       const p = doc.data();
+
       const estado = String(p.status || p.estado || "")
         .toLowerCase().trim();
 
-      return (
-        ["preparado", "preparada", "preparados", "preparadas"].includes(estado) &&
-        String(p.vehiculoReparto || "") === String(vehiculo)
-      );
+      const preparado = [
+        "preparado",
+        "preparada",
+        "preparados",
+        "preparadas"
+      ].includes(estado);
+
+      const pendiente = p.repartoStatus === "pendiente";
+
+      const asignado = String(
+        p.vehiculoReparto || p.repartoVehiculo || ""
+      ) === String(vehiculo);
+
+      const anulada = [
+  "anulado",
+  "anulada",
+  "cancelado",
+  "cancelada"
+].includes(estado);
+
+return !anulada &&
+  (preparado || pendiente) &&
+  asignado &&
+  p.repartoStatus !== "entregada" &&
+  p.repartoStatus !== "en_reparto";
     });
 
     if(!pedidos.length){
-      alert("No hay boletas preparadas asignadas a ese vehículo.");
+      alert("No hay boletas preparadas o pendientes asignadas a ese vehículo.");
       return;
     }
 
@@ -9722,12 +10072,26 @@ async function registrarSalidaReparto(vehiculo){
     const fechaSalida = firebase.firestore.FieldValue.serverTimestamp();
 
     pedidos.forEach(doc => {
-      batch.update(doc.ref, {
-        repartoStatus: "en_reparto",
-        repartoFechaSalida: fechaSalida,
-        repartoVehiculo: String(vehiculo),
-        updatedAt: fechaSalida
-      });
+    const p = doc.data();
+
+const historialSalidas = Array.isArray(p.repartoHistorialSalidas)
+  ? p.repartoHistorialSalidas
+  : [];
+
+batch.update(doc.ref,{
+  repartoStatus: "en_reparto",
+  repartoFechaSalida: fechaSalida,
+  repartoVehiculo: String(vehiculo),
+  repartoHistorialSalidas: [
+    ...historialSalidas,
+    {
+      fecha: new Date().toISOString(),
+      vehiculo: String(vehiculo),
+      usuario: firebaseAuth.currentUser?.email || "Administrador"
+    }
+  ],
+  updatedAt: fechaSalida
+});
     });
 
     await batch.commit();
@@ -9740,7 +10104,7 @@ async function registrarSalidaReparto(vehiculo){
     await renderReparto();
 
   }catch(error){
-    console.error("Error registrando salida:", error);
+    console.error("Error registrando salida:",error);
     alert("No se pudo registrar la salida del vehículo.");
   }
 }
@@ -9910,8 +10274,8 @@ async function registrarRendicionBoleta(id){
       " rendida correctamente."
     );
 
-    await renderReparto();
-
+    await renderRendicionBoletas();
+await renderReparto();
   }catch(error){
     console.error("Error registrando rendición:", error);
     alert(
@@ -10563,9 +10927,38 @@ async function imprimirHojaRuta() {
       const estado = String(p.status || p.estado || "")
         .toLowerCase().trim();
 
-      return String(p.vehiculoReparto || "") === vehiculo &&
-        ["preparado", "preparada", "preparados", "preparadas"]
-          .includes(estado);
+     
+const estadoPreparado = [
+  "preparado",
+  "preparada",
+  "preparados",
+  "preparadas"
+].includes(estado);
+
+const estaPendiente = p.repartoStatus === "pendiente";
+
+const vehiculoAsignado = String(
+  p.vehiculoReparto || p.repartoVehiculo || ""
+) === vehiculo;
+
+const estadoReparto = String(
+  p.repartoStatus || ""
+).toLowerCase();
+
+const puedeSalir = estaPendiente ||
+  (
+    estadoPreparado &&
+    !["en_reparto", "entregada", "anulada"].includes(estadoReparto)
+  );
+
+const anulada = [
+  "anulado",
+  "anulada",
+  "cancelado",
+  "cancelada"
+].includes(estado);
+
+return !anulada && vehiculoAsignado && puedeSalir;
     });
 
     if (!pedidos.length) {
@@ -10584,6 +10977,9 @@ const direccion = clienteDatos
       const altura = p.height || p.altura || "";
       const telefono = p.phone || p.telefono || "";
       const observaciones = p.obs || p.observaciones || "";
+      const estadoEntrega = p.repartoStatus === "pendiente"
+  ? "PENDIENTE - " + (p.repartoMotivoPendiente || "Sin motivo")
+  : "NUEVA";
 
       return `
         <tr>
@@ -10591,8 +10987,9 @@ const direccion = clienteDatos
           <td>${esc(String(cliente))}</td>
           <td>${esc([zona, direccion, altura].filter(Boolean).join(" "))}</td>
           <td>${esc(String(telefono))}</td>
-          <td>${esc(String(observaciones))}</td>
-          <td class="check"></td>
+         <td>${esc(String(observaciones))}</td>
+<td>${esc(String(estadoEntrega))}</td>
+<td class="check"></td>
         </tr>`;
     }).join("");
 
@@ -10628,7 +11025,10 @@ const direccion = clienteDatos
           <thead>
             <tr>
               <th>Boleta</th><th>Cliente</th><th>Dirección</th>
-              <th>Teléfono</th><th>Observaciones</th><th>Entregado</th>
+              <th>Teléfono</th>
+<th>Observaciones</th>
+<th>Estado de entrega</th>
+<th>Entregado</th>
             </tr>
           </thead>
           <tbody>${filas}</tbody>
