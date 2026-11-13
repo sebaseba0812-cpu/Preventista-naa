@@ -729,19 +729,57 @@ onclick="createPromotion()">
       </label>
     </div>
 
-    <div class="row">
-      <label>Importe ($)
-        <input id="cajaImporte" type="number" min="0.01" step="0.01" placeholder="0">
-      </label>
-      <label>Descripción
-        <input id="cajaDescripcion" placeholder="Motivo del movimiento">
-      </label>
-    </div>
+   <div class="row">
+  <label>Importe ($)
+    <input id="cajaImporte" type="number" min="0.01" step="0.01" placeholder="0">
+  </label>
+
+  <label>Descripción
+    <input id="cajaDescripcion" placeholder="Motivo del movimiento">
+  </label>
+</div>
+
+<label>Categoría del gasto</label>
+<select id="cajaCategoria">
+  <option value="">Seleccionar categoría</option>
+  <option value="combustible">Combustible</option>
+  <option value="libreria">Librería y artículos de oficina</option>
+  <option value="limpieza">Limpieza</option>
+  <option value="mantenimiento">Mantenimiento y reparaciones</option>
+  <option value="servicios">Servicios e impuestos</option>
+  <option value="fletes">Fletes y transporte</option>
+  <option value="otros">Otros gastos</option>
+</select>
+    
 
     <button class="primary" onclick="registrarMovimientoCaja()">Guardar movimiento</button>
 
     <h3>Estado de caja</h3>
     <div id="cajaEstado">Cargando estado de caja...</div>
+    <hr>
+
+<div class="card" style="margin-top:15px">
+  <h3>📊 Reporte mensual de gastos</h3>
+
+  <label>Seleccionar mes</label>
+  <input type="month" id="gastosMes">
+
+  <button class="primary"
+    style="width:100%;margin-top:10px"
+    onclick="generarReporteGastos()">
+    🔎 Consultar gastos
+  </button>
+
+  <div id="reporteGastos" style="margin-top:15px">
+    <p class="small">Seleccioná un mes para consultar los gastos.</p>
+  </div>
+
+  <button class="secondary"
+    style="width:100%;margin-top:10px"
+    onclick="imprimirReporteGastos()">
+    🖨️ Imprimir reporte
+  </button>
+</div>
 
     <button class="primary" onclick="cerrarCaja()">Cerrar caja</button>
   </div>
@@ -2128,6 +2166,224 @@ async function renderCaja(){
   }
 }
 
+  
+async function generarReporteGastos(){
+  const contenedor = document.getElementById("reporteGastos");
+  const mes = document.getElementById("gastosMes").value;
+
+  if(!mes){
+    alert("Seleccioná el mes que querés consultar.");
+    return;
+  }
+
+  contenedor.innerHTML = "Consultando gastos...";
+
+  try{
+    const [anio, numeroMes] = mes.split("-").map(Number);
+    const inicio = new Date(anio, numeroMes - 1, 1);
+    const fin = new Date(anio, numeroMes, 1);
+
+    const snapshot = await firebaseDB.collection("caja").get();
+
+    const gastos = [];
+    const totales = {};
+
+    snapshot.forEach(doc => {
+      const e = doc.data();
+
+      if(e.tipo !== "movimiento" || e.movimiento !== "egreso"){
+        return;
+      }
+
+      if(!e.createdAt || !e.createdAt.toDate){
+        return;
+      }
+
+      const fecha = e.createdAt.toDate();
+
+      if(fecha < inicio || fecha >= fin){
+        return;
+      }
+
+      let categoria = e.categoria || "";
+
+      if(e.proveedorPagoId){
+        categoria = "pagos_proveedores";
+      }else if(!categoria){
+        categoria = "sin_categoria";
+      }
+
+      const nombres = {
+        combustible: "Combustible",
+        libreria: "Librería y artículos de oficina",
+        limpieza: "Limpieza",
+        mantenimiento: "Mantenimiento y reparaciones",
+        servicios: "Servicios e impuestos",
+        fletes: "Fletes y transporte",
+        otros: "Otros gastos",
+        pagos_proveedores: "Pagos a proveedores",
+        sin_categoria: "Sin categoría"
+      };
+
+      const nombre = nombres[categoria] || categoria;
+      const importe = Number(e.importe) || 0;
+
+      totales[nombre] = (totales[nombre] || 0) + importe;
+
+      gastos.push({
+        fecha,
+        nombre,
+        descripcion: e.descripcion || "",
+        medio: e.medio || "",
+        importe
+      });
+    });
+
+    gastos.sort((a,b) => a.fecha - b.fecha);
+
+    const totalGeneral = gastos.reduce(
+      (suma, gasto) => suma + gasto.importe, 0
+    );
+
+    const resumen = Object.entries(totales)
+      .sort((a,b) => b[1] - a[1])
+      .map(([categoria, total]) => `
+        <p>${esc(categoria)}:
+          <strong>${money(total)}</strong>
+        </p>
+      `).join("");
+
+    const detalle = gastos.map(g => `
+      <tr>
+        <td>${g.fecha.toLocaleDateString("es-AR")}</td>
+        <td>${esc(g.nombre)}</td>
+        <td>${esc(g.descripcion)}</td>
+        <td>${esc(g.medio)}</td>
+        <td style="text-align:right">${money(g.importe)}</td>
+      </tr>
+    `).join("");
+
+    contenedor.innerHTML = `
+      <h3>Resumen por categoría</h3>
+      ${resumen || "<p>No hay gastos registrados este mes.</p>"}
+
+      <hr>
+      <h3>Total de gastos: ${money(totalGeneral)}</h3>
+
+      <h3>Detalle de movimientos</h3>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Categoría</th>
+              <th>Descripción</th>
+              <th>Medio</th>
+              <th>Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${detalle || ""}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+  }catch(error){
+    console.error("Error al generar reporte:",error);
+    contenedor.innerHTML =
+      "No se pudo generar el reporte de gastos.";
+  }
+}
+
+ 
+function imprimirReporteGastos(){
+  const contenido = document.getElementById("reporteGastos");
+
+  if(!contenido || !contenido.innerHTML.trim()){
+    alert("Primero tenés que generar el reporte.");
+    return;
+  }
+
+  const mes = document.getElementById("gastosMes").value;
+
+  if(!mes){
+    alert("Seleccioná el mes del reporte.");
+    return;
+  }
+
+  const ventana = window.open("", "_blank");
+
+  if(!ventana){
+    alert("Permití las ventanas emergentes para imprimir el reporte.");
+    return;
+  }
+
+  const [anio, numeroMes] = mes.split("-");
+  const nombreMes = new Date(
+    Number(anio), Number(numeroMes) - 1, 1
+  ).toLocaleDateString("es-AR", {
+    month: "long",
+    year: "numeric"
+  });
+
+  ventana.document.write(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Reporte mensual de gastos</title>
+      <style>
+        body{
+          font-family:Arial,sans-serif;
+          color:#111;
+          padding:25px;
+        }
+        h2,h3{
+          margin-bottom:10px;
+        }
+        table{
+          width:100%;
+          border-collapse:collapse;
+          margin-top:15px;
+          font-size:12px;
+        }
+        th,td{
+          border:1px solid #333;
+          padding:7px;
+          text-align:left;
+        }
+        th{
+          background:#eee;
+        }
+        p{
+          margin:7px 0;
+        }
+        @media print{
+          body{padding:0}
+          button{display:none}
+        }
+      </style>
+    </head>
+    <body>
+      <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+      <h3>Reporte mensual de gastos</h3>
+      <p><strong>Período:</strong> ${nombreMes}</p>
+      ${contenido.innerHTML}
+    </body>
+    </html>
+  `);
+
+  ventana.document.close();
+  ventana.focus();
+
+  setTimeout(() => {
+    ventana.print();
+  }, 500);
+}
+ 
+
+
 async function abrirCaja(){
   try{
     const estado = await obtenerEstadoCajaActual();
@@ -2177,6 +2433,7 @@ async function abrirCaja(){
   }
 }
 
+
 async function registrarMovimientoCaja(){
   try{
     const estado = await obtenerEstadoCajaActual();
@@ -2190,6 +2447,9 @@ async function registrarMovimientoCaja(){
     const medio = document.getElementById("cajaMedio").value;
     const importe = Number(document.getElementById("cajaImporte").value);
     const descripcion = document.getElementById("cajaDescripcion").value.trim();
+    const categoria = movimiento === "egreso"
+      ? document.getElementById("cajaCategoria").value
+      : "";
 
     if(!importe || importe <= 0){
       alert("Ingresá un importe válido.");
@@ -2198,6 +2458,11 @@ async function registrarMovimientoCaja(){
 
     if(!descripcion){
       alert("Ingresá una descripción del movimiento.");
+      return;
+    }
+
+    if(movimiento === "egreso" && !categoria){
+      alert("Seleccioná una categoría para el gasto.");
       return;
     }
 
@@ -2222,12 +2487,14 @@ async function registrarMovimientoCaja(){
       medio: medio,
       importe: importe,
       descripcion: descripcion,
+      categoria: categoria,
       usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
     document.getElementById("cajaImporte").value = "";
     document.getElementById("cajaDescripcion").value = "";
+    document.getElementById("cajaCategoria").value = "";
 
     alert("Movimiento registrado correctamente.");
     await renderCaja();
