@@ -1798,6 +1798,7 @@ async function guardarProveedor(){
   }
 }
 
+
 async function guardarPagoProveedor(){
   const proveedorId = document.getElementById("pagoProveedor")?.value || "";
   const importe = Number(document.getElementById("pagoImporte")?.value || 0);
@@ -1831,25 +1832,77 @@ async function guardarPagoProveedor(){
       return;
     }
 
-    await firebaseDB.collection("proveedoresPagos").add({
+    const proveedorNombre = proveedorDoc.data().nombre || "";
+
+    const estadoCaja = await obtenerEstadoCajaActual();
+
+    if(!estadoCaja.abierta){
+      alert("Primero tenés que abrir la caja para registrar el pago.");
+      return;
+    }
+
+    const saldo = calcularSaldoCaja(estadoCaja.movimientos);
+
+    const disponible = medio === "efectivo"
+      ? saldo.efectivo
+      : saldo.transferencia;
+
+    if(importe > disponible){
+      alert("No hay saldo suficiente en ese medio de pago.");
+      return;
+    }
+
+    if(!confirm(
+      "¿Confirmás el pago al proveedor " + proveedorNombre +
+      " por " + money(importe) + " mediante " + medio + "?"
+    )){
+      return;
+    }
+
+    const batch = firebaseDB.batch();
+
+    const pagoRef = firebaseDB.collection("proveedoresPagos").doc();
+    const cajaRef = firebaseDB.collection("caja").doc();
+
+    batch.set(pagoRef,{
       proveedorId,
-      proveedorNombre: proveedorDoc.data().nombre || "",
+      proveedorNombre,
       importe,
       fecha,
       medio,
       observaciones,
+      cajaMovimientoId: cajaRef.id,
       creadoEn: new Date().toISOString()
     });
+
+    batch.set(cajaRef,{
+      tipo: "movimiento",
+      sesionId: estadoCaja.sesion,
+      movimiento: "egreso",
+      medio,
+      importe,
+      descripcion: "Pago a proveedor: " + proveedorNombre +
+        (observaciones ? " - " + observaciones : ""),
+      proveedorId,
+      proveedorNombre,
+      proveedorPagoId: pagoRef.id,
+      usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
 
     document.getElementById("pagoImporte").value = "";
     document.getElementById("pagoObservaciones").value = "";
 
-    alert("Pago registrado correctamente.");
+    alert("Pago registrado y descontado de caja correctamente.");
+
     await renderProveedores();
+    await renderCaja();
 
   }catch(error){
     console.error("Error guardando pago:", error);
-    alert("No se pudo registrar el pago. Revisá los permisos de Firebase.");
+    alert("No se pudo registrar el pago. Revisá la conexión y los permisos de Firebase.");
   }
 }
 
