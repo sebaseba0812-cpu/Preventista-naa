@@ -9533,11 +9533,12 @@ ${Number(o.creditApplied || 0) > 0 ? `
   }
 }
 
+
 async function renderReparto(){
   const box = document.getElementById("repartoLista");
   if(!box) return;
 
-  box.innerHTML = '<p class="small">Cargando pedidos preparados...</p>';
+  box.innerHTML = '<p class="small">Cargando reparto...</p>';
 
   try{
     const snap = await firebaseDB.collection("orders").get();
@@ -9552,34 +9553,107 @@ async function renderReparto(){
         .toLowerCase().trim();
 
       return [
-        "preparado",
-        "preparada",
-        "preparados",
-        "preparadas"
-      ].includes(estado);
+        "preparado","preparada","preparados","preparadas"
+      ].includes(estado) &&
+      !["en_reparto","entregada","pendiente"].includes(
+        String(p.repartoStatus || "").toLowerCase()
+      );
     });
 
-    if(!preparados.length){
-      box.innerHTML =
-        '<p class="small">No hay pedidos preparados para reparto.</p>';
-      return;
+    const enReparto = pedidos.filter(p =>
+      p.repartoStatus === "en_reparto"
+    );
+
+    const pendientes = pedidos.filter(p =>
+      p.repartoStatus === "pendiente"
+    );
+
+    function tarjeta(p, tipo){
+      const cliente = p.clientName || p.client ||
+        p.cliente || "Sin cliente";
+
+      const boleta = p.boletaNumber || p.invoiceNumber ||
+        p.boleta || p.invoice || "Sin número";
+
+      const total = Number(p.total || 0).toLocaleString("es-AR", {
+        style: "currency",
+        currency: "ARS"
+      });
+
+      const vehiculo = String(p.vehiculoReparto || "");
+
+      let contenido = `
+        <div class="card">
+          <h3>Boleta N.º ${esc(String(boleta))}</h3>
+          <p><b>Cliente:</b> ${esc(String(cliente))}</p>
+          <p><b>Total:</b> ${total}</p>
+      `;
+
+      if(tipo === "en_reparto"){
+        contenido += `
+          <p><b>Estado:</b> En reparto</p>
+          <p><b>Vehículo:</b> ${esc(vehiculo || "Sin asignar")}</p>
+
+          <button class="primary"
+            onclick="registrarResultadoReparto('${p.id}','entregada')">
+            ✅ Marcar como entregada
+          </button>
+
+          <button class="secondary"
+            onclick="registrarResultadoReparto('${p.id}','pendiente')">
+            ⏳ Marcar como pendiente
+          </button>
+        `;
+      }else{
+        contenido += `
+          <p><b>Estado:</b> ${
+            tipo === "pendiente"
+              ? "Pendiente de entrega"
+              : "Preparado para reparto"
+          }</p>
+
+          ${tipo === "pendiente" && p.repartoMotivoPendiente
+            ? `<p><b>Motivo:</b> ${esc(String(p.repartoMotivoPendiente))}</p>`
+            : ""}
+
+          <label>Vehículo asignado</label>
+          <select id="vehiculo-${p.id}">
+            <option value="" ${vehiculo === "" ? "selected" : ""}>
+              Sin asignar
+            </option>
+            <option value="1" ${vehiculo === "1" ? "selected" : ""}>
+              Vehículo 1
+            </option>
+            <option value="2" ${vehiculo === "2" ? "selected" : ""}>
+              Vehículo 2
+            </option>
+          </select>
+
+          <button class="primary"
+            onclick="guardarVehiculoReparto('${p.id}')">
+            Guardar vehículo
+          </button>
+        `;
+      }
+
+      contenido += `</div>`;
+      return contenido;
     }
 
     box.innerHTML = `
       <p class="small">
-        Asigná cada pedido al vehículo correspondiente.
-        Antes de salir, imprimí la hoja de ruta y registrá la salida.
+        Prepará los pedidos, asigná los vehículos y registrá cada salida.
       </p>
 
-      <button class="primary" onclick="imprimirHojaRuta()">
+      <button class="primary"
+        onclick="imprimirHojaRuta()">
         Imprimir hoja de ruta por vehículo
       </button>
 
       <div class="card">
         <h3>Registrar salida de reparto</h3>
         <p class="small">
-          Esta acción registra la fecha y hora de salida de todas las
-          boletas preparadas y asignadas al vehículo seleccionado.
+          Registra la salida de las boletas preparadas y asignadas.
         </p>
 
         <button class="primary"
@@ -9593,52 +9667,26 @@ async function renderReparto(){
         </button>
       </div>
 
-      ${preparados.map(p => {
-        const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
-        const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
-        const total = Number(p.total || 0).toLocaleString("es-AR", {
-          style: "currency",
-          currency: "ARS"
-        });
+      <h3>📦 Preparados para salir (${preparados.length})</h3>
+      ${preparados.length
+        ? preparados.map(p => tarjeta(p,"preparado")).join("")
+        : '<p class="small">No hay pedidos preparados.</p>'}
 
-        const vehiculo = String(p.vehiculoReparto || "");
+      <h3>🚚 En reparto (${enReparto.length})</h3>
+      ${enReparto.length
+        ? enReparto.map(p => tarjeta(p,"en_reparto")).join("")
+        : '<p class="small">No hay boletas en reparto.</p>'}
 
-        return `
-          <div class="card">
-            <h3>Boleta N.º ${esc(String(boleta))}</h3>
-            <p><b>Cliente:</b> ${esc(String(cliente))}</p>
-            <p><b>Total:</b> ${total}</p>
-            <p><b>Estado:</b> Preparado para reparto</p>
-
-            <label for="vehiculo-${esc(String(p.id))}">
-              Vehículo asignado
-            </label>
-
-            <select id="vehiculo-${esc(String(p.id))}">
-              <option value="" ${vehiculo === "" ? "selected" : ""}>
-                Sin asignar
-              </option>
-              <option value="1" ${vehiculo === "1" ? "selected" : ""}>
-                Vehículo 1
-              </option>
-              <option value="2" ${vehiculo === "2" ? "selected" : ""}>
-                Vehículo 2
-              </option>
-            </select>
-
-            <button class="primary"
-              onclick="guardarVehiculoReparto('${esc(String(p.id))}')">
-              Guardar vehículo
-            </button>
-          </div>
-        `;
-      }).join("")}
+      <h3>⏳ Pendientes de entrega (${pendientes.length})</h3>
+      ${pendientes.length
+        ? pendientes.map(p => tarjeta(p,"pendiente")).join("")
+        : '<p class="small">No hay entregas pendientes.</p>'}
     `;
 
   }catch(error){
     console.error("Error cargando reparto:", error);
     box.innerHTML =
-      '<p class="small">No se pudieron cargar los pedidos para reparto.</p>';
+      '<p class="small">No se pudieron cargar los pedidos de reparto.</p>';
   }
 }
 
