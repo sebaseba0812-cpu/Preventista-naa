@@ -550,6 +550,10 @@ body {
  <label>Cantidad de unidades por empaque</label>
 <input id="pPackQty" type="number" min="1" step="1" value="1" placeholder="Ej.: 8, 10, 12"> 
 <label>Precio inicial</label><input id="pPrice" type="number" min="0" step="0.01" placeholder="0">
+ 
+<label>Precio minorista ($)</label>
+<input id="pMinoristaPrice" type="number" min="0" step="0.01" placeholder="0">
+ 
 <button class="primary" style="margin-top:10px;width:100%" onclick="addManualProduct()">➕ Agregar producto</button>
   <button class="secondary" style="margin-top:10px;width:100%" onclick="syncProductsToFirebase()">🔄 Sincronizar productos con Firebase</button>
 </div>
@@ -1346,6 +1350,7 @@ async function toggleProductActive(name, presentation){
   }
 }  
 
+
 function getProducts(){
   return PRODUCTS.map(p=>{
     const key=p[0]+"|"+p[1];
@@ -1353,10 +1358,10 @@ function getProducts(){
 
     return o
       ? [
-          o.name,
-          o.pres,
-          o.unit,
-          o.prices,
+          o.name || p[0],
+          o.pres || p[1],
+          o.unit || p[2],
+          o.prices || p[3],
           Number(o.packQty)||Number(p[4])||1,
           Number(o.minoristaPrice)||0
         ]
@@ -1377,6 +1382,7 @@ function getProducts(){
     Number(p[5])||0
   ]));
 }
+
 
 async function asegurarStockDesdeCatalogo(products){
   for(const p of products){
@@ -6353,7 +6359,10 @@ function renderCatalogEditor(){
 
     return '<div class="product" style="margin-bottom:12px">'+
       '<div><b>'+esc(p[0])+'</b> <span class="badge">'+esc(p[1])+'</span></div>'+
-      '<div class="muted">'+esc(p[2])+' · '+(Number(p[4])||1)+' unidades por empaque · '+prices.map(t=>"desde "+t[0]+" → $"+money(t[1])).join(" · ")+'</div>'+
+     
+'<div class="muted">'+esc(p[2])+' · '+(Number(p[4])||1)+' unidades por empaque · '+prices.map(t=>"desde "+t[0]+" → $"+money(t[1])).join(" · ")+'</div>'+
+'<div class="muted">Precio minorista: $'+money(Number(p[5])||0)+'</div>'+
+
       '<div class="'+(activo?'activebuy':'inactive')+'">'+(activo?'ACTIVO':'INACTIVO')+'</div>'+
       '<div class="row" style="margin-top:8px">'+
       '<button class="secondary catalog-edit" type="button" data-edit-index="'+j+'">✏️ Editar</button>'+
@@ -6446,6 +6455,7 @@ function restoreCatalogProduct(item){
   showToast("↩️ Producto restaurado");
 }
 
+
 function addManualProduct(){
   if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
     alert('Solo el administrador puede agregar productos.');
@@ -6456,18 +6466,26 @@ function addManualProduct(){
       pres=document.getElementById("pPres").value.trim(),
       unit=document.getElementById("pUnit").value.trim()||"unidad",
       packQty=Math.max(1,parseInt(document.getElementById("pPackQty").value,10)||1),
-      price=Number(document.getElementById("pPrice").value);
+      price=Number(document.getElementById("pPrice").value),
+      minoristaPrice=Math.max(0,Number(document.getElementById("pMinoristaPrice").value)||0);
 
   if(!name||!pres||!price||price<0){
-    alert("Completá nombre, presentación y precio");
+    alert("Completá nombre, presentación y precio mayorista");
     return;
   }
 
-  customProducts.push([name,pres,unit,[[1,price]],packQty]);
+  customProducts.push([
+    name,
+    pres,
+    unit,
+    [[1,price]],
+    packQty,
+    minoristaPrice
+  ]);
 
   localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
 
-  ["pName","pPres","pUnit","pPackQty","pPrice"].forEach(id=>{
+  ["pName","pPres","pUnit","pPackQty","pPrice","pMinoristaPrice"].forEach(id=>{
     document.getElementById(id).value="";
   });
 
@@ -6477,6 +6495,7 @@ function addManualProduct(){
   renderProducts();
   alert("Producto agregado");
 }
+
 function removeManualProduct(i){
   if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
     alert('Solo el administrador puede eliminar productos.');
@@ -6485,55 +6504,28 @@ function removeManualProduct(i){
 if(!confirm("¿Quitar este producto?"))return;
 customProducts.splice(i,1);localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));renderManualProducts();renderProducts();
 }
+
 function renderManualProducts(){
-let box=document.getElementById("manualProducts");if(!box)return;
-box.innerHTML=customProducts.length?customProducts.map((p,i)=>'<div class="product"><b>'+esc(p[0])+'</b> · '+esc(p[1])+'<div class="muted">'+esc(p[2])+' · $'+money(p[3][0][1])+'</div><button class="danger manual-remove" type="button" data-index="'+i+'" style="margin-top:7px">❌ Quitar</button></div>').join(""):'<div class="empty">No hay productos manuales.</div>';
-document.querySelectorAll(".manual-remove").forEach(btn=>{
-btn.onclick=function(){removeManualProduct(Number(this.dataset.index));};
-});
-}
+  let box=document.getElementById("manualProducts");
+  if(!box)return;
 
-let clientMap = null;
-let clientMarker = null;
+  box.innerHTML=customProducts.length
+    ? customProducts.map((p,i)=>
+      '<div class="product">'+
+        '<b>'+esc(p[0])+'</b> · '+esc(p[1])+
+        '<div class="muted">'+esc(p[2])+'</div>'+
+        '<div class="muted">Mayorista: $'+money(p[3][0][1])+'</div>'+
+        '<div class="muted">Minorista: $'+money(Number(p[5])||0)+'</div>'+
+        '<button class="danger manual-remove" type="button" data-index="'+i+'" style="margin-top:7px">❌ Quitar</button>'+
+      '</div>'
+    ).join("")
+    : '<div class="empty">No hay productos manuales.</div>';
 
-const POSADAS_LAT = -27.3671;
-const POSADAS_LNG = -55.8961;
-
-function iniciarMapaCliente(){
-
-  const mapa = document.getElementById("clientMap");
-
-  if(!mapa || typeof L === "undefined"){
-    return;
-  }
-
-  if(clientMap){
-    setTimeout(() => clientMap.invalidateSize(), 200);
-    return;
-  }
-
-  clientMap = L.map("clientMap").setView(
-    [POSADAS_LAT, POSADAS_LNG],
-    13
-  );
-
-  L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      attribution: "&copy; OpenStreetMap"
-    }
-  ).addTo(clientMap);
-
-  clientMap.on("click", function(e){
-
-    marcarUbicacionCliente(
-      e.latlng.lat,
-      e.latlng.lng
-    );
-
+  document.querySelectorAll(".manual-remove").forEach(btn=>{
+    btn.onclick=function(){
+      removeManualProduct(Number(this.dataset.index));
+    };
   });
-
-  setTimeout(() => clientMap.invalidateSize(), 300);
 }
 
 function marcarUbicacionCliente(lat, lng){
