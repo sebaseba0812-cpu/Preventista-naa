@@ -286,7 +286,11 @@ body {
 <button id="dashboardNavBtn" onclick="show('cierre',this)">📊 Dashboard</button>
   <button id="liquidacionesNavBtn" onclick="show('liquidaciones',this)">💵 Liquidaciones</button>
 <button id="proveedoresNavBtn" onclick="show('proveedores',this)">🏭 Proveedores</button>
- <button id="cajaNavBtn" onclick="show('caja',this)">💰 Caja</button> 
+<button id="cajaNavBtn" onclick="show('caja',this)">💰 Caja</button>
+<button id="ventaDirectaNavBtn" style="display:none"
+  onclick="show('ventaDirecta',this)">
+  🛒 Venta Directa
+</button>
   <button id="cuentasCorrientesNavBtn"
   style="display:none"
   onclick="show('cuentasCorrientes',this)">
@@ -844,6 +848,91 @@ onclick="createPromotion()">
     <button class="primary" onclick="cerrarCaja()">Cerrar caja</button>
   </div>
 </section>
+  <section id="ventaDirecta" class="screen">
+
+  <div class="card">
+    <h2>🛒 Venta Directa de Administración</h2>
+    <p class="small">
+      Ventas realizadas directamente desde la distribuidora,
+      sin intervención de preventistas.
+    </p>
+
+   <label>Comprador / Cliente</label>
+<input
+  id="ventaDirectaCliente"
+  type="text"
+  placeholder="Nombre del comprador o Consumidor final"
+>
+
+    <label>Número de factura o comprobante</label>
+    <input
+      id="ventaDirectaComprobante"
+      type="text"
+      placeholder="Ingresar número de comprobante"
+    >
+
+    <label>Tipo de precio</label>
+    <select id="ventaDirectaTipoPrecio" onchange="renderCarritoVentaDirecta()">
+      <option value="mayorista">Precio mayorista</option>
+      <option value="minorista">Precio minorista</option>
+    </select>
+
+    <label>Buscar producto</label>
+    <input
+  id="ventaDirectaBuscar"
+  type="text"
+  placeholder="Nombre o presentación del producto"
+  oninput="renderProductosVentaDirecta()"
+>
+
+    <div id="ventaDirectaProductos">
+      <div class="empty">
+        Los productos aparecerán acá.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🛒 Productos de la venta</h3>
+
+    <div id="ventaDirectaCarrito">
+      <div class="empty">
+        Todavía no agregaste productos.
+      </div>
+    </div>
+
+    <div class="total" style="margin-top:15px">
+      Total: $<span id="ventaDirectaTotal">0,00</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>💵 Cobro de la venta</h3>
+
+    <label>Medio de pago</label>
+    <select id="ventaDirectaMedio">
+      <option value="efectivo">Efectivo</option>
+      <option value="transferencia">Transferencia</option>
+    </select>
+
+    <label>Observaciones</label>
+    <textarea
+      id="ventaDirectaObservaciones"
+      rows="2"
+      placeholder="Datos adicionales de la venta"
+    ></textarea>
+
+    <button
+      class="primary"
+      type="button"
+      style="width:100%;margin-top:12px"
+      disabled
+    >
+      Confirmar venta (próximamente)
+    </button>
+  </div>
+
+</section>
   <section id="proveedores" class="screen">
   <div class="card">
     <h2>🏭 Proveedores</h2>
@@ -1267,6 +1356,7 @@ let clients=JSON.parse(localStorage.getItem("NAA_CLIENTS")||"[]");
 let orders=JSON.parse(localStorage.getItem("NAA_ORDERS")||"[]");
 let user=JSON.parse(localStorage.getItem("NAA_USER")||"null");
 let cart={};
+let ventaDirectaCarrito = {};  
  let promotionCart = []; 
 let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]");
 
@@ -4286,6 +4376,7 @@ if(promoForm){
     "cuentasCorrientes",
     "reparto",
     "personal"
+    "ventaDirecta"
   ];
 
   // Secciones exclusivas del administrador
@@ -4299,6 +4390,7 @@ if(promoForm){
   "reparto",
   "personal",
   "liquidaciones"
+   "ventaDirecta"
 ];
 
   document.querySelectorAll("nav button").forEach(boton => {
@@ -6261,6 +6353,7 @@ function show(id,btn){
     "personal",
      "reclamos", 
     "pedidosOficina"
+     "ventaDirecta" 
   ];
 
   if(
@@ -6285,6 +6378,7 @@ if(
     "cuentasCorrientes",
     "reparto",
     "personal"
+    "ventaDirecta"
   ].includes(id)
 ){
   alert("La caja está cerrada. Primero debe abrirla el administrador.");
@@ -6331,6 +6425,10 @@ if(id==="historial")renderHistory();
   if(id==="caja") renderCaja();
   if(id==="personal") renderPersonal();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
+  if(id==="ventaDirecta"){
+  renderProductosVentaDirecta();
+  renderCarritoVentaDirecta();
+}
 if(id==="cierre"){
   if(user?.role==="admin"){
     document.getElementById("adminDashboardBox").style.display="block";
@@ -7321,6 +7419,105 @@ p[3].forEach(t=>{if(q>=t[0])price=t[1]});
 return price;
 }
 function keyFor(p){return encodeURIComponent(p[0]+"|"+p[1])}
+
+function renderProductosVentaDirecta(){
+  const box = document.getElementById("ventaDirectaProductos");
+  if(!box) return;
+
+  const buscar = (
+    document.getElementById("ventaDirectaBuscar").value || ""
+  ).toLowerCase();
+
+  const productos = getProducts().filter(p =>
+    productIsActive(p) &&
+    (p[0] + " " + p[1]).toLowerCase().includes(buscar)
+  );
+
+  box.innerHTML = productos.map((p,i) => {
+    const minorista = Number(p[5]) || 0;
+
+    return `
+      <div class="product">
+        <b>${esc(p[0])}</b>
+        <div class="muted">${esc(p[1])} · ${esc(p[2])}</div>
+        <div class="small">
+          Mayorista: $${money(tierPrice(p,1))}
+        </div>
+        <div class="small">
+          Minorista: ${minorista > 0 ? "$"+money(minorista) : "Sin precio cargado"}
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="vdQty${i}" type="number" min="1" value="1">
+          <button class="primary" type="button"
+            onclick="agregarProductoVentaDirecta(${i})">
+            ➕ Agregar
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("") || '<div class="empty">No se encontraron productos.</div>';
+
+  window.productosVentaDirectaActuales = productos;
+}
+
+function agregarProductoVentaDirecta(i){
+  const p = window.productosVentaDirectaActuales?.[i];
+  if(!p) return;
+
+  const cantidad = Number(document.getElementById("vdQty"+i).value);
+
+  if(!Number.isInteger(cantidad) || cantidad <= 0){
+    alert("Ingresá una cantidad válida.");
+    return;
+  }
+
+  const key = p[0] + "|" + p[1];
+
+  ventaDirectaCarrito[key] =
+    (ventaDirectaCarrito[key] || 0) + cantidad;
+
+  renderCarritoVentaDirecta();
+}
+
+function renderCarritoVentaDirecta(){
+  const box = document.getElementById("ventaDirectaCarrito");
+  if(!box) return;
+
+  const tipo = document.getElementById("ventaDirectaTipoPrecio").value;
+  let total = 0;
+
+  const lineas = Object.entries(ventaDirectaCarrito).map(([key,cantidad]) => {
+    const p = getProducts().find(x => x[0]+"|"+x[1] === key);
+    if(!p) return "";
+
+    const precio = tipo === "minorista"
+      ? Number(p[5]) || 0
+      : tierPrice(p,cantidad);
+
+    const subtotal = precio * cantidad;
+    total += subtotal;
+
+    return `
+      <div class="product">
+        <b>${esc(p[0])}</b> · ${esc(p[1])}
+        <div class="muted">Cantidad: ${cantidad} · Unitario: $${money(precio)}</div>
+        <b>Subtotal: $${money(subtotal)}</b>
+        <button class="danger" type="button"
+          onclick="quitarProductoVentaDirecta('${encodeURIComponent(key)}')">
+          Quitar
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  box.innerHTML = lineas || '<div class="empty">Todavía no agregaste productos.</div>';
+  document.getElementById("ventaDirectaTotal").textContent = money(total);
+}
+
+function quitarProductoVentaDirecta(key){
+  delete ventaDirectaCarrito[decodeURIComponent(key)];
+  renderCarritoVentaDirecta();
+}  
 function renderProducts(){
 let q=(document.getElementById("productSearch").value||"").toLowerCase();
 let list=getProducts().filter(p=>productIsActive(p)&&(p[0]+" "+p[1]).toLowerCase().includes(q));
