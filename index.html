@@ -7524,6 +7524,10 @@ function quitarProductoVentaDirecta(key){
   delete ventaDirectaCarrito[decodeURIComponent(key)];
   renderCarritoVentaDirecta();
 }  
+async function confirmarVentaDirecta(){
+
+  alert("Estamos preparando la confirmación de Venta Directa.");
+}  
 function renderProducts(){
 let q=(document.getElementById("productSearch").value||"").toLowerCase();
 let list=getProducts().filter(p=>productIsActive(p)&&(p[0]+" "+p[1]).toLowerCase().includes(q));
