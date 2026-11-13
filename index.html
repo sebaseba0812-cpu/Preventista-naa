@@ -7484,40 +7484,54 @@ window.sendingDraft = true;
         });
 
         // Preparar el pedido.
-        const pedido = {
-          ...draft,
+       // Preparar el pedido.
+const pedido = {
+  ...draft,
 
-          status:"nuevo",
+  status: "nuevo",
 
-          total:totalOriginal,
-          grossTotal:totalOriginal,
-          creditApplied:saldoAplicado,
-          amountDue:Math.max(0,saldoPendiente),
-          creditUses:creditUses,
+  total: totalOriginal,
+  grossTotal: totalOriginal,
+  creditApplied: saldoAplicado,
+  amountDue: Math.max(0, saldoPendiente),
+  creditUses: creditUses,
 
-          clientData: {
-            name: draft.clientData?.name || pedidoClient?.name || draft.client || "",
-            clientNumber: draft.clientData?.clientNumber || pedidoClient?.clientNumber || "",
-            zone: draft.clientData?.zone || pedidoClient?.zone || "",
-            street: draft.clientData?.street || pedidoClient?.street || "",
-            height: draft.clientData?.height || pedidoClient?.height || ""
-          },
+  clientData: {
+    name: draft.clientData?.name || pedidoClient?.name || draft.client || "",
+    clientNumber: draft.clientData?.clientNumber || pedidoClient?.clientNumber || "",
+    zone: draft.clientData?.zone || pedidoClient?.zone || "",
+    street: draft.clientData?.street || pedidoClient?.street || "",
+    height: draft.clientData?.height || pedidoClient?.height || ""
+  },
 
-          paymentType:pedidoClient?.paymentType || "contado",
+  paymentType: pedidoClient?.paymentType || "contado",
 
-          creditDays:Number(pedidoClient?.creditDays || 0),
+  creditDays: Number(pedidoClient?.creditDays || 0),
 
-          paymentStatus:
-            pedidoClient?.paymentType === "cuenta_corriente"
-              ? (saldoPendiente > 0 ? "pendiente" : "cobrado")
-              : "cobrado",
+  paymentStatus:
+    pedidoClient?.paymentType === "cuenta_corriente"
+      ? (saldoPendiente > 0 ? "pendiente" : "cobrado")
+      : "cobrado",
 
-          boletaNumber:nextNumber,
+  boletaNumber: nextNumber,
 
-          sentAt:firebase.firestore.FieldValue.serverTimestamp(),
+  // Fecha de emisión y envío a la oficina.
+  sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+  createdAt: firebase.firestore.FieldValue.serverTimestamp(),
 
-          createdAt:firebase.firestore.FieldValue.serverTimestamp()
-        };
+  // Control independiente de reparto.
+  repartoStatus: "pendiente",
+  repartoVehiculo: "",
+  repartoFechaSalida: null,
+  repartoFechaEntrega: null,
+  repartoMotivoPendiente: "",
+  repartoHistorial: [],
+
+  // Control de rendición en oficina.
+  rendicionStatus: "pendiente",
+  rendicionFecha: null,
+  rendicionAdministrador: ""
+};
 
         // Actualizar cada saldo utilizado.
         creditUses.forEach(uso=>{
@@ -9529,18 +9543,34 @@ async function renderReparto(){
     }
 
     box.innerHTML = `
-      
+      <p class="small">
+        Asigná cada pedido al vehículo correspondiente.
+        Antes de salir, imprimí la hoja de ruta y registrá la salida.
+      </p>
+
+      <button class="primary" onclick="imprimirHojaRuta()">
+        Imprimir hoja de ruta por vehículo
+      </button>
+
+      <div class="card">
+        <h3>Registrar salida de reparto</h3>
         <p class="small">
-          Asigná cada pedido al vehículo que realizará la entrega.
-          La asignación se guarda en Firebase.
+          Esta acción registra la fecha y hora de salida de todas las
+          boletas preparadas y asignadas al vehículo seleccionado.
         </p>
 
-        <button class="primary" onclick="imprimirHojaRuta()">
-          Imprimir hoja de ruta por vehículo
+        <button class="primary"
+          onclick="registrarSalidaReparto('1')">
+          Registrar salida - Vehículo 1
+        </button>
+
+        <button class="primary"
+          onclick="registrarSalidaReparto('2')">
+          Registrar salida - Vehículo 2
         </button>
       </div>
-      ${preparados.map(p => {
 
+      ${preparados.map(p => {
         const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
         const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
         const total = Number(p.total || 0).toLocaleString("es-AR", {
@@ -9560,6 +9590,7 @@ async function renderReparto(){
             <label for="vehiculo-${esc(String(p.id))}">
               Vehículo asignado
             </label>
+
             <select id="vehiculo-${esc(String(p.id))}">
               <option value="" ${vehiculo === "" ? "selected" : ""}>
                 Sin asignar
@@ -9588,6 +9619,309 @@ async function renderReparto(){
   }
 }
 
+
+async function registrarSalidaReparto(vehiculo){
+  const confirmacion = confirm(
+    "¿Confirmás la salida del Vehículo " + vehiculo +
+    " con todas sus boletas preparadas y asignadas?"
+  );
+
+  if(!confirmacion) return;
+
+  try{
+    const snap = await firebaseDB.collection("orders").get();
+
+    const pedidos = snap.docs.filter(doc => {
+      const p = doc.data();
+      const estado = String(p.status || p.estado || "")
+        .toLowerCase().trim();
+
+      return (
+        ["preparado", "preparada", "preparados", "preparadas"].includes(estado) &&
+        String(p.vehiculoReparto || "") === String(vehiculo)
+      );
+    });
+
+    if(!pedidos.length){
+      alert("No hay boletas preparadas asignadas a ese vehículo.");
+      return;
+    }
+
+    const batch = firebaseDB.batch();
+    const fechaSalida = firebase.firestore.FieldValue.serverTimestamp();
+
+    pedidos.forEach(doc => {
+      batch.update(doc.ref, {
+        repartoStatus: "en_reparto",
+        repartoFechaSalida: fechaSalida,
+        repartoVehiculo: String(vehiculo),
+        updatedAt: fechaSalida
+      });
+    });
+
+    await batch.commit();
+
+    alert(
+      "Salida registrada correctamente. Boletas incluidas: " +
+      pedidos.length
+    );
+
+    await renderReparto();
+
+  }catch(error){
+    console.error("Error registrando salida:", error);
+    alert("No se pudo registrar la salida del vehículo.");
+  }
+}
+
+  
+async function registrarResultadoReparto(id, resultado){
+  try{
+    let motivo = "";
+
+    if(resultado === "pendiente"){
+      const opcion = prompt(
+        "Motivo de la no entrega:\n\n" +
+        "1 - Cliente cerrado\n" +
+        "2 - Cliente ausente\n" +
+        "3 - No alcanzó el tiempo\n" +
+        "4 - Otro motivo"
+      );
+
+      if(opcion === null) return;
+
+      const motivos = {
+        "1": "Cliente cerrado",
+        "2": "Cliente ausente",
+        "3": "No alcanzó el tiempo",
+        "4": "Otro motivo"
+      };
+
+      if(!motivos[opcion]){
+        alert("Ingresá una opción válida del 1 al 4.");
+        return;
+      }
+
+      motivo = motivos[opcion];
+
+      if(opcion === "4"){
+        const detalle = prompt("Escribí el motivo:");
+        if(detalle === null || !detalle.trim()) return;
+        motivo = detalle.trim();
+      }
+    }
+
+    const confirmacion = confirm(
+      resultado === "entregada"
+        ? "¿Confirmás que la boleta fue entregada?"
+        : "¿Confirmás que la boleta quedó pendiente?"
+    );
+
+    if(!confirmacion) return;
+
+    const ahora = new Date();
+
+    const usuario = firebaseAuth.currentUser
+      ? (firebaseAuth.currentUser.email || firebaseAuth.currentUser.uid)
+      : "Usuario no identificado";
+
+    const historial = {
+      resultado,
+      motivo,
+      fecha: ahora,
+      usuario
+    };
+
+    const cambios = {
+      repartoStatus: resultado,
+      repartoMotivoPendiente: resultado === "pendiente" ? motivo : "",
+      repartoHistorial: firebase.firestore.FieldValue.arrayUnion(historial),
+      updatedAt: ahora
+    };
+
+    if(resultado === "entregada"){
+      cambios.repartoFechaEntrega = ahora;
+    }
+
+    await firebaseDB.collection("orders").doc(id).update(cambios);
+
+    alert(
+      resultado === "entregada"
+        ? "Entrega registrada correctamente."
+        : "Pedido pendiente registrado correctamente."
+    );
+
+    await renderReparto();
+
+  }catch(error){
+    console.error("Error registrando resultado:", error);
+    alert("No se pudo registrar el resultado de la entrega.");
+  }
+}
+
+ 
+async function registrarRendicionBoleta(id){
+  try{
+    // Solo el administrador puede confirmar rendiciones.
+    const usuario = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    if(
+      usuario.role !== "admin" ||
+      !firebaseAuth.currentUser ||
+      usuario.uid !== firebaseAuth.currentUser.uid
+    ){
+      alert("Solo el administrador puede rendir boletas.");
+      return;
+    }
+
+    const ref = firebaseDB.collection("orders").doc(id);
+
+    const resultado = await firebaseDB.runTransaction(
+      async transaction => {
+        const doc = await transaction.get(ref);
+
+        if(!doc.exists){
+          throw new Error("La boleta no existe.");
+        }
+
+        const boleta = doc.data();
+
+        if(boleta.rendicionStatus === "rendida"){
+          throw new Error("Esta boleta ya fue rendida.");
+        }
+
+        if(boleta.repartoStatus !== "entregada"){
+          throw new Error(
+            "Solo se pueden rendir boletas entregadas."
+          );
+        }
+
+        const estado = String(
+          boleta.status || boleta.estado || ""
+        ).toLowerCase();
+
+        if(estado.includes("anulad") ||
+           estado.includes("cancelad")){
+          throw new Error(
+            "No se puede rendir una boleta anulada."
+          );
+        }
+
+        const fecha = firebase.firestore.FieldValue
+          .serverTimestamp();
+
+        transaction.update(ref, {
+          rendicionStatus: "rendida",
+          rendicionFecha: fecha,
+          rendicionAdministrador:
+            usuario.name ||
+            usuario.username ||
+            usuario.email ||
+            usuario.uid,
+          rendicionAdministradorUid: usuario.uid,
+          updatedAt: fecha
+        });
+
+        return boleta.boletaNumber || id;
+      }
+    );
+
+    alert(
+      "Boleta N.º " + resultado +
+      " rendida correctamente."
+    );
+
+    await renderReparto();
+
+  }catch(error){
+    console.error("Error registrando rendición:", error);
+    alert(
+      "No se pudo registrar la rendición: " +
+      error.message
+    );
+  }
+}
+ 
+async function renderRendicionBoletas(){
+  const box = document.getElementById("rendicionBoletasLista");
+  if(!box) return;
+
+  box.innerHTML = '<p class="small">Cargando boletas...</p>';
+
+  try{
+    const snap = await firebaseDB.collection("orders").get();
+
+    const pedidos = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    const pendientes = pedidos.filter(p =>
+      p.repartoStatus === "entregada" &&
+      p.rendicionStatus !== "rendida"
+    );
+
+    const rendidas = pedidos.filter(p =>
+      p.rendicionStatus === "rendida"
+    );
+
+    const tarjeta = (p, mostrarBoton) => {
+      const numero = p.boletaNumber || "Sin número";
+      const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
+
+      return `
+        <div class="card">
+          <b>Boleta N.º ${esc(String(numero))}</b>
+          <p>Cliente: ${esc(String(cliente))}</p>
+          <p>Fecha de emisión: ${
+            p.createdAt && p.createdAt.toDate
+              ? p.createdAt.toDate().toLocaleString("es-AR")
+              : "No disponible"
+          }</p>
+          ${
+            mostrarBoton
+              ? `<button class="primary"
+                  onclick="registrarRendicionBoleta('${esc(String(p.id))}')">
+                  Confirmar boleta rendida
+                </button>`
+              : `<p>Rendida por: ${esc(String(p.rendicionAdministrador || "No identificado"))}</p>
+                 <p>Fecha de rendición: ${
+                   p.rendicionFecha && p.rendicionFecha.toDate
+                     ? p.rendicionFecha.toDate().toLocaleString("es-AR")
+                     : "No disponible"
+                 }</p>`
+          }
+        </div>
+      `;
+    };
+
+    box.innerHTML = `
+      <div class="card">
+        <h3>Boletas pendientes de rendición (${pendientes.length})</h3>
+        ${
+          pendientes.length
+            ? pendientes.map(p => tarjeta(p, true)).join("")
+            : '<p>No hay boletas pendientes de rendición.</p>'
+        }
+      </div>
+
+      <div class="card">
+        <h3>Boletas rendidas (${rendidas.length})</h3>
+        ${
+          rendidas.length
+            ? rendidas.map(p => tarjeta(p, false)).join("")
+            : '<p>Todavía no hay boletas rendidas.</p>'
+        }
+      </div>
+    `;
+
+  }catch(error){
+    console.error("Error cargando rendiciones:", error);
+    box.innerHTML = '<p>No se pudieron cargar las boletas.</p>';
+  }
+}
 
 async function generarHojaRutaReparto() {
   const selector = document.getElementById("vehiculoReparto");
