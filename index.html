@@ -9429,15 +9429,7 @@ const bonificaciones = Array.isArray(o.bonuses)
       if(estado === "preparando"){
         acciones += `<button class="primary" onclick="cambiarEstadoPedidoOficina('${o.id}','preparado')">📦 Marcar como preparado</button>`;
       }
-      if(estado === "preparado"){
-        acciones += `<button class="primary" onclick="cambiarEstadoPedidoOficina('${o.id}','entregado')">🚚 Marcar como entregado</button>`;
-      }
-      if(
-        o.paymentType === "cuenta_corriente" &&
-        o.paymentStatus !== "cobrado"
-      ){
-        acciones += `<button class="primary" onclick="marcarCobradoOficina('${o.id}')">💰 Marcar como cobrada</button>`;
-      }
+     
       if(!["entregado","delivered","anulado","anulada","cancelado","canceled"].includes(estado)){
         acciones += `<button class="secondary" onclick="anularPedidoOficina('${o.id}')">🚫 Anular pedido</button>`;
       }
@@ -9763,12 +9755,17 @@ async function registrarResultadoReparto(id, resultado){
       usuario
     };
 
-    const cambios = {
-      repartoStatus: resultado,
-      repartoMotivoPendiente: resultado === "pendiente" ? motivo : "",
-      repartoHistorial: firebase.firestore.FieldValue.arrayUnion(historial),
-      updatedAt: ahora
-    };
+   const cambios = {
+  repartoStatus: resultado,
+  repartoMotivoPendiente: resultado === "pendiente" ? motivo : "",
+  repartoHistorial: firebase.firestore.FieldValue.arrayUnion(historial),
+  updatedAt: ahora
+};
+
+if(resultado === "entregada"){
+  cambios.status = "entregado";
+  cambios.repartoFechaEntrega = ahora;
+}
 
     if(resultado === "entregada"){
       cambios.repartoFechaEntrega = ahora;
@@ -9783,6 +9780,7 @@ async function registrarResultadoReparto(id, resultado){
     );
 
     await renderReparto();
+    await renderOfficeOrders();
 
   }catch(error){
     console.error("Error registrando resultado:", error);
