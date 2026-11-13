@@ -1281,10 +1281,32 @@ async function cargarEstadosProductosFirebase(){
   try{
     const snap = await firebaseDB.collection("products").get();
     productStatusById = {};
-    snap.forEach(doc => {
-      const data = doc.data() || {};
-      productStatusById[doc.id] = data.active !== false;
-    });
+   
+snap.forEach(doc => {
+  const data = doc.data() || {};
+
+  productStatusById[doc.id] = data.active !== false;
+
+  if(
+    data.minoristaPrice !== undefined &&
+    data.name &&
+    data.presentation
+  ){
+    const key = data.name + "|" + data.presentation;
+    const actual = productOverrides[key] || {};
+
+    productOverrides[key] = {
+      ...actual,
+      minoristaPrice: Number(data.minoristaPrice) || 0
+    };
+  }
+});
+
+localStorage.setItem(
+  "NAA_PRODUCT_OVERRIDES",
+  JSON.stringify(productOverrides)
+);
+
     renderProducts();
     renderCatalogEditor();
     renderManualProducts();
@@ -1323,18 +1345,39 @@ async function toggleProductActive(name, presentation){
     alert("No se pudo cambiar el estado. Revisá los permisos de Firebase.");
   }
 }  
+
 function getProducts(){
   return PRODUCTS.map(p=>{
     const key=p[0]+"|"+p[1];
     const o=productOverrides[key];
 
     return o
-      ? [o.name,o.pres,o.unit,o.prices,Number(o.packQty)||Number(p[4])||1]
-      : [p[0],p[1],p[2],p[3],Number(p[4])||1];
+      ? [
+          o.name,
+          o.pres,
+          o.unit,
+          o.prices,
+          Number(o.packQty)||Number(p[4])||1,
+          Number(o.minoristaPrice)||0
+        ]
+      : [
+          p[0],
+          p[1],
+          p[2],
+          p[3],
+          Number(p[4])||1,
+          0
+        ];
   }).concat(customProducts.map(p=>[
-    p[0],p[1],p[2],p[3],Number(p[4])||1
+    p[0],
+    p[1],
+    p[2],
+    p[3],
+    Number(p[4])||1,
+    Number(p[5])||0
   ]));
 }
+
 async function asegurarStockDesdeCatalogo(products){
   for(const p of products){
     const name=String(p[0]||"").trim();
@@ -1389,6 +1432,7 @@ async function asegurarStockDesdeCatalogo(products){
           price:t[1]
         })),
         packagingQuantity:Number(p[4])||1,
+minoristaPrice:Number(p[5])||0,
         active:existing.exists ? existingData.active!==false : true,
         updatedAt:firebase.firestore.FieldValue.serverTimestamp()
       },{merge:true});
@@ -6341,6 +6385,7 @@ function editCatalogProduct(j){
     '<label>Presentación</label><input id="editPres" value="'+esc(p[1])+'">'+
     '<label>Unidad / empaque</label><input id="editUnit" value="'+esc(p[2])+'">'+
     '<label>Cantidad de unidades por empaque</label><input id="editPackQty" type="number" min="1" step="1" value="'+packQty+'">'+
+    '<label>Precio minorista ($)</label><input id="editMinoristaPrice" type="number" min="0" step="0.01" value="'+(Number(p[5])||0)+'" placeholder="Ingresar precio minorista">'+
     '<h4 style="margin-bottom:6px">Precios por cantidad</h4>'+
     prices.map((t,i)=>'<div class="row" style="margin-bottom:6px"><div><label>Desde cantidad</label><input id="editQty'+i+'" type="number" min="1" value="'+t[0]+'"></div><div><label>Precio</label><input id="editPrice'+i+'" type="number" min="0" step="0.01" value="'+t[1]+'"></div></div>').join('')+
     '<div class="row" style="margin-top:10px"><button class="primary" type="button" id="saveEditBtn">💾 Guardar cambios</button><button class="secondary" type="button" id="cancelEditBtn">Cancelar</button></div>'+
@@ -6363,6 +6408,10 @@ function saveCatalogProduct(item){
   const pres=document.getElementById("editPres").value.trim();
   const unit=document.getElementById("editUnit").value.trim()||"unidad";
   const packQty=Math.max(1,parseInt(document.getElementById("editPackQty").value,10)||1);
+  const minoristaPrice=Math.max(
+  0,
+  Number(document.getElementById("editMinoristaPrice").value)||0
+);
 
   if(!name||!pres){
     alert("Completá nombre y presentación");
@@ -6375,11 +6424,11 @@ function saveCatalogProduct(item){
   ]).sort((a,b)=>a[0]-b[0]);
 
   if(item.type==="manual"){
-    customProducts[item.index]=[name,pres,unit,prices,packQty];
+    customProducts[item.index]=[name,pres,unit,prices,packQty,minoristaPrice];
     localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
   }else{
     const key=item.original[0]+"|"+item.original[1];
-    productOverrides[key]={name,pres,unit,prices,packQty};
+   productOverrides[key]={name,pres,unit,prices,packQty,minoristaPrice};
     localStorage.setItem("NAA_PRODUCT_OVERRIDES",JSON.stringify(productOverrides));
   }
 
