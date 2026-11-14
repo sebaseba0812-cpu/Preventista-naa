@@ -8841,6 +8841,23 @@ async function renderHistory(){
 
       lista = Array.from(mapa.values());
       orders = lista;
+            // Incorporar ventas directas al historial general (solo administración)
+      if(user.role === "admin"){
+        const ventasSnap = await firebaseDB
+          .collection("directSales")
+          .get();
+
+        const ventasDirectas = ventasSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          esVentaDirecta: true
+        }));
+
+        lista = [
+          ...lista,
+          ...ventasDirectas
+        ];
+      }
     }
 
     const esAdmin = user?.role === "admin";
@@ -8879,17 +8896,19 @@ async function renderHistory(){
     };
 
     // Aplicar filtro de pestaña
-    const listaFiltrada = lista.filter(o => {
+        const listaFiltrada = lista.filter(o => {
+      const esDirecta = o.esVentaDirecta === true;
+
       if(filtro === "anuladas"){
         return esAnulado(o);
       }
 
       if(filtro === "rendidas"){
-        return o.rendido === true && !esAnulado(o);
+        return !esDirecta && o.rendido === true && !esAnulado(o);
       }
 
       if(filtro === "pendientes"){
-        return o.rendido !== true && !esAnulado(o);
+        return !esDirecta && o.rendido !== true && !esAnulado(o);
       }
 
       return true;
@@ -8933,9 +8952,20 @@ async function renderHistory(){
         ? fechaValor.toDate()
         : new Date(fechaValor || Date.now());
 
-      const nombre = o.client || o.clientName || "Sin cliente";
-      const numero = o.boletaNumber || o.boleta || "Sin número";
-      const preventista = o.preventistaName || o.user?.name || "Sin nombre";
+      const esVentaDirecta = o.esVentaDirecta === true;
+
+const nombre = esVentaDirecta
+  ? (o.comprador || "Consumidor final")
+  : (o.client || o.clientName || "Sin cliente");
+
+const numero = o.boletaNumber || o.boleta || "Sin número";
+
+const preventista = esVentaDirecta
+  ? "Administración"
+  : (o.preventistaName || o.user?.name || "Sin nombre");
+     const tipoVenta = esVentaDirecta
+  ? "VENTA DIRECTA"
+  : "VENTA DE PREVENTISTA"; 
 
       const productos = Array.isArray(o.lines)
         ? o.lines.map(p =>
@@ -8947,20 +8977,20 @@ async function renderHistory(){
         ? `<div>Cuenta corriente · ${o.paymentStatus === "cobrado" ? "Cobrado" : "Pendiente de cobro"}</div>`
         : "";
 
-      const rendicion = user?.role === "admin" && estado === "entregado"
-        ? (
-            o.rendido
-              ? '<div style="color:green;font-weight:bold">✓ Rendido</div>'
-              : `<button class="primary" onclick="marcarPedidoRendido('${esc(String(o.id))}')">💵 Marcar como rendido</button>`
-          )
-        : "";
-
+      const rendicion = !esVentaDirecta && user?.role === "admin" && estado === "entregado"
+  ? (
+      o.rendido
+        ? '<div style="color:green;font-weight:bold">✓ Rendido</div>'
+        : `<button class="primary" onclick="marcarPedidoRendido('${esc(String(o.id))}')">💵 Marcar como rendido</button>`
+    )
+  : "";
       return `
         <div class="product" style="margin-top:10px">
           <b>Boleta Nº ${esc(String(numero))}</b>
           <div class="small">${fecha.toLocaleString("es-AR")}</div>
           <div>Cliente: <b>${esc(String(nombre))}</b></div>
-          <div>Preventista: ${esc(String(preventista))}</div>
+          <div>Responsable: ${esc(String(preventista))}</div>
+<div><b>Origen:</b> ${esc(tipoVenta)}</div>
           <div style="margin-top:6px">${productos}</div>
           <div style="margin-top:6px">Total: <b>$${money(o.total || 0)}</b></div>
           <div style="margin-top:6px">Estado: <b>${esc(estado)}</b></div>
@@ -9448,12 +9478,33 @@ async function buscarBoletaReclamo(){
   status.textContent = "Buscando boleta...";
 
   try{
-    const snap = await firebaseDB.collection("orders")
-      .where("boletaNumber", "==", Number(numero))
-      .get();
+    const [snapPedidos, snapVentas] = await Promise.all([
+  firebaseDB.collection("orders")
+    .where("boletaNumber", "==", Number(numero))
+    .get(),
 
-    const matches = [];
-    snap.forEach(doc => matches.push({id:doc.id,...doc.data()}));
+  firebaseDB.collection("directSales")
+    .where("boletaNumber", "==", Number(numero))
+    .get()
+]);
+
+const matches = [];
+
+snapPedidos.forEach(doc => {
+  matches.push({
+    id: doc.id,
+    ...doc.data(),
+    esVentaDirecta: false
+  });
+});
+
+snapVentas.forEach(doc => {
+  matches.push({
+    id: doc.id,
+    ...doc.data(),
+    esVentaDirecta: true
+  });
+});
 
     const valid = matches.filter(o =>
       !["anulado","anulada","cancelado","canceled","borrador"]
@@ -9504,7 +9555,7 @@ async function buscarBoletaReclamo(){
 
     info.innerHTML =
       `<b>Boleta Nº ${esc(String(o.boletaNumber))}</b><br>` +
-      `Cliente: <b>${esc(String(o.clientData?.name || o.client || "Sin cliente"))}</b><br>` +
+     `Cliente: <b>${esc(String(o.esVentaDirecta ? (o.comprador || "Consumidor final") : (o.clientData?.name || o.client || "Sin cliente")))}</b><br>` +
       `Fecha: ${fechaVal.toLocaleDateString("es-AR")}<br>` +
       `Total original: $${money(Number(o.total || 0))}`;
 
@@ -9619,11 +9670,20 @@ async function guardarReclamo(){
     ? Number(p.total || 0) / soldUnits
     : 0;
 
-  const claim = {
+    const claim = {
     orderId: claimOrderSelected.id,
+    sourceCollection: claimOrderSelected.esVentaDirecta
+      ? "directSales"
+      : "orders",
+    esVentaDirecta: claimOrderSelected.esVentaDirecta === true,
+
     boletaNumber: Number(claimOrderSelected.boletaNumber),
+
     clientId: claimOrderSelected.clientId || "",
-    clientName: claimOrderSelected.clientData?.name || claimOrderSelected.client || "Sin cliente",
+
+    clientName: claimOrderSelected.esVentaDirecta
+      ? (claimOrderSelected.comprador || "Consumidor final")
+      : (claimOrderSelected.clientData?.name || claimOrderSelected.client || "Sin cliente"),
 
     lineIndex: index,
     productName: p.name || "Producto",
@@ -9785,6 +9845,8 @@ async function guardarReclamo(){
           claimId: claimId,
           orderId: c.orderId || "",
           originalBoletaNumber: c.boletaNumber || "",
+            sourceCollection: c.sourceCollection || "orders",
+  esVentaDirecta: c.esVentaDirecta === true,
           clientId: c.clientId || "",
           clientName: c.clientName || "Sin cliente",
           amount: importe,
@@ -9883,6 +9945,9 @@ const cantidadTexto = c.quantityUnits !== undefined
       return `
         <div class="product" style="margin-bottom:8px">
           <b>Boleta Nº ${esc(String(c.boletaNumber || ""))} · ${esc(String(c.clientName || "Sin cliente"))}</b>
+<div class="small">
+  Origen: <b>${c.esVentaDirecta === true ? "VENTA DIRECTA" : "VENTA DE PREVENTISTA"}</b>
+</div>
          <div>${esc(String(c.productName || "Producto"))}${c.presentation ? " - " + esc(String(c.presentation)) : ""} · Cantidad reclamada: ${esc(cantidadTexto)}</div>
          <div class="small">
   Motivo: ${esc(motivo)} · Estado:
