@@ -2640,6 +2640,7 @@ function calcularSaldoCaja(eventos){
   return { efectivo, transferencia };
 }
 
+
 async function obtenerEstadoCajaActual(){
   const eventos = await obtenerEventosCaja();
 
@@ -2656,8 +2657,16 @@ async function obtenerEstadoCajaActual(){
 
   const cierres = eventos.filter(e => e.tipo === "cierre");
 
-  const ultimaApertura = aperturas.length
-    ? aperturas[aperturas.length - 1]
+  // Buscar todas las aperturas que todavía no tienen cierre
+  const sesionesAbiertas = aperturas.filter(apertura =>
+    !cierres.some(cierre =>
+      cierre.sesionId === apertura.sesionId
+    )
+  );
+
+  // Tomar la apertura pendiente más reciente
+  const ultimaApertura = sesionesAbiertas.length
+    ? sesionesAbiertas[sesionesAbiertas.length - 1]
     : null;
 
   if(!ultimaApertura){
@@ -2665,27 +2674,22 @@ async function obtenerEstadoCajaActual(){
       eventos,
       sesion: null,
       abierta: false,
-      movimientos: []
+      movimientos: [],
+      sesionesAbiertas: []
     };
   }
 
-  const tieneCierre = cierres.some(
-    cierre => cierre.sesionId === ultimaApertura.sesionId
-  );
-
-  const sesion = tieneCierre
-    ? null
-    : ultimaApertura.sesionId;
-
   return {
     eventos,
-    sesion,
-    abierta: !!sesion,
-    movimientos: sesion
-      ? eventos.filter(e => e.sesionId === sesion)
-      : []
+    sesion: ultimaApertura.sesionId,
+    abierta: true,
+    movimientos: eventos.filter(e =>
+      e.sesionId === ultimaApertura.sesionId
+    ),
+    sesionesAbiertas: sesionesAbiertas
   };
 }
+
 async function renderCaja(){
   const contenedor = document.getElementById("cajaEstado");
   if(!contenedor) return;
@@ -7952,6 +7956,9 @@ if(btnImprimirVentaDirecta){
       "\nTotal: $" + money(total) +
       "\nStock descontado e ingreso registrado en caja."
     );
+    if(confirm("¿Deseás imprimir ahora el remito original y duplicado?")){
+  await imprimirRemitoVentaDirecta(saleRef.id);
+}
 
   }catch(error){
     console.error("Error en venta directa:",error);
