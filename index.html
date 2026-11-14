@@ -2362,12 +2362,16 @@ async function consultarHistorialCaja(periodo){
 
     const eventos = await obtenerEventosCaja();
 
-    const aperturas = eventos.filter(e => e.tipo === "apertura");
+    const aperturas = eventos
+  .filter(e => e.tipo === "apertura" && fechaEventoCaja(e))
+  .sort((a,b) =>
+    fechaEventoCaja(a) - fechaEventoCaja(b)
+  );
     const cierres = eventos.filter(e => e.tipo === "cierre");
     const movimientos = eventos.filter(e => e.tipo === "movimiento");
 
     const turnos = aperturas
-      .map(apertura => {
+      .map((apertura, indiceTurno) => {
         const fechaApertura = fechaEventoCaja(apertura);
         if(!fechaApertura) return null;
 
@@ -2413,6 +2417,7 @@ async function consultarHistorialCaja(periodo){
         const fechaCierre = cierre ? fechaEventoCaja(cierre) : null;
 
         return {
+          numeroTurno: indiceTurno + 1,
           sesionId: apertura.sesionId,
           fechaApertura,
           fechaCierre,
@@ -2433,7 +2438,17 @@ async function consultarHistorialCaja(periodo){
           totalIngresos: ingresosEfectivo + ingresosTransferencia,
           totalEgresos: egresosEfectivo + egresosTransferencia,
           usuarioApertura: apertura.usuario || "No informado",
-          usuarioCierre: cierre?.usuario || ""
+usuarioCierre: cierre?.usuario || "",
+
+efectivoSistema: cierre?.efectivoSistema ?? null,
+transferenciaSistema: cierre?.transferenciaSistema ?? null,
+
+efectivoContado: cierre?.efectivoContado ?? null,
+transferenciaContada: cierre?.transferenciaContada ?? null,
+
+diferenciaEfectivo: cierre?.diferenciaEfectivo ?? null,
+diferenciaTransferencia: cierre?.diferenciaTransferencia ?? null,
+diferenciaTotal: cierre?.diferenciaTotal ?? null
         };
       })
       .filter(t =>
@@ -2496,7 +2511,7 @@ async function consultarHistorialCaja(periodo){
 
     const detalleTurnos = turnos.map((t,i) => `
       <div class="card" style="margin-top:10px">
-        <h4>🧾 Turno ${i + 1}</h4>
+       <h4>🧾 Turno ${t.numeroTurno}</h4>
         <p class="small">Apertura: ${formatoFechaHoraCaja(t.fechaApertura)}</p>
         <p class="small">Cierre: ${formatoFechaHoraCaja(t.fechaCierre)}</p>
         <p class="small">Abrió: ${esc(t.usuarioApertura)}</p>
@@ -2509,10 +2524,59 @@ async function consultarHistorialCaja(periodo){
         <p>Egresos en efectivo: ${money(t.egresosEfectivo)}</p>
         <p>Egresos por transferencia: ${money(t.egresosTransferencia)}</p>
         <hr>
-        <p>Efectivo final: <strong>${money(t.efectivo)}</strong></p>
-        <p>Transferencias finales: <strong>${money(t.transferencia)}</strong></p>
-        <p>Total final: <strong>${money(t.efectivo + t.transferencia)}</strong></p>
-        ${t.abierta ? '<p class="small">⚠️ Este turno todavía no tiene cierre registrado.</p>' : ''}
+       <p>Efectivo final: <strong>${money(t.efectivo)}</strong></p>
+<p>Transferencias finales: <strong>${money(t.transferencia)}</strong></p>
+<p>Total final: <strong>${money(t.efectivo + t.transferencia)}</strong></p>
+
+${t.cierre ? `
+  <hr>
+  <h4>📋 Control del cierre</h4>
+
+  <p>Efectivo según sistema:
+    <strong>${money(t.efectivoSistema ?? t.efectivo)}</strong>
+  </p>
+
+  <p>Efectivo contado:
+    <strong>${money(t.efectivoContado ?? t.efectivo)}</strong>
+  </p>
+
+  <p>Transferencias según sistema:
+    <strong>${money(t.transferenciaSistema ?? t.transferencia)}</strong>
+  </p>
+
+  <p>Transferencias contadas:
+    <strong>${money(t.transferenciaContada ?? t.transferencia)}</strong>
+  </p>
+
+  <hr>
+
+  <p>Diferencia en efectivo:
+    <strong>${money(t.diferenciaEfectivo ?? 0)}</strong>
+  </p>
+
+  <p>Diferencia en transferencias:
+    <strong>${money(t.diferenciaTransferencia ?? 0)}</strong>
+  </p>
+
+  <p>Diferencia total:
+    <strong style="color:${
+      Number(t.diferenciaTotal || 0) < 0 ? "red" :
+      Number(t.diferenciaTotal || 0) > 0 ? "green" : "inherit"
+    }">
+      ${money(t.diferenciaTotal ?? 0)}
+    </strong>
+  </p>
+
+  ${
+    Number(t.diferenciaTotal || 0) < 0
+      ? '<p style="color:red;font-weight:bold">⚠️ CIERRE CON FALTANTE</p>'
+      : Number(t.diferenciaTotal || 0) > 0
+        ? '<p style="color:green;font-weight:bold">✓ CIERRE CON SOBRANTE</p>'
+        : '<p style="color:green;font-weight:bold">✓ CAJA SIN DIFERENCIAS</p>'
+  }
+` : ''}
+
+${t.abierta ? '<p class="small">⚠️ Este turno todavía no tiene cierre registrado.</p>' : ''}
       </div>
     `).join("");
 
@@ -3139,6 +3203,7 @@ async function marcarPedidoRendido(id){
   }
 }
   
+
 async function cerrarCaja(){
   try{
     const estado = await obtenerEstadoCajaActual();
@@ -3150,34 +3215,109 @@ async function cerrarCaja(){
 
     const saldo = calcularSaldoCaja(estado.movimientos);
 
-    const mensaje =
-      "¿Confirmás el cierre de caja?\n\n" +
-      "Efectivo: " + money(saldo.efectivo) + "\n" +
-      "Transferencias: " + money(saldo.transferencia) + "\n" +
-      "Total: " + money(saldo.efectivo + saldo.transferencia);
+    const efectivoTexto = prompt(
+      "CIERRE DE CAJA\n\n" +
+      "Efectivo según sistema: $" + money(saldo.efectivo) +
+      "\n\nIngresá el efectivo contado.\n" +
+      "Escribí solo números, sin puntos ni comas."
+    );
+
+    if(efectivoTexto === null) return;
+
+    const efectivoContado = Number(efectivoTexto);
+
+    if(!Number.isFinite(efectivoContado) || efectivoContado < 0){
+      alert("El efectivo ingresado no es válido.");
+      return;
+    }
+
+    const transferenciaTexto = prompt(
+      "CIERRE DE CAJA\n\n" +
+      "Transferencias según sistema: $" + money(saldo.transferencia) +
+      "\n\nIngresá las transferencias verificadas.\n" +
+      "Escribí solo números, sin puntos ni comas."
+    );
+
+    if(transferenciaTexto === null) return;
+
+    const transferenciaContada = Number(transferenciaTexto);
+
+    if(!Number.isFinite(transferenciaContada) || transferenciaContada < 0){
+      alert("El importe de transferencia no es válido.");
+      return;
+    }
+
+    const diferenciaEfectivo = efectivoContado - saldo.efectivo;
+    const diferenciaTransferencia = transferenciaContada - saldo.transferencia;
+    const diferenciaTotal = diferenciaEfectivo + diferenciaTransferencia;
+
+    let mensaje =
+      "RESUMEN DEL CIERRE DE CAJA\n\n" +
+      "EFECTIVO\n" +
+      "Según sistema: $" + money(saldo.efectivo) + "\n" +
+      "Contado: $" + money(efectivoContado) + "\n" +
+      "Diferencia: $" + money(diferenciaEfectivo) + "\n\n" +
+      "TRANSFERENCIAS\n" +
+      "Según sistema: $" + money(saldo.transferencia) + "\n" +
+      "Contado: $" + money(transferenciaContada) + "\n" +
+      "Diferencia: $" + money(diferenciaTransferencia) + "\n\n" +
+      "DIFERENCIA TOTAL: $" + money(diferenciaTotal);
+
+    if(diferenciaTotal < 0){
+      mensaje += "\n\nATENCIÓN: HAY UN FALTANTE.";
+    }else if(diferenciaTotal > 0){
+      mensaje += "\n\nATENCIÓN: HAY UN SOBRANTE.";
+    }else{
+      mensaje += "\n\nCAJA SIN DIFERENCIAS.";
+    }
+
+    mensaje += "\n\n¿Confirmás el cierre de caja?";
 
     if(!confirm(mensaje)) return;
+
+    const usuario = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
 
     await firebaseDB.collection("caja").add({
       tipo: "cierre",
       sesionId: estado.sesion,
-      efectivoFinal: saldo.efectivo,
-      transferenciaFinal: saldo.transferencia,
-      totalFinal: saldo.efectivo + saldo.transferencia,
-      usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+
+      // Importes calculados por el sistema
+      efectivoSistema: saldo.efectivo,
+      transferenciaSistema: saldo.transferencia,
+
+      // Importes contados físicamente
+      efectivoContado: efectivoContado,
+      transferenciaContada: transferenciaContada,
+
+      // Diferencias: negativo = faltante, positivo = sobrante
+      diferenciaEfectivo: diferenciaEfectivo,
+      diferenciaTransferencia: diferenciaTransferencia,
+      diferenciaTotal: diferenciaTotal,
+
+      // Se conserva el campo final para el historial existente
+      efectivoFinal: efectivoContado,
+      transferenciaFinal: transferenciaContada,
+      totalFinal: efectivoContado + transferenciaContada,
+
+      usuario: usuario.name || "Administrador",
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    alert("Caja cerrada correctamente.");
-await renderCaja();
-await actualizarMenuPorCaja();
+    alert(
+      "Caja cerrada correctamente.\n\n" +
+      "Diferencia registrada: $" + money(diferenciaTotal)
+    );
+
+    await renderCaja();
+    await actualizarMenuPorCaja();
 
   }catch(error){
     console.error("Error al cerrar caja:",error);
     alert("No se pudo cerrar la caja. Revisá los permisos de Firebase.");
   }
 }
-
 async function registrarMovimientoStock(datos){
 
   const usuario = firebase.auth().currentUser;
