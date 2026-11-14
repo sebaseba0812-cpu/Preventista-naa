@@ -2437,9 +2437,11 @@ async function consultarHistorialCaja(periodo){
         };
       })
       .filter(t =>
-        t.fechaApertura >= inicio &&
-        t.fechaApertura <= fin
-      )
+  t &&
+  t.fechaApertura &&
+  t.fechaApertura >= inicio &&
+  t.fechaApertura <= fin
+)
       .sort((a,b) => a.fechaApertura - b.fechaApertura);
 
     if(!turnos.length){
