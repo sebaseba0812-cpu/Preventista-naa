@@ -5192,24 +5192,55 @@ async function actualizarSaldoLiquidacion() {
         ${
           resumen.adelantos.length === 0
             ? "<p>No hay adelantos registrados.</p>"
-            : resumen.adelantos.map(a => `
-                <div style="border-bottom:1px solid #ccc;padding:10px 0">
-                  <strong>${liqMoney(a.importe)}</strong>
-                  <br>
-                  <span class="small">
-                    Período: ${formatoFecha(a.desde)} al ${formatoFecha(a.hasta)}
-                    - ${esc(a.medio || "")}
-                    - ${esc(a.descripcion || "Sin descripción")}
-                  </span>
-                  <br>
-                  <button
-                    type="button"
-                    style="margin-top:8px"
-                    onclick="imprimirComprobanteAdelanto('${a.id}')">
-                    🖨️ Imprimir comprobante
-                  </button>
-                </div>
-              `).join("")
+           
+: resumen.adelantos.map(a => {
+    const fechaAdelanto = liqDate(a.createdAt);
+
+    const fechaTexto = fechaAdelanto
+      ? fechaAdelanto.toLocaleDateString("es-AR")
+      : "Fecha no disponible";
+
+    const horaTexto = fechaAdelanto
+      ? fechaAdelanto.toLocaleTimeString("es-AR", {
+          hour: "2-digit",
+          minute: "2-digit"
+        })
+      : "Hora no disponible";
+
+    return `
+      <div style="border-bottom:1px solid #ccc;padding:12px 0">
+
+        <strong>${liqMoney(a.importe)}</strong>
+
+        <br>
+
+        <span class="small">
+          <strong>Fecha:</strong> ${fechaTexto}
+          <br>
+          <strong>Hora:</strong> ${horaTexto}
+          <br>
+          <strong>Período:</strong>
+          ${formatoFecha(a.desde)} al ${formatoFecha(a.hasta)}
+          <br>
+          <strong>Medio de pago:</strong> ${esc(a.medio || "")}
+          <br>
+          <strong>Descripción:</strong>
+          ${esc(a.descripcion || "Sin descripción")}
+        </span>
+
+        <br>
+
+        <button
+          type="button"
+          style="margin-top:8px"
+          onclick="imprimirComprobanteAdelanto('${a.id}')">
+          🖨️ Imprimir comprobante
+        </button>
+
+      </div>
+    `;
+  }).join("")
+
         }
       `;
     }
