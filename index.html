@@ -917,14 +917,18 @@ onclick="createPromotion()">
       placeholder="Datos adicionales de la venta"
     ></textarea>
 
-    <button
+   
+<button
+  id="ventaDirectaConfirmarBtn"
   class="primary"
   type="button"
   style="width:100%;margin-top:12px"
   onclick="confirmarVentaDirecta()"
 >
   ✅ Confirmar venta
-   <button
+</button>
+
+<button
   id="ventaDirectaImprimirBtn"
   class="secondary"
   type="button"
@@ -932,8 +936,8 @@ onclick="createPromotion()">
   onclick="imprimirRemitoVentaDirecta(window.ultimaVentaDirectaId)"
 >
   🖨️ Imprimir remito (Original y Duplicado)
-</button>   
 </button>
+
   </div>
 
 </section>
@@ -7791,7 +7795,7 @@ if(btnImprimirVentaDirecta){
   }finally{
     window.ventaDirectaProcesando = false;
   }
-
+}
   
 async function imprimirRemitoVentaDirecta(saleId){
   const ventana = window.open("", "_blank");
@@ -8082,7 +8086,7 @@ async function imprimirRemitoVentaDirecta(saleId){
   }
 }
 
-}
+
 function renderProducts(){
 let q=(document.getElementById("productSearch").value||"").toLowerCase();
 let list=getProducts().filter(p=>productIsActive(p)&&(p[0]+" "+p[1]).toLowerCase().includes(q));
