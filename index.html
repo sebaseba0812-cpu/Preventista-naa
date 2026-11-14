@@ -5180,8 +5180,15 @@ async function actualizarSaldoLiquidacion() {
                   <p>Comisión excedentes: <strong>${liqMoney(p.comisionExcedente || 0)}</strong></p>
                   <p>Total ganado: <strong>${liqMoney(p.totalLiquidacion || 0)}</strong></p>
                   <p>Adelantos del período: <strong>${liqMoney(p.adelantosMes || 0)}</strong></p>
-                  <hr>
+                                    <hr>
                   <p>Saldo pendiente: <strong>${liqMoney(p.saldoMes || 0)}</strong></p>
+
+                  <button
+                    type="button"
+                    style="width:100%;margin-top:10px"
+                    onclick="imprimirLiquidacionPeriodo('${p.id}')">
+                    🖨️ Imprimir liquidación
+                  </button>
                 </div>
               `).join("")
         }
@@ -5934,6 +5941,276 @@ const logoUrl = "https://raw.githubusercontent.com/sebaseba0812-cpu/Preventista-
   }
 }
 
+
+async function imprimirLiquidacionPeriodo(id) {
+  const ventana = window.open("", "_blank");
+
+  if (!ventana) {
+    alert("Permití las ventanas emergentes para imprimir.");
+    return;
+  }
+
+  try {
+    const doc = await firebaseDB
+      .collection("liquidationPeriods")
+      .doc(id)
+      .get();
+
+    if (!doc.exists) {
+      ventana.close();
+      alert("No se encontró la liquidación.");
+      return;
+    }
+
+    const p = doc.data() || {};
+
+    const adelantosSnap = await firebaseDB
+      .collection("liquidationPayments")
+      .where("periodoId", "==", id)
+      .get();
+
+    const adelantos = adelantosSnap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+
+    adelantos.sort((a, b) => {
+      const fa = liqDate(a.createdAt)?.getTime() || 0;
+      const fb = liqDate(b.createdAt)?.getTime() || 0;
+      return fa - fb;
+    });
+
+    const totalAdelantos = adelantos.reduce(
+      (suma, a) => suma + Number(a.importe || 0),
+      0
+    );
+
+    const saldo = Number(p.totalLiquidacion || 0) - totalAdelantos;
+
+    const logoUrl = "https://raw.githubusercontent.com/sebaseba0812-cpu/Preventista-naa/main/png_logo_on_white_background_a_bold_glossy_blue.png";
+
+    const fechaTexto = fecha => {
+      if (!fecha) return "Sin fecha";
+      const partes = String(fecha).split("-");
+      return partes.length === 3
+        ? partes.reverse().join("/")
+        : fecha;
+    };
+
+    const ejemplar = tipo => `
+      <section class="hoja">
+        <div class="marca">
+          <img src="${logoUrl}">
+        </div>
+
+        <div class="contenido">
+          <header>
+            <img src="${logoUrl}">
+            <div>
+              <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+              <strong>LIQUIDACIÓN DE PREVENTISTA</strong>
+            </div>
+            <b>${tipo}</b>
+          </header>
+
+          <h3>Datos del período</h3>
+
+          <p><strong>Preventista:</strong> ${esc(p.nombrePreventista || "")}</p>
+          <p><strong>Desde:</strong> ${fechaTexto(p.desde)}</p>
+          <p><strong>Hasta:</strong> ${fechaTexto(p.hasta)}</p>
+          <p><strong>Fecha de cierre:</strong> ${fechaTexto(p.fechaCierre)}</p>
+
+          <hr>
+
+          <h3>Detalle de liquidación</h3>
+
+          <p>Bultos vendidos: <strong>${Number(p.totalBultos || 0).toLocaleString("es-AR")}</strong></p>
+          <p>Total vendido: <strong>${liqMoney(p.totalVentas || 0)}</strong></p>
+          <p>Pago por bultos: <strong>${liqMoney(p.pagoBase || 0)}</strong></p>
+          <p>Comisión excedentes: <strong>${liqMoney(p.comisionExcedente || 0)}</strong></p>
+
+          <h3 class="total">TOTAL GANADO: ${liqMoney(p.totalLiquidacion || 0)}</h3>
+
+          <hr>
+
+          <h3>Adelantos del período</h3>
+
+          ${
+            adelantos.length
+              ? adelantos.map(a => {
+                  const fecha = liqDate(a.createdAt);
+                  return `
+                    <div class="adelanto">
+                      <strong>${liqMoney(a.importe)}</strong>
+                      <br>
+                      Fecha: ${fecha ? fecha.toLocaleString("es-AR") : "Sin fecha"}
+                      <br>
+                      Medio: ${esc(a.medio || "")}
+                      <br>
+                      Descripción: ${esc(a.descripcion || "Sin descripción")}
+                    </div>
+                  `;
+                }).join("")
+              : "<p>No se registraron adelantos para este período.</p>"
+          }
+
+          <p>Total adelantos: <strong>${liqMoney(totalAdelantos)}</strong></p>
+
+          <h2 class="saldo">SALDO PENDIENTE: ${liqMoney(saldo)}</h2>
+
+          <div class="firmas">
+            <div>________________________<br>Firma del preventista</div>
+            <div>________________________<br>Firma de administración</div>
+          </div>
+
+          <footer>CONTROL DE LIQUIDACIONES · DISTRIBUIDORA N.A.A. S.A.S.</footer>
+        </div>
+      </section>
+    `;
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Liquidación de preventista</title>
+
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            color: #172b4d;
+            margin: 0;
+            background: white;
+          }
+
+          .hoja {
+            position: relative;
+            min-height: 275mm;
+            padding: 8mm;
+            border: 1.5px solid #183d78;
+            margin-bottom: 8mm;
+            overflow: hidden;
+            page-break-inside: avoid;
+          }
+
+          .contenido {
+            position: relative;
+            z-index: 2;
+          }
+
+          .marca {
+            position: absolute;
+            top: 40%;
+            left: 15%;
+            width: 70%;
+            opacity: 0.09;
+            z-index: 1;
+          }
+
+          .marca img {
+            width: 100%;
+          }
+
+          header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 2px solid #183d78;
+            padding-bottom: 12px;
+          }
+
+          header img {
+            width: 115px;
+            height: 55px;
+            object-fit: contain;
+          }
+
+          header h2 {
+            margin: 0 0 5px;
+            font-size: 17px;
+          }
+
+          header strong {
+            font-size: 12px;
+          }
+
+          header b {
+            margin-left: auto;
+            font-size: 11px;
+          }
+
+          h3 {
+            margin-top: 20px;
+            font-size: 15px;
+          }
+
+          p {
+            margin: 9px 0;
+            font-size: 12px;
+          }
+
+          .total, .saldo {
+            padding: 12px;
+            border: 1px solid #183d78;
+            text-align: right;
+          }
+
+          .adelanto {
+            border-bottom: 1px solid #ccc;
+            padding: 8px 0;
+            font-size: 11px;
+          }
+
+          .firmas {
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            margin-top: 45px;
+            font-size: 11px;
+          }
+
+          footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 9px;
+          }
+
+          @media print {
+            .hoja {
+              page-break-after: always;
+            }
+            .hoja:last-child {
+              page-break-after: auto;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${ejemplar("ORIGINAL")}
+        ${ejemplar("DUPLICADO")}
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+
+  } catch (error) {
+    console.error("Error imprimiendo liquidación:", error);
+    ventana.close();
+    alert("No se pudo generar la liquidación. Revisá la consola.");
+  }
+}
+  
 // ===== FIN DE LIQUIDACIONES ===== 
 function init(){
   const user = JSON.parse(localStorage.getItem('NAA_USER') || '{}');
