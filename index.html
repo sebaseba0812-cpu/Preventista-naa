@@ -864,12 +864,7 @@ onclick="createPromotion()">
   placeholder="Nombre del comprador o Consumidor final"
 >
 
-    <label>Número de factura o comprobante</label>
-    <input
-      id="ventaDirectaComprobante"
-      type="text"
-      placeholder="Ingresar número de comprobante"
-    >
+   
 
     <label>Tipo de precio</label>
     <select id="ventaDirectaTipoPrecio" onchange="renderCarritoVentaDirecta()">
@@ -7547,7 +7542,7 @@ async function confirmarVentaDirecta(){
     }
 
     const cliente = document.getElementById("ventaDirectaCliente").value.trim();
-    const comprobante = document.getElementById("ventaDirectaComprobante").value.trim();
+   const comprobante = "";
     const tipoPrecio = document.getElementById("ventaDirectaTipoPrecio").value;
     const medio = document.getElementById("ventaDirectaMedio").value;
     const observaciones = document.getElementById("ventaDirectaObservaciones").value.trim();
@@ -7768,7 +7763,6 @@ if(btnImprimirVentaDirecta){
     ventaDirectaCarrito = {};
 
     document.getElementById("ventaDirectaCliente").value = "";
-    document.getElementById("ventaDirectaComprobante").value = "";
     document.getElementById("ventaDirectaObservaciones").value = "";
     document.getElementById("ventaDirectaBuscar").value = "";
 
