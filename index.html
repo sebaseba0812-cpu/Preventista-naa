@@ -923,13 +923,22 @@ onclick="createPromotion()">
     ></textarea>
 
     <button
-      class="primary"
-      type="button"
-      style="width:100%;margin-top:12px"
-      disabled
-    >
-      Confirmar venta (próximamente)
-    </button>
+  class="primary"
+  type="button"
+  style="width:100%;margin-top:12px"
+  onclick="confirmarVentaDirecta()"
+>
+  ✅ Confirmar venta
+   <button
+  id="ventaDirectaImprimirBtn"
+  class="secondary"
+  type="button"
+  style="display:none;width:100%;margin-top:10px"
+  onclick="imprimirRemitoVentaDirecta(window.ultimaVentaDirectaId)"
+>
+  🖨️ Imprimir remito (Original y Duplicado)
+</button>   
+</button>
   </div>
 
 </section>
@@ -7525,9 +7534,561 @@ function quitarProductoVentaDirecta(key){
   renderCarritoVentaDirecta();
 }  
 async function confirmarVentaDirecta(){
+  if(window.ventaDirectaProcesando) return;
 
-  alert("Estamos preparando la confirmación de Venta Directa.");
-}  
+  try{
+    const usuario = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    if(usuario.role !== "admin"){
+      alert("Solo administración puede realizar ventas directas.");
+      return;
+    }
+
+    const cliente = document.getElementById("ventaDirectaCliente").value.trim();
+    const comprobante = document.getElementById("ventaDirectaComprobante").value.trim();
+    const tipoPrecio = document.getElementById("ventaDirectaTipoPrecio").value;
+    const medio = document.getElementById("ventaDirectaMedio").value;
+    const observaciones = document.getElementById("ventaDirectaObservaciones").value.trim();
+
+    const carrito = Object.entries(ventaDirectaCarrito);
+
+    if(!carrito.length){
+      alert("Agregá al menos un producto.");
+      return;
+    }
+
+    const lines = [];
+    let total = 0;
+
+    for(const [key,cantidadOriginal] of carrito){
+      const [name,presentation] = key.split("|");
+      const p = getProducts().find(
+        x => x[0] === name && x[1] === presentation
+      );
+
+      const cantidad = Number(cantidadOriginal);
+
+      if(!p || !productIsActive(p)){
+        throw new Error("Hay un producto que ya no está disponible: " + name);
+      }
+
+      if(!Number.isInteger(cantidad) || cantidad <= 0){
+        throw new Error("Hay una cantidad inválida en el carrito.");
+      }
+
+      const precio = tipoPrecio === "minorista"
+        ? Number(p[5]) || 0
+        : tierPrice(p,cantidad);
+
+      if(precio <= 0){
+        throw new Error(
+          "El producto " + name + " no tiene precio válido para esta venta."
+        );
+      }
+
+      const subtotal = precio * cantidad;
+
+      lines.push({
+        name,
+        presentation,
+        unit: precio,
+        qty: cantidad,
+        total: subtotal
+      });
+
+      total += subtotal;
+    }
+
+    if(!total || total <= 0){
+      throw new Error("El total de la venta no es válido.");
+    }
+
+    const estadoCaja = await obtenerEstadoCajaActual();
+
+    if(!estadoCaja.abierta || !estadoCaja.sesion){
+      alert("La caja está cerrada. Primero tenés que abrirla.");
+      return;
+    }
+
+    const mensaje =
+      "¿Confirmás esta venta directa?\n\n" +
+      "Comprador: " + (cliente || "Consumidor final") + "\n" +
+      "Total: $" + money(total) + "\n" +
+      "Medio de pago: " + medio + "\n\n" +
+      "Se descontará el stock y se registrará el ingreso en caja.";
+
+    if(!confirm(mensaje)) return;
+
+    window.ventaDirectaProcesando = true;
+
+    const numberRef = firebaseDB.collection("settings").doc("numbering");
+    const saleRef = firebaseDB.collection("directSales").doc();
+    const cajaRef = firebaseDB.collection("caja").doc();
+
+    const operaciones = [];
+
+    for(const item of lines){
+      const stockRef = firebaseDB.collection("stock").doc(
+        productFirebaseId(item.name,item.presentation)
+      );
+
+      operaciones.push({
+        item,
+        ref: stockRef,
+        movimientoRef: firebaseDB.collection("stockMovements").doc()
+      });
+    }
+
+    let numeroBoleta = 0;
+
+    await firebaseDB.runTransaction(async transaction => {
+
+      // Primero se realizan todas las lecturas.
+      const numberSnap = await transaction.get(numberRef);
+
+      if(!numberSnap.exists){
+        throw new Error("No existe la configuración de numeración.");
+      }
+
+      const nextNumber = Number(numberSnap.data().nextInvoiceNumber);
+
+      if(!Number.isInteger(nextNumber) || nextNumber < 1){
+        throw new Error("El número de boleta no es válido.");
+      }
+
+      const stocks = [];
+
+      for(const op of operaciones){
+        const stockSnap = await transaction.get(op.ref);
+
+        if(!stockSnap.exists){
+          throw new Error(
+            "No existe stock para " + op.item.name +
+            " (" + op.item.presentation + ")."
+          );
+        }
+
+        const stock = stockSnap.data() || {};
+        const packQty = Number(stock.packQty) || 1;
+        const unidades = op.item.qty * packQty;
+        const disponible = Number(stock.quantity || 0);
+
+        if(disponible < unidades){
+          throw new Error(
+            "Stock insuficiente de " + op.item.name +
+            ". Disponible: " + disponible +
+            " unidades. Necesario: " + unidades + " unidades."
+          );
+        }
+
+        stocks.push({
+          ...op,
+          unidades,
+          antes: disponible,
+          despues: disponible - unidades
+        });
+      }
+
+      // A partir de acá comienzan las escrituras.
+      numeroBoleta = nextNumber;
+
+      const venta = {
+        source: "venta_directa",
+        tipo: "venta_directa",
+        boletaNumber: nextNumber,
+        date: new Date().toISOString(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        comprador: cliente || "Consumidor final",
+        comprobante: comprobante,
+        tipoPrecio: tipoPrecio,
+        lines: lines,
+        total: total,
+        medioPago: medio,
+        paymentStatus: "cobrado",
+        observaciones: observaciones,
+        status: "confirmada",
+        stockDeducted: true,
+        usuario: usuario.name || usuario.username || "Administrador",
+        usuarioUid: usuario.uid || ""
+      };
+
+      transaction.update(numberRef,{
+        nextInvoiceNumber: nextNumber + 1
+      });
+
+      transaction.set(saleRef,venta);
+
+      stocks.forEach(op => {
+        transaction.update(op.ref,{
+          quantity: op.despues,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        transaction.set(op.movimientoRef,{
+          type: "SALIDA_VENTA_DIRECTA",
+          productName: op.item.name,
+          presentation: op.item.presentation,
+          quantity: op.unidades,
+          stockBefore: op.antes,
+          stockAfter: op.despues,
+          reason: "Venta directa Nº " + nextNumber,
+          saleId: saleRef.id,
+          createdBy: usuario.name || "Administrador",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      transaction.set(cajaRef,{
+        tipo: "movimiento",
+        sesionId: estadoCaja.sesion,
+        movimiento: "ingreso",
+        medio: medio,
+        importe: total,
+        descripcion: "Venta directa Nº " + nextNumber +
+          " - " + (cliente || "Consumidor final"),
+        categoria: "venta_directa",
+        saleId: saleRef.id,
+        usuario: usuario.name || usuario.username || "Administrador",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+    });
+
+    window.ultimaVentaDirectaId = saleRef.id;
+
+const btnImprimirVentaDirecta = document.getElementById(
+  "ventaDirectaImprimirBtn"
+);
+
+if(btnImprimirVentaDirecta){
+  btnImprimirVentaDirecta.style.display = "block";
+}
+    ventaDirectaCarrito = {};
+
+    document.getElementById("ventaDirectaCliente").value = "";
+    document.getElementById("ventaDirectaComprobante").value = "";
+    document.getElementById("ventaDirectaObservaciones").value = "";
+    document.getElementById("ventaDirectaBuscar").value = "";
+
+    renderProductosVentaDirecta();
+    renderCarritoVentaDirecta();
+
+    if(typeof renderStock === "function"){
+      await renderStock();
+    }
+
+    if(typeof renderCaja === "function"){
+      await renderCaja();
+    }
+
+    alert(
+      "¡Venta directa registrada correctamente!\n\n" +
+      "Boleta Nº " + numeroBoleta +
+      "\nTotal: $" + money(total) +
+      "\nStock descontado e ingreso registrado en caja."
+    );
+
+  }catch(error){
+    console.error("Error en venta directa:",error);
+    alert("No se pudo confirmar la venta directa:\n" + error.message);
+
+  }finally{
+    window.ventaDirectaProcesando = false;
+  }
+
+  
+async function imprimirRemitoVentaDirecta(saleId){
+  const ventana = window.open("", "_blank");
+
+  if(!ventana){
+    alert("Permití las ventanas emergentes para poder imprimir el remito.");
+    return;
+  }
+
+  try{
+    const snap = await firebaseDB
+      .collection("directSales")
+      .doc(saleId)
+      .get();
+
+    if(!snap.exists){
+      throw new Error("No se encontró la venta directa.");
+    }
+
+    const venta = snap.data();
+    const fecha = venta.date
+      ? new Date(venta.date).toLocaleString("es-AR")
+      : "Sin fecha";
+
+    const lineas = Array.isArray(venta.lines)
+      ? venta.lines.map(item => `
+          <tr>
+            <td>${esc(item.name || "")}</td>
+            <td>${esc(item.presentation || "")}</td>
+            <td class="num">${item.qty || 0}</td>
+            <td class="num">$${money(item.unit || 0)}</td>
+            <td class="num">$${money(item.total || 0)}</td>
+          </tr>
+        `).join("")
+      : "";
+
+    function ejemplar(tipo){
+      return `
+        <div class="remito">
+          <div class="marca-agua">DISTRIBUIDORA N.A.A. S.A.S.</div>
+
+          <div class="encabezado">
+            <div>
+              <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+              <p>Remito de venta directa</p>
+            </div>
+            <div class="numero">
+              <b>${tipo}</b>
+              <strong>Nº ${venta.boletaNumber || ""}</strong>
+            </div>
+          </div>
+
+          <div class="datos">
+            <p><b>Fecha:</b> ${esc(fecha)}</p>
+            <p><b>Cliente:</b> ${esc(venta.comprador || "Consumidor final")}</p>
+            <p><b>Comprobante:</b> ${esc(venta.comprobante || "-")}</p>
+            <p><b>Tipo de venta:</b> Administración - Venta directa</p>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Presentación</th>
+                <th>Cant.</th>
+                <th>Unitario</th>
+                <th>Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>${lineas}</tbody>
+          </table>
+
+          <div class="total">
+            TOTAL: $${money(venta.total || 0)}
+          </div>
+
+          <div class="pago">
+            <b>Medio de pago:</b>
+            ${esc(venta.medioPago || "-")}
+          </div>
+
+          ${venta.observaciones ? `
+            <div class="observaciones">
+              <b>Observaciones:</b> ${esc(venta.observaciones)}
+            </div>
+          ` : ""}
+
+          <div class="firmas">
+            <div>Firma y aclaración</div>
+            <div>Control de administración</div>
+          </div>
+
+          <div class="pie">
+            VENTA DIRECTA · SIN COMISIÓN DE PREVENTISTA
+          </div>
+        </div>
+      `;
+    }
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Remito Nº ${venta.boletaNumber || ""}</title>
+
+        <style>
+          @page{
+            size:A4 portrait;
+            margin:8mm;
+          }
+
+          *{box-sizing:border-box}
+
+          body{
+            font-family:Arial,sans-serif;
+            color:#111;
+            margin:0;
+            background:white;
+          }
+
+          .remito{
+            height:135mm;
+            position:relative;
+            overflow:hidden;
+            padding:5mm;
+            border:1px solid #333;
+            display:flex;
+            flex-direction:column;
+            background:white;
+          }
+
+          .marca-agua{
+            position:absolute;
+            top:48%;
+            left:50%;
+            transform:translate(-50%,-50%) rotate(-25deg);
+            font-size:27px;
+            font-weight:900;
+            color:rgba(0,0,0,.045);
+            white-space:nowrap;
+            z-index:0;
+          }
+
+          .remito > *:not(.marca-agua){
+            position:relative;
+            z-index:1;
+          }
+
+          .encabezado{
+            display:flex;
+            justify-content:space-between;
+            border-bottom:2px solid #222;
+            padding-bottom:7px;
+          }
+
+          h2{
+            font-size:17px;
+            margin:0 0 4px;
+          }
+
+          p{
+            margin:4px 0;
+            font-size:10px;
+          }
+
+          .numero{
+            text-align:right;
+            display:flex;
+            flex-direction:column;
+            gap:5px;
+          }
+
+          .numero strong{
+            font-size:17px;
+          }
+
+          .datos{
+            margin:8px 0;
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:3px 12px;
+          }
+
+          table{
+            width:100%;
+            border-collapse:collapse;
+            font-size:9px;
+          }
+
+          th,td{
+            border:1px solid #777;
+            padding:5px 4px;
+            text-align:left;
+          }
+
+          th{
+            background:#eee;
+          }
+
+          .num{
+            text-align:right;
+            white-space:nowrap;
+          }
+
+          .total{
+            text-align:right;
+            font-size:16px;
+            font-weight:bold;
+            margin-top:9px;
+          }
+
+          .pago,.observaciones{
+            font-size:10px;
+            margin-top:7px;
+          }
+
+          .firmas{
+            display:flex;
+            justify-content:space-between;
+            margin-top:auto;
+            padding-top:18px;
+            font-size:9px;
+          }
+
+          .firmas div{
+            width:42%;
+            border-top:1px solid #333;
+            text-align:center;
+            padding-top:4px;
+          }
+
+          .pie{
+            text-align:center;
+            border-top:1px solid #aaa;
+            margin-top:8px;
+            padding-top:4px;
+            font-size:8px;
+          }
+
+          .corte{
+            height:5mm;
+            line-height:5mm;
+            text-align:center;
+            font-size:9px;
+            border-top:1px dashed #555;
+            color:#555;
+          }
+
+          .no-print{
+            display:block;
+            margin:12px auto;
+            padding:10px 25px;
+            background:#183d78;
+            color:white;
+            border:0;
+            cursor:pointer;
+          }
+
+          @media print{
+            .no-print{display:none!important}
+            body{
+              -webkit-print-color-adjust:exact;
+              print-color-adjust:exact;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${ejemplar("ORIGINAL")}
+        <div class="corte">✂ CORTAR POR ESTA LÍNEA</div>
+        ${ejemplar("DUPLICADO")}
+
+        <button class="no-print" onclick="window.print()">
+          Imprimir remito
+        </button>
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+
+  }catch(error){
+    console.error("Error imprimiendo venta directa:",error);
+    ventana.close();
+    alert("No se pudo generar el remito: " + error.message);
+  }
+}
+
+}
 function renderProducts(){
 let q=(document.getElementById("productSearch").value||"").toLowerCase();
 let list=getProducts().filter(p=>productIsActive(p)&&(p[0]+" "+p[1]).toLowerCase().includes(q));
