@@ -5853,6 +5853,20 @@ async function renderDashboard(){
         ...o
       });
     });
+        // Incorporar ventas directas al resumen general
+    const ventasDirectasSnap = await firebaseDB
+      .collection("directSales")
+      .get();
+
+    ventasDirectasSnap.forEach(doc=>{
+      const venta = doc.data();
+
+      all.push({
+        id: doc.id,
+        ...venta,
+        esVentaDirecta: true
+      });
+    });
 
     const {a,b}=dashboardRange();
 
@@ -5887,14 +5901,16 @@ const paymentTotals={
 };
 
 valid.forEach(o=>{
-  const tipo=o.paymentType||"efectivo";
+  const tipo = o.esVentaDirecta === true
+    ? (o.medioPago || "efectivo")
+    : (o.paymentType || "efectivo");
 
-  if(tipo==="transferencia"){
-    paymentTotals.transferencia+=Number(o.total||0);
-  }else if(tipo==="cuenta_corriente"){
-    paymentTotals.cuenta_corriente+=Number(o.total||0);
+  if(tipo === "transferencia"){
+    paymentTotals.transferencia += Number(o.total || 0);
+  }else if(tipo === "cuenta_corriente"){
+    paymentTotals.cuenta_corriente += Number(o.total || 0);
   }else{
-    paymentTotals.efectivo+=Number(o.total||0);
+    paymentTotals.efectivo += Number(o.total || 0);
   }
 });
     
@@ -5994,18 +6010,22 @@ valid.forEach(o=>{
 </div>
 
         <div>
-          🚚 Entregados:
-          <b>${rangeOrders.filter(o=>o.status==="entregado").length}</b>
-        </div>
+  🚚 Entregados:
+  <b>${rangeOrders.filter(o=>
+    o.esVentaDirecta !== true &&
+    o.status === "entregado"
+  ).length}</b>
+</div>
 
-        <div style="margin-top:5px">
-          ⏳ Pendientes:
-          <b>${rangeOrders.filter(o=>
-            o.status!=="entregado" &&
-            o.status!=="anulado" &&
-            o.status!=="canceled"
-          ).length}</b>
-        </div>
+<div style="margin-top:5px">
+  ⏳ Pendientes:
+  <b>${rangeOrders.filter(o=>
+    o.esVentaDirecta !== true &&
+    o.status !== "entregado" &&
+    o.status !== "anulado" &&
+    o.status !== "canceled"
+  ).length}</b>
+</div>
 
         <div style="margin-top:5px">
           ❌ Anulados:
@@ -6017,7 +6037,11 @@ valid.forEach(o=>{
 
     const bySeller={};
 
-    valid.forEach(o=>{
+       valid.forEach(o=>{
+
+      // Las ventas directas no generan comisión
+      if(o.esVentaDirecta === true) return;
+
       const name=
         o.preventistaName ||
         o.user?.name ||
@@ -6026,17 +6050,16 @@ valid.forEach(o=>{
 
       if(!bySeller[name]){
         bySeller[name]={
-  total:0,
-  orders:0,
-  commission:0
-};
+          total:0,
+          orders:0,
+          commission:0
+        };
       }
 
       bySeller[name].total+=Number(o.total||0);
-bySeller[name].orders++;
-bySeller[name].commission+=Number(o.total||0)*0.04;
+      bySeller[name].orders++;
+      bySeller[name].commission+=Number(o.total||0)*0.04;
     });
-
     const sellerRows=Object.entries(bySeller)
       .sort((a,b)=>b[1].total-a[1].total);
 
