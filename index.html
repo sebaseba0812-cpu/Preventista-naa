@@ -5600,11 +5600,16 @@ async function guardarLiquidacionPeriodo() {
       );
     });
 
-    adelantosSnap.forEach(doc => {
-      totalAdelantos += Number(
-        (doc.data() || {}).importe || 0
-      );
-    });
+   adelantosSnap.forEach(doc => {
+  const movimiento = doc.data() || {};
+
+  if (
+    !movimiento.tipo ||
+    movimiento.tipo === "adelanto"
+  ) {
+    totalAdelantos += Number(movimiento.importe || 0);
+  }
+});
 
     const saldoLuegoDeGuardar =
       ganadoAnterior +
