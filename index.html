@@ -5046,29 +5046,32 @@ async function calcularLiquidacion() {
   // ===== SALDO ACUMULADO DE LIQUIDACIONES =====
 
 
-async function liqObtenerResumen(uid) {
-  const [periodosSnap, adelantosSnap] = await Promise.all([
-    firebaseDB.collection("liquidationPeriods")
-      .where("preventistaUid", "==", uid)
-      .get(),
 
-    firebaseDB.collection("liquidationPayments")
-      .where("preventistaUid", "==", uid)
-      .get()
-  ]);
+async function liqObtenerResumen(uid) {
+  const [periodosSnap, adelantosSnap, ordersSnapshot] =
+    await Promise.all([
+      firebaseDB.collection("liquidationPeriods")
+        .where("preventistaUid", "==", uid)
+        .get(),
+
+      firebaseDB.collection("liquidationPayments")
+        .where("preventistaUid", "==", uid)
+        .get(),
+
+      firebaseDB.collection("orders").get()
+    ]);
 
   const periodos = [];
   const adelantos = [];
 
   let totalGanado = 0;
   let totalAdelantos = 0;
+  let gananciaMesEnCurso = 0;
 
   periodosSnap.forEach(doc => {
-    const data = doc.data() || {};
-
     const periodo = {
       id: doc.id,
-      ...data
+      ...(doc.data() || {})
     };
 
     totalGanado += Number(periodo.totalLiquidacion || 0);
@@ -5076,16 +5079,156 @@ async function liqObtenerResumen(uid) {
   });
 
   adelantosSnap.forEach(doc => {
-    const data = doc.data() || {};
-
     const adelanto = {
       id: doc.id,
-      ...data
+      ...(doc.data() || {})
     };
 
     totalAdelantos += Number(adelanto.importe || 0);
     adelantos.push(adelanto);
   });
+
+  const ahora = new Date();
+
+  const primerDiaMes = new Date(
+    ahora.getFullYear(),
+    ahora.getMonth(),
+    1
+  );
+
+  const primerDiaMesTexto =
+    primerDiaMes.getFullYear() + "-" +
+    String(primerDiaMes.getMonth() + 1).padStart(2, "0") +
+    "-01";
+
+  const ultimoDiaMes = new Date(
+    ahora.getFullYear(),
+    ahora.getMonth() + 1,
+    0
+  );
+
+  const ultimoDiaMesTexto =
+    ultimoDiaMes.getFullYear() + "-" +
+    String(ultimoDiaMes.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(ultimoDiaMes.getDate()).padStart(2, "0");
+
+  // Verificar si el mes actual ya tiene una liquidación guardada.
+  const mesYaLiquidado = periodos.some(p =>
+    p.desde <= ultimoDiaMesTexto &&
+    p.hasta >= primerDiaMesTexto
+  );
+
+  // Si todavía no se cerró el mes, calcular lo ganado hasta hoy.
+  if (!mesYaLiquidado) {
+    const modalidad =
+      document.getElementById("liqModalidad")?.value ||
+      LIQ_DEFAULTS.mode;
+
+    const objetivo = Number(
+      document.getElementById("liqObjetivo")?.value ??
+      LIQ_DEFAULTS.targetBultos
+    );
+
+    const valorBulto = Number(
+      document.getElementById("liqValorBulto")?.value ??
+      LIQ_DEFAULTS.payPerBulto
+    );
+
+    const porcentajeExcedente = Number(
+      document.getElementById("liqPorcentajeExcedente")?.value ??
+      LIQ_DEFAULTS.excessPercent
+    );
+
+    const porcentajeTotal = Number(
+      document.getElementById("liqPorcentajeTotal")?.value ??
+      LIQ_DEFAULTS.totalPercent
+    );
+
+    const pedidosMes = [];
+
+    ordersSnapshot.forEach(doc => {
+      const order = doc.data() || {};
+
+      if (liqUidPedido(order) !== uid) return;
+      if (!liqEsPedidoValido(order)) return;
+
+      const fecha = liqFechaPedido(order);
+
+      if (
+        !fecha ||
+        fecha < primerDiaMes ||
+        fecha > ahora
+      ) return;
+
+      pedidosMes.push({
+        ...order,
+        _liqFecha: fecha
+      });
+    });
+
+    pedidosMes.sort((a, b) =>
+      a._liqFecha - b._liqFecha
+    );
+
+    let totalBultos = 0;
+    let totalVentas = 0;
+    let bultosBase = 0;
+    let ventasExcedentes = 0;
+
+    pedidosMes.forEach(order => {
+      const lineas = Array.isArray(order.lines)
+        ? order.lines
+        : [];
+
+      lineas.forEach(line => {
+        const cantidad = Number(line.qty || 0);
+        const importe = Number(line.total || 0);
+
+        if (cantidad <= 0) return;
+
+        totalBultos += cantidad;
+        totalVentas += importe;
+
+        const espacioBase = Math.max(
+          0,
+          objetivo - bultosBase
+        );
+
+        const cantidadBase = Math.min(
+          cantidad,
+          espacioBase
+        );
+
+        const cantidadExcedente =
+          cantidad - cantidadBase;
+
+        bultosBase += cantidadBase;
+
+        if (cantidadExcedente > 0) {
+          ventasExcedentes +=
+            importe * (cantidadExcedente / cantidad);
+        }
+      });
+    });
+
+    if (modalidad === "bulto") {
+      const pagoBase = bultosBase * valorBulto;
+
+      const comisionExcedente =
+        ventasExcedentes *
+        (porcentajeExcedente / 100);
+
+      gananciaMesEnCurso =
+        pagoBase + comisionExcedente;
+
+    } else {
+      gananciaMesEnCurso =
+        totalVentas * (porcentajeTotal / 100);
+    }
+
+    totalGanado += gananciaMesEnCurso;
+  }
 
   adelantos.sort((a, b) => {
     const fechaA = liqDate(a.createdAt)?.getTime() || 0;
@@ -5099,22 +5242,25 @@ async function liqObtenerResumen(uid) {
     return String(fechaB).localeCompare(String(fechaA));
   });
 
-  // Calcular los adelantos correspondientes a cada período.
   periodos.forEach(periodo => {
     const adelantosPeriodo = adelantos
       .filter(a => {
-        if (a.periodoId) {
-          return a.periodoId === periodo.id;
-        }
+  // Si el adelanto tiene un período específico,
+  // se mantiene la asociación original.
+  if (a.periodoId) {
+    return a.periodoId === periodo.id;
+  }
 
-        // Compatibilidad con liquidaciones antiguas.
-        return !periodo.desde &&
-          a.mes &&
-          a.mes === periodo.mes;
-      })
-      .reduce((suma, a) => {
-        return suma + Number(a.importe || 0);
-      }, 0);
+  // Los adelantos nuevos se asocian por mes.
+  const mesPeriodo =
+    periodo.mes ||
+    (periodo.desde ? periodo.desde.substring(0, 7) : "");
+
+  return Boolean(a.mes && a.mes === mesPeriodo);
+})
+      .reduce((suma, a) =>
+        suma + Number(a.importe || 0), 0
+      );
 
     periodo.adelantosMes = adelantosPeriodo;
 
@@ -5125,6 +5271,7 @@ async function liqObtenerResumen(uid) {
 
   return {
     totalGanado,
+    gananciaMesEnCurso,
     totalAdelantos,
     saldoDisponible: totalGanado - totalAdelantos,
     adelantos,
@@ -5379,7 +5526,7 @@ async function guardarLiquidacionPeriodo() {
     await ref.set({
       ...calculo,
       periodoId: id,
-      mes: calculo.fechaCierre.substring(0, 7),
+      mes: calculo.desde.substring(0, 7),
       actualizadoEn:
         firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -5397,33 +5544,22 @@ async function guardarLiquidacionPeriodo() {
   // ===== REGISTRAR ADELANTO DE LIQUIDACION =====
 
 
+
 async function registrarAdelantoLiquidacion() {
   const uid = document.getElementById("liqPreventista")?.value;
+
   const importe = Number(
     document.getElementById("liqAdelantoImporte")?.value || 0
   );
+
   const medio = document.getElementById("liqAdelantoMedio")?.value;
 
   const descripcion =
     document.getElementById("liqAdelantoDescripcion")?.value.trim() ||
     "Adelanto de liquidación";
 
-  const desde = document.getElementById("liqDesde")?.value;
-  const hasta = document.getElementById("liqHasta")?.value;
-  const fechaCierre = document.getElementById("liqFechaCierre")?.value;
-
   if (!uid) {
     alert("Primero seleccioná un preventista.");
-    return;
-  }
-
-  if (!desde || !hasta || !fechaCierre) {
-    alert("Completá las fechas del período y del cierre.");
-    return;
-  }
-
-  if (desde > hasta || fechaCierre < hasta) {
-    alert("Revisá las fechas seleccionadas.");
     return;
   }
 
@@ -5466,27 +5602,36 @@ async function registrarAdelantoLiquidacion() {
       return;
     }
 
+    const ahora = new Date();
+
+    const mes =
+      ahora.getFullYear() + "-" +
+      String(ahora.getMonth() + 1).padStart(2, "0");
+
+    const desde =
+      mes + "-01";
+
+    const hasta =
+      mes + "-" +
+      String(ahora.getDate()).padStart(2, "0");
+
     const selectPreventista =
       document.getElementById("liqPreventista");
 
     const nombrePreventista =
-      selectPreventista.options[selectPreventista.selectedIndex]?.text || "";
+      selectPreventista.options[
+        selectPreventista.selectedIndex
+      ]?.text || "";
 
     if (!confirm(
       "¿Confirmás el adelanto para " + nombrePreventista +
       " por " + liqMoney(importe) + "?\n\n" +
-      "Período: " + desde + " al " + hasta
+      "Mes correspondiente: " + mes
     )) return;
 
     const usuarioActual = JSON.parse(
       localStorage.getItem("NAA_USER") || "{}"
     );
-
-    // Mismo identificador que utiliza el guardado de liquidaciones.
-    const periodoId =
-      uid + "_" +
-      desde.replace(/-/g, "") + "_" +
-      hasta.replace(/-/g, "");
 
     const adelantoRef = firebaseDB
       .collection("liquidationPayments")
@@ -5501,17 +5646,24 @@ async function registrarAdelantoLiquidacion() {
     batch.set(adelantoRef, {
       preventistaUid: uid,
       preventistaNombre: nombrePreventista,
-      periodoId: periodoId,
+
+      tipo: "adelanto",
+      periodoId: null,
+
       desde: desde,
       hasta: hasta,
-      fechaCierre: fechaCierre,
-      mes: fechaCierre.substring(0, 7),
+      fechaCierre: null,
+      mes: mes,
+
       importe: importe,
       medio: medio,
       descripcion: descripcion,
+
       usuario: usuarioActual.name || "Administrador",
       cajaSesionId: estadoCaja.sesion,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+
+      createdAt:
+        firebase.firestore.FieldValue.serverTimestamp()
     });
 
     batch.set(cajaRef, {
@@ -5523,7 +5675,8 @@ async function registrarAdelantoLiquidacion() {
       descripcion:
         "Adelanto a " + nombrePreventista + " - " + descripcion,
       usuario: usuarioActual.name || "Administrador",
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      createdAt:
+        firebase.firestore.FieldValue.serverTimestamp()
     });
 
     await batch.commit();
@@ -5541,6 +5694,7 @@ async function registrarAdelantoLiquidacion() {
     alert("No se pudo registrar el adelanto. Revisá Firebase.");
   }
 }
+
 
 // ===== FIN DE REGISTRO DE ADELANTO =====
   
@@ -5965,15 +6119,30 @@ async function imprimirLiquidacionPeriodo(id) {
     const p = doc.data() || {};
 
     const adelantosSnap = await firebaseDB
-      .collection("liquidationPayments")
-      .where("periodoId", "==", id)
-      .get();
+  .collection("liquidationPayments")
+  .where("preventistaUid", "==", p.preventistaUid)
+  .get();
 
-    const adelantos = adelantosSnap.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
+const mesPeriodo =
+  p.mes ||
+  (p.desde ? p.desde.substring(0, 7) : "");
 
+const adelantos = adelantosSnap.docs
+  .map(d => ({
+    id: d.id,
+    ...d.data()
+  }))
+  .filter(a => {
+    if (a.tipo && a.tipo !== "adelanto") {
+      return false;
+    }
+
+    if (a.periodoId) {
+      return a.periodoId === id;
+    }
+
+    return Boolean(a.mes && a.mes === mesPeriodo);
+  });
     adelantos.sort((a, b) => {
       const fa = liqDate(a.createdAt)?.getTime() || 0;
       const fb = liqDate(b.createdAt)?.getTime() || 0;
