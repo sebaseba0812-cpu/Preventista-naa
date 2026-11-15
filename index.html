@@ -311,8 +311,33 @@ body {
 </nav>
 <main>
 
-<section id="pedido" class="screen active">
-<div class="card"><h2>Nuevo pedido</h2>
+<section id="pedido" class="screen">
+<div class="card">
+  <h2>Nuevo pedido</h2>
+
+  <button
+    id="adminCargaManualBtn"
+    class="secondary"
+    type="button"
+    style="display:none;width:100%;margin:10px 0"
+    onclick="abrirCargaPedidoManual()">
+    📝 Cargar pedido manual para un preventista
+  </button>
+  <div id="adminCargaManualPanel" class="card hidden">
+  <h3>📝 Carga manual de pedido</h3>
+
+  <label>Seleccionar preventista</label>
+  <select id="adminManualPreventista">
+    <option value="">Cargando preventistas...</option>
+  </select>
+
+  <button
+    class="primary"
+    type="button"
+    onclick="continuarCargaManual()">
+    Continuar
+  </button>
+</div>
 <label>Cliente</label><select id="orderClient" onchange="showSelectedClient()"></select><div id="selectedClientInfo" class="small" style="margin-top:6px;color:#475569"></div>
 <label>Buscar producto</label><input id="productSearch" oninput="renderProducts()" placeholder="Nombre o presentación">
 <div id="products"></div><div id="cartList" class="card" style="padding:10px;margin-top:10px"></div>
@@ -12881,7 +12906,78 @@ async function cargarPreventistasRangos() {
   }
 }
 
+// CARGA MANUAL DE PEDIDOS DESDE ADMIN
+let adminManualPreventistaSeleccionado = null;
 
+async function abrirCargaPedidoManual(){
+
+  const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+  if(usuario.role !== "admin"){
+    alert("Esta función es exclusiva del administrador.");
+    return;
+  }
+
+  const panel = document.getElementById("adminCargaManualPanel");
+  const select = document.getElementById("adminManualPreventista");
+
+  panel.classList.remove("hidden");
+  select.innerHTML = '<option value="">Cargando preventistas...</option>';
+
+  try{
+    const snapshot = await firebaseDB.collection("users").get();
+
+    const preventistas = snapshot.docs
+      .map(doc => ({uid:doc.id, ...doc.data()}))
+      .filter(p =>
+        String(p.role || "").toLowerCase() === "preventista" &&
+        p.active !== false
+      )
+      .sort((a,b) =>
+        String(a.name || a.username || "").localeCompare(
+          String(b.name || b.username || ""),
+          "es"
+        )
+      );
+
+    select.innerHTML = '<option value="">Seleccionar preventista</option>';
+
+    preventistas.forEach(p => {
+      const option = document.createElement("option");
+      option.value = p.uid;
+      option.textContent = p.name || p.username || p.uid;
+      select.appendChild(option);
+    });
+
+    if(preventistas.length === 0){
+      select.innerHTML = '<option value="">No hay preventistas activos</option>';
+    }
+
+  }catch(error){
+    console.error("Error cargando preventistas:", error);
+    select.innerHTML = '<option value="">Error al cargar</option>';
+    alert("No se pudieron cargar los preventistas.");
+  }
+}
+
+function continuarCargaManual(){
+
+  const select = document.getElementById("adminManualPreventista");
+  const uid = select.value;
+
+  if(!uid){
+    alert("Primero seleccioná un preventista.");
+    return;
+  }
+
+  adminManualPreventistaSeleccionado = {
+    uid: uid,
+    nombre: select.options[select.selectedIndex].textContent
+  };
+
+  alert("Preventista seleccionado: " + adminManualPreventistaSeleccionado.nombre);
+}
+  
 // GUARDAR RANGO DE CLIENTES
 async function guardarRangoClientes() {
   const uid = document.getElementById("clientRangePreventista").value;
@@ -13791,6 +13887,11 @@ try{await navigator.clipboard.writeText(text);alert("Texto copiado. Pegalo en Wh
 }
 if(user){document.getElementById("loginScreen").classList.add("hidden");document.getElementById("app").classList.remove("hidden");document.getElementById("who").textContent=user.name || user.username;
 if(document.getElementById("roleLabel")) document.getElementById("roleLabel").textContent=(user.role === "admin" ? "Administrador" : "Preventista");
+const botonCargaManual = document.getElementById("adminCargaManualBtn");
+if(botonCargaManual){
+  botonCargaManual.style.display =
+    user.role === "admin" ? "block" : "none";
+}         
          if(document.getElementById("dashboardNavBtn")){
   document.getElementById("dashboardNavBtn").textContent =
     user.role === "admin" ? "📊 Dashboard" : "📋 Cierre";
