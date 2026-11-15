@@ -1341,6 +1341,45 @@ onclick="createPromotion()">
   </button>
 
   <div id="liqHistorialAdelantos" style="margin-top:15px"></div>
+
+<div class="card" style="margin-top:15px">
+  <h3>💰 Liquidar saldo pendiente</h3>
+
+  <p class="small">
+    Podés pagar el saldo completo o realizar un pago parcial.
+  </p>
+
+  <label>Importe a pagar</label>
+  <input
+    type="number"
+    id="liqPagoImporte"
+    min="0"
+    step="0.01"
+    placeholder="Ingresar importe"
+  >
+
+  <label>Medio de pago</label>
+  <select id="liqPagoMedio">
+    <option value="efectivo">Efectivo</option>
+    <option value="transferencia">Transferencia</option>
+  </select>
+
+  <label>Descripción</label>
+  <input
+    type="text"
+    id="liqPagoDescripcion"
+    placeholder="Ej.: pago de liquidación mensual"
+  >
+
+  <button
+    class="primary"
+    style="width:100%;margin-top:10px"
+    onclick="registrarPagoLiquidacion()"
+  >
+    💵 Registrar pago e imprimir comprobante
+  </button>
+</div>
+  
 </div>
   </div>
 </section>
@@ -5062,10 +5101,12 @@ async function liqObtenerResumen(uid) {
     ]);
 
   const periodos = [];
-  const adelantos = [];
+const adelantos = [];
+const pagosLiquidacion = [];
 
-  let totalGanado = 0;
-  let totalAdelantos = 0;
+let totalGanado = 0;
+let totalAdelantos = 0;
+let totalPagos = 0;
   let gananciaMesEnCurso = 0;
 
   periodosSnap.forEach(doc => {
@@ -5078,16 +5119,22 @@ async function liqObtenerResumen(uid) {
     periodos.push(periodo);
   });
 
-  adelantosSnap.forEach(doc => {
-    const adelanto = {
-      id: doc.id,
-      ...(doc.data() || {})
-    };
+ adelantosSnap.forEach(doc => {
+  const data = doc.data() || {};
 
-    totalAdelantos += Number(adelanto.importe || 0);
-    adelantos.push(adelanto);
-  });
+  const movimiento = {
+    id: doc.id,
+    ...data
+  };
 
+  if (movimiento.tipo === "pago_liquidacion") {
+    totalPagos += Number(movimiento.importe || 0);
+    pagosLiquidacion.push(movimiento);
+  } else {
+    totalAdelantos += Number(movimiento.importe || 0);
+    adelantos.push(movimiento);
+  }
+});
   const ahora = new Date();
 
   const primerDiaMes = new Date(
@@ -5270,13 +5317,14 @@ async function liqObtenerResumen(uid) {
   });
 
   return {
-    totalGanado,
-    gananciaMesEnCurso,
-    totalAdelantos,
-    saldoDisponible: totalGanado - totalAdelantos,
-    adelantos,
-    periodos
-  };
+  totalGanado,
+  totalAdelantos,
+  totalPagos,
+  saldoDisponible: totalGanado - totalAdelantos - totalPagos,
+  adelantos,
+  pagosLiquidacion,
+  periodos
+};
 }
 
 
@@ -5301,14 +5349,26 @@ async function actualizarSaldoLiquidacion() {
     };
 
     contenedor.innerHTML = `
-      <div class="card">
-        <h3>📊 Resumen de cuenta del preventista</h3>
-        <p>Total ganado: <strong>${liqMoney(resumen.totalGanado)}</strong></p>
-        <p>Total adelantos: <strong>${liqMoney(resumen.totalAdelantos)}</strong></p>
-        <hr>
-        <h2>Disponible: ${liqMoney(resumen.saldoDisponible)}</h2>
-      </div>
-    `;
+  <div class="card">
+    <h3>📊 Resumen de cuenta del preventista</h3>
+
+    <p>Total ganado:
+      <strong>${liqMoney(resumen.totalGanado)}</strong>
+    </p>
+
+    <p>Total adelantos:
+      <strong>${liqMoney(resumen.totalAdelantos)}</strong>
+    </p>
+
+    <p>Total pagos realizados:
+      <strong>${liqMoney(resumen.totalPagos || 0)}</strong>
+    </p>
+
+    <hr>
+
+    <h2>Disponible: ${liqMoney(resumen.saldoDisponible)}</h2>
+  </div>
+`;
 
     if (historial) {
       historial.innerHTML = `
@@ -5394,6 +5454,53 @@ async function actualizarSaldoLiquidacion() {
       </div>
     `;
   }).join("")
+
+          <hr>
+        <h3>💰 Historial de pagos de liquidación</h3>
+
+        ${
+          (resumen.pagosLiquidacion || []).length === 0
+            ? "<p>No hay pagos de liquidación registrados.</p>"
+            : resumen.pagosLiquidacion.map(p => {
+                const fechaPago = liqDate(p.createdAt);
+
+                const fechaTexto = fechaPago
+                  ? fechaPago.toLocaleDateString("es-AR")
+                  : "Fecha no disponible";
+
+                const horaTexto = fechaPago
+                  ? fechaPago.toLocaleTimeString("es-AR", {
+                      hour: "2-digit",
+                      minute: "2-digit"
+                    })
+                  : "Hora no disponible";
+
+                return `
+                  <div style="border-bottom:1px solid #ccc;padding:12px 0">
+                    <strong>${liqMoney(p.importe)}</strong>
+                    <br>
+                    <span class="small">
+                      <strong>Fecha:</strong> ${fechaTexto}
+                      <br>
+                      <strong>Hora:</strong> ${horaTexto}
+                      <br>
+                      <strong>Medio de pago:</strong> ${esc(p.medio || "")}
+                      <br>
+                      <strong>Saldo restante:</strong> ${liqMoney(p.saldoRestante)}
+                      <br>
+                      <strong>Descripción:</strong> ${esc(p.descripcion || "")}
+                    </span>
+                    <br>
+                    <button
+                      type="button"
+                      style="margin-top:8px"
+                      onclick="imprimirComprobantePagoLiquidacion('${p.id}')">
+                      🖨️ Imprimir comprobante
+                    </button>
+                  </div>
+                `;
+              }).join("")
+        }
 
         }
       `;
@@ -5697,6 +5804,469 @@ async function registrarAdelantoLiquidacion() {
 
 
 // ===== FIN DE REGISTRO DE ADELANTO =====
+
+  // ===== REGISTRAR PAGO DE LIQUIDACION =====
+
+async function registrarPagoLiquidacion() {
+  const uid = document.getElementById("liqPreventista")?.value;
+  const importe = Number(
+    document.getElementById("liqPagoImporte")?.value || 0
+  );
+
+  const medio = document.getElementById("liqPagoMedio")?.value;
+
+  const descripcion =
+    document.getElementById("liqPagoDescripcion")?.value.trim() ||
+    "Pago de liquidación";
+
+  if (!uid) {
+    alert("Primero seleccioná un preventista.");
+    return;
+  }
+
+  if (!Number.isFinite(importe) || importe <= 0) {
+    alert("Ingresá un importe válido.");
+    return;
+  }
+
+  if (!["efectivo", "transferencia"].includes(medio)) {
+    alert("Seleccioná un medio de pago válido.");
+    return;
+  }
+
+  try {
+    const resumen = await liqObtenerResumen(uid);
+    const saldoAnterior = Number(resumen.saldoDisponible || 0);
+
+    if (saldoAnterior <= 0) {
+      alert("El preventista no tiene saldo pendiente para cobrar.");
+      return;
+    }
+
+    if (importe > saldoAnterior) {
+      alert(
+        "El importe supera el saldo pendiente.\n\n" +
+        "Saldo disponible: " + liqMoney(saldoAnterior)
+      );
+      return;
+    }
+
+    const estadoCaja = await obtenerEstadoCajaActual();
+
+    if (!estadoCaja.abierta) {
+      alert("Primero tenés que abrir la caja.");
+      return;
+    }
+
+    const saldoCaja = calcularSaldoCaja(estadoCaja.movimientos);
+    const disponibleCaja = Number(saldoCaja[medio] || 0);
+
+    if (importe > disponibleCaja) {
+      alert(
+        "No hay saldo suficiente en " + medio + ".\n" +
+        "Disponible en caja: " + liqMoney(disponibleCaja)
+      );
+      return;
+    }
+
+    const selectPreventista =
+      document.getElementById("liqPreventista");
+
+    const nombrePreventista =
+      selectPreventista.options[
+        selectPreventista.selectedIndex
+      ]?.text || "";
+
+    const saldoRestante = saldoAnterior - importe;
+
+    if (!confirm(
+      "¿Confirmás el pago a " + nombrePreventista + "?\n\n" +
+      "Importe: " + liqMoney(importe) + "\n" +
+      "Saldo anterior: " + liqMoney(saldoAnterior) + "\n" +
+      "Saldo restante: " + liqMoney(saldoRestante)
+    )) return;
+
+    const usuarioActual = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    const pagoRef = firebaseDB
+      .collection("liquidationPayments")
+      .doc();
+
+    const cajaRef = firebaseDB
+      .collection("caja")
+      .doc();
+
+    const batch = firebaseDB.batch();
+
+    batch.set(pagoRef, {
+      preventistaUid: uid,
+      preventistaNombre: nombrePreventista,
+      tipo: "pago_liquidacion",
+      importe: importe,
+      medio: medio,
+      descripcion: descripcion,
+      totalGanado: Number(resumen.totalGanado || 0),
+      totalAdelantos: Number(resumen.totalAdelantos || 0),
+      saldoAnterior: saldoAnterior,
+      saldoRestante: saldoRestante,
+      cajaSesionId: estadoCaja.sesion,
+      usuario: usuarioActual.name || "Administrador",
+      createdAt:
+        firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    batch.set(cajaRef, {
+      tipo: "movimiento",
+      sesionId: estadoCaja.sesion,
+      movimiento: "egreso",
+      medio: medio,
+      importe: importe,
+      descripcion:
+        "Pago de liquidación a " + nombrePreventista,
+      usuario: usuarioActual.name || "Administrador",
+      createdAt:
+        firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
+
+    document.getElementById("liqPagoImporte").value = "";
+    document.getElementById("liqPagoDescripcion").value = "";
+
+    await actualizarSaldoLiquidacion();
+    await renderCaja();
+
+    imprimirComprobantePagoLiquidacion(pagoRef.id);
+
+  } catch (error) {
+    console.error("Error registrando pago:", error);
+    alert("No se pudo registrar el pago. Revisá Firebase.");
+  }
+}
+
+// ===== FIN DE REGISTRO DE PAGO =====
+
+  // ===== IMPRIMIR COMPROBANTE DE PAGO DE LIQUIDACION =====
+
+async function imprimirComprobantePagoLiquidacion(id) {
+  const ventana = window.open("", "_blank");
+
+  if (!ventana) {
+    alert("Permití las ventanas emergentes para imprimir.");
+    return;
+  }
+
+  try {
+    const doc = await firebaseDB
+      .collection("liquidationPayments")
+      .doc(id)
+      .get();
+
+    if (!doc.exists) {
+      ventana.close();
+      alert("No se encontró el pago.");
+      return;
+    }
+
+    const p = doc.data() || {};
+
+    if (p.tipo !== "pago_liquidacion") {
+      ventana.close();
+      alert("El registro no corresponde a un pago de liquidación.");
+      return;
+    }
+
+    const fecha = liqDate(p.createdAt);
+    const fechaTexto = fecha
+      ? fecha.toLocaleString("es-AR")
+      : "Fecha no disponible";
+
+    const numero = doc.id.slice(0, 8).toUpperCase();
+
+    const logoUrl =
+      "https://raw.githubusercontent.com/sebaseba0812-cpu/Preventista-naa/main/png_logo_on_white_background_a_bold_glossy_blue.png";
+
+    function ejemplar(tipo) {
+      return `
+        <div class="comprobante">
+
+          <div class="marca-agua">
+            <img src="${logoUrl}">
+          </div>
+
+          <div class="contenido">
+
+            <header>
+              <img src="${logoUrl}">
+              <div>
+                <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+                <strong>COMPROBANTE DE PAGO DE LIQUIDACIÓN</strong>
+              </div>
+              <b>${tipo}</b>
+            </header>
+
+            <p><strong>Comprobante N°:</strong> ${numero}</p>
+            <p><strong>Preventista:</strong> ${esc(p.preventistaNombre || "")}</p>
+            <p><strong>Fecha:</strong> ${esc(fechaTexto)}</p>
+
+            <hr>
+
+            <h3>RESUMEN DE LIQUIDACIÓN</h3>
+
+            <p>Total ganado:
+              <strong>${liqMoney(p.totalGanado)}</strong>
+            </p>
+
+            <p>Adelantos recibidos:
+              <strong>${liqMoney(p.totalAdelantos)}</strong>
+            </p>
+
+            <p>Saldo antes de este pago:
+              <strong>${liqMoney(p.saldoAnterior)}</strong>
+            </p>
+
+            <div class="importe">
+              <span>IMPORTE PAGADO</span>
+              <strong>${liqMoney(p.importe)}</strong>
+            </div>
+
+            <p>Medio de pago:
+              <strong>${esc(p.medio || "")}</strong>
+            </p>
+
+            <p>Descripción:
+              <strong>${esc(p.descripcion || "Pago de liquidación")}</strong>
+            </p>
+
+            <div class="saldo">
+              SALDO PENDIENTE:
+              <strong>${liqMoney(p.saldoRestante)}</strong>
+            </div>
+
+            <div class="firmas">
+              <div>
+                ______________________
+                <span>Firma del preventista</span>
+              </div>
+
+              <div>
+                ______________________
+                <span>Firma de administración</span>
+              </div>
+            </div>
+
+            <footer>
+              CONTROL DE LIQUIDACIONES · DISTRIBUIDORA N.A.A. S.A.S.
+            </footer>
+
+          </div>
+        </div>
+      `;
+    }
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Comprobante de pago de liquidación</title>
+
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 5mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            color: #172b4d;
+            margin: 0;
+            background: white;
+          }
+
+          .comprobante {
+            height: 135mm;
+            width: 100%;
+            border: 1.4px solid #183d78;
+            border-radius: 7px;
+            padding: 6mm;
+            position: relative;
+            overflow: hidden;
+            page-break-inside: avoid;
+          }
+
+          .contenido {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .marca-agua {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 76%;
+            opacity: 0.13;
+            z-index: 1;
+          }
+
+          .marca-agua img {
+            width: 100%;
+          }
+
+          header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid #183d78;
+            padding-bottom: 8px;
+          }
+
+          header img {
+            width: 90px;
+            height: 45px;
+            object-fit: contain;
+          }
+
+          header h2 {
+            font-size: 14px;
+            margin: 0 0 4px;
+          }
+
+          header strong {
+            font-size: 10px;
+          }
+
+          header b {
+            margin-left: auto;
+            font-size: 10px;
+          }
+
+          p {
+            font-size: 11px;
+            margin: 6px 0;
+          }
+
+          h3 {
+            font-size: 12px;
+            margin: 10px 0;
+          }
+
+          .importe {
+            margin-top: 8px;
+            padding: 10px;
+            background: #edf3fb;
+            border-left: 4px solid #183d78;
+            width: fit-content;
+          }
+
+          .importe span {
+            display: block;
+            font-size: 9px;
+            font-weight: bold;
+          }
+
+          .importe strong {
+            font-size: 23px;
+            display: block;
+          }
+
+          .saldo {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #183d78;
+            text-align: right;
+            font-size: 13px;
+          }
+
+          .firmas {
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            margin-top: auto;
+            padding-top: 12px;
+            font-size: 9px;
+          }
+
+          .firmas div {
+            width: 45%;
+          }
+
+          .firmas span {
+            display: block;
+            margin-top: 5px;
+          }
+
+          footer {
+            text-align: center;
+            border-top: 1px solid #ccc;
+            padding-top: 5px;
+            margin-top: 8px;
+            font-size: 8px;
+          }
+
+          .corte {
+            height: 4mm;
+            line-height: 4mm;
+            text-align: center;
+            font-size: 9px;
+            border-top: 1px dashed #52627a;
+          }
+
+          .no-print {
+            display: block;
+            margin: 12px auto;
+            padding: 10px 25px;
+            background: #183d78;
+            color: white;
+            border: 0;
+            border-radius: 5px;
+          }
+
+          @media print {
+            .no-print {
+              display: none !important;
+            }
+
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${ejemplar("ORIGINAL")}
+        <div class="corte">✂ CORTAR POR ESTA LÍNEA</div>
+        ${ejemplar("DUPLICADO")}
+
+        <button class="no-print" onclick="window.print()">
+          Imprimir comprobantes
+        </button>
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+
+  } catch (error) {
+    console.error("Error imprimiendo comprobante:", error);
+    ventana.close();
+    alert("No se pudo generar el comprobante.");
+  }
+}
+
+// ===== FIN DE IMPRESIÓN DE PAGO =====
   
 
 
