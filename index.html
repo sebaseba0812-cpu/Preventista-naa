@@ -323,7 +323,7 @@ body {
     onclick="abrirCargaPedidoManual()">
     📝 Cargar pedido manual para un preventista
   </button>
-  <div id="adminCargaManualPanel" class="card hidden">
+ <div id="adminCargaManualPanel" class="card hidden">
   <h3>📝 Carga manual de pedido</h3>
 
   <label>Seleccionar preventista</label>
@@ -337,6 +337,92 @@ body {
     onclick="continuarCargaManual()">
     Continuar
   </button>
+
+  <div id="adminManualClientesPanel" class="hidden">
+    <hr>
+    <h3>👥 Cliente del preventista</h3>
+
+    <label>Seleccionar cliente existente</label>
+    <select id="adminManualCliente">
+      <option value="">Primero seleccioná un preventista</option>
+    </select>
+
+    <button
+      class="primary"
+      type="button"
+      onclick="seleccionarClienteManual()">
+      Continuar con este cliente
+    </button>
+
+    <button
+      class="secondary"
+      type="button"
+      onclick="abrirNuevoClienteManual()">
+      ➕ Crear cliente nuevo
+    </button>
+   
+<div id="adminManualNuevoCliente" class="card hidden">
+  <hr>
+  <h3>➕ Nuevo cliente para este preventista</h3>
+
+  <label>Nombre / comercio</label>
+  <input id="amcName" placeholder="Nombre del comercio">
+
+  <label>Barrio / Zona</label>
+  <input id="amcZone" placeholder="Ej.: Barrio Fátima">
+
+  <label>Calle</label>
+  <input id="amcStreet" placeholder="Ej.: Calle 123">
+
+  <label>Altura / Manzana-Casa</label>
+  <input id="amcHeight" placeholder="Ej.: 1250 / Mz 4 Casa 8">
+
+  <label>Teléfono</label>
+  <input id="amcPhone">
+
+  <label>WhatsApp</label>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="padding:10px 8px;background:#eef2f7;border:1px solid #cbd5e1;border-radius:8px;font-weight:700;white-space:nowrap">+54 9</span>
+    <input id="amcWhatsapp" placeholder="376 123-4567" inputmode="tel" style="flex:1">
+  </div>
+  <div class="small">Escribí solamente el número del cliente.</div>
+
+  <label>Tipo de cliente</label>
+  <select id="amcPaymentType">
+    <option value="contado">💵 Contado</option>
+    <option value="cuenta_corriente">🟠 Cuenta corriente</option>
+  </select>
+
+  <div id="amcCreditDaysBox" style="display:none">
+    <label>Plazo de crédito (días)</label>
+    <input id="amcCreditDays" type="number" min="1" step="1" value="7">
+  </div>
+
+  <label>Referencia / observaciones de ubicación</label>
+  <textarea id="amcObs" rows="2" placeholder="Referencias para encontrar el comercio"></textarea>
+
+  <div class="card" style="margin-top:12px;background:#f1f5f9">
+    <h3>📍 Ubicación del comercio</h3>
+    <p id="amcLocationStatus" class="small">Todavía no se registró la ubicación.</p>
+    <p class="small">Podés usar el GPS o marcar manualmente el lugar en el mapa.</p>
+
+    <div id="adminManualClientMap" style="height:280px;width:100%;"></div>
+
+    <div class="client-map-buttons">
+      <button type="button" class="secondary" onclick="obtenerUbicacionClienteManual()">📍 Usar mi GPS</button>
+      <button type="button" class="gray" onclick="centrarMapaClienteManual()">🗺️ Ver mapa</button>
+    </div>
+
+    <input type="hidden" id="amcLatitude">
+    <input type="hidden" id="amcLongitude">
+  </div>
+
+  <button class="primary" type="button" onclick="guardarNuevoClienteManual()">
+    💾 Guardar cliente
+  </button>
+</div>
+ 
+  </div>
 </div>
 <label>Cliente</label><select id="orderClient" onchange="showSelectedClient()"></select><div id="selectedClientInfo" class="small" style="margin-top:6px;color:#475569"></div>
 <label>Buscar producto</label><input id="productSearch" oninput="renderProducts()" placeholder="Nombre o presentación">
@@ -12960,7 +13046,7 @@ async function abrirCargaPedidoManual(){
   }
 }
 
-function continuarCargaManual(){
+async function continuarCargaManual(){
 
   const select = document.getElementById("adminManualPreventista");
   const uid = select.value;
@@ -12975,9 +13061,388 @@ function continuarCargaManual(){
     nombre: select.options[select.selectedIndex].textContent
   };
 
-  alert("Preventista seleccionado: " + adminManualPreventistaSeleccionado.nombre);
+  const panelClientes = document.getElementById("adminManualClientesPanel");
+  const selectCliente = document.getElementById("adminManualCliente");
+
+  panelClientes.classList.remove("hidden");
+  selectCliente.innerHTML = '<option value="">Cargando clientes...</option>';
+
+  try{
+
+    const snapshot = await firebaseDB.collection("clients").get();
+
+    const clientesPreventista = snapshot.docs
+      .map(doc => ({id: doc.id, ...doc.data()}))
+      .filter(c =>
+        c.ownerUid === uid ||
+        c.preventistaUid === uid ||
+        c.user?.uid === uid
+      )
+      .sort((a,b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), "es")
+      );
+
+    selectCliente.innerHTML = '<option value="">Seleccionar cliente...</option>';
+
+    clientesPreventista.forEach(c => {
+      const option = document.createElement("option");
+      option.value = c.id;
+      option.textContent =
+        (c.clientNumber ? "Nº " + c.clientNumber + " · " : "") +
+        (c.name || "Cliente sin nombre");
+      selectCliente.appendChild(option);
+    });
+
+    if(clientesPreventista.length === 0){
+      selectCliente.innerHTML =
+        '<option value="">Este preventista no tiene clientes registrados</option>';
+    }
+
+  }catch(error){
+
+    console.error("Error cargando clientes del preventista:", error);
+    selectCliente.innerHTML =
+      '<option value="">Error al cargar clientes</option>';
+
+    alert("No se pudieron cargar los clientes de este preventista.");
+  }
 }
+
   
+// MAPA PARA NUEVO CLIENTE DESDE CARGA MANUAL
+
+let adminManualClientMap = null;
+let adminManualClientMarker = null;
+
+function abrirNuevoClienteManual(){
+
+  if(user?.role !== "admin"){
+    alert("Esta función es exclusiva del administrador.");
+    return;
+  }
+
+  document.getElementById("adminManualNuevoCliente")
+    .classList.remove("hidden");
+
+  iniciarMapaClienteManual();
+
+}
+
+function iniciarMapaClienteManual(){
+
+  if(typeof L === "undefined"){
+    alert("El mapa todavía no está disponible. Revisá la conexión.");
+    return;
+  }
+
+  if(!adminManualClientMap){
+
+    adminManualClientMap = L.map("adminManualClientMap")
+      .setView([POSADAS_LAT, POSADAS_LNG], 13);
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        attribution: "&copy; OpenStreetMap"
+      }
+    ).addTo(adminManualClientMap);
+
+    adminManualClientMap.on("click", function(e){
+      marcarUbicacionClienteManual(
+        e.latlng.lat,
+        e.latlng.lng
+      );
+    });
+
+  }
+
+  setTimeout(function(){
+    adminManualClientMap.invalidateSize();
+  }, 300);
+
+}
+
+function marcarUbicacionClienteManual(lat, lng){
+
+  document.getElementById("amcLatitude").value = lat;
+  document.getElementById("amcLongitude").value = lng;
+
+  if(adminManualClientMarker){
+    adminManualClientMarker.setLatLng([lat, lng]);
+  }else{
+
+    adminManualClientMarker = L.marker(
+      [lat, lng],
+      {draggable:true}
+    ).addTo(adminManualClientMap);
+
+    adminManualClientMarker.on("dragend", function(){
+
+      const posicion = adminManualClientMarker.getLatLng();
+
+      document.getElementById("amcLatitude").value = posicion.lat;
+      document.getElementById("amcLongitude").value = posicion.lng;
+
+      document.getElementById("amcLocationStatus").textContent =
+        "✅ Ubicación marcada correctamente.";
+
+    });
+
+  }
+
+  adminManualClientMap.setView([lat, lng], 17);
+
+  document.getElementById("amcLocationStatus").textContent =
+    "✅ Ubicación marcada correctamente. Podés mover el marcador para corregirla.";
+
+}
+
+function centrarMapaClienteManual(){
+
+  iniciarMapaClienteManual();
+
+  if(adminManualClientMap){
+    adminManualClientMap.setView(
+      [POSADAS_LAT, POSADAS_LNG],
+      13
+    );
+  }
+
+}
+
+function obtenerUbicacionClienteManual(){
+
+  const estado = document.getElementById("amcLocationStatus");
+
+  if(!navigator.geolocation){
+    estado.textContent =
+      "El GPS no está disponible. Marcá el comercio directamente en el mapa.";
+    iniciarMapaClienteManual();
+    return;
+  }
+
+  estado.textContent = "Obteniendo ubicación GPS...";
+
+  navigator.geolocation.getCurrentPosition(
+
+    function(position){
+
+      marcarUbicacionClienteManual(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+    },
+
+    function(){
+
+      estado.textContent =
+        "No se pudo obtener el GPS. Podés marcar el comercio en el mapa.";
+
+      iniciarMapaClienteManual();
+
+      alert("No pudimos obtener tu ubicación. Marcá el comercio manualmente en el mapa.");
+
+    },
+
+    {
+      enableHighAccuracy:true,
+      timeout:15000,
+      maximumAge:0
+    }
+
+  );
+
+}
+ 
+// GUARDAR CLIENTE NUEVO DESDE CARGA MANUAL DEL ADMIN
+async function guardarNuevoClienteManual(){
+
+  const usuario = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
+
+  if(usuario.role !== "admin"){
+    alert("Esta función es exclusiva del administrador.");
+    return;
+  }
+
+  if(!firebaseAuth.currentUser){
+    alert("La sesión no está activa. Volvé a iniciar sesión.");
+    return;
+  }
+
+  if(!adminManualPreventistaSeleccionado?.uid){
+    alert("Primero seleccioná un preventista.");
+    return;
+  }
+
+  const obtener = id =>
+    document.getElementById(id)?.value?.trim() || "";
+
+  const name = obtener("amcName");
+  const latitude = obtener("amcLatitude");
+  const longitude = obtener("amcLongitude");
+
+  if(!name){
+    alert("Ingresá el nombre del comercio.");
+    return;
+  }
+
+  if(latitude === "" || longitude === ""){
+    alert("Primero marcá la ubicación del comercio en el mapa.");
+    return;
+  }
+
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  if(!Number.isFinite(lat) || !Number.isFinite(lng)){
+    alert("La ubicación ingresada no es válida.");
+    return;
+  }
+
+  const preventistaUid = adminManualPreventistaSeleccionado.uid;
+  const preventistaNombre = adminManualPreventistaSeleccionado.nombre;
+
+  const whatsapp = (function(v){
+    let n = String(v || "").replace(/[^\d]/g,"");
+    return n
+      ? "+54 9 " + n.replace(/^549/,"").replace(/^54/,"").replace(/^9/,"")
+      : "";
+  })(obtener("amcWhatsapp"));
+
+  const clientId = Date.now();
+
+  const rangeRef = firebaseDB
+    .collection("clientNumberRanges")
+    .doc(preventistaUid);
+
+  const clientRef = firebaseDB
+    .collection("clients")
+    .doc(String(clientId));
+
+  const nuevoCliente = {
+    id: clientId,
+    name: name,
+    zone: obtener("amcZone"),
+    street: obtener("amcStreet"),
+    height: obtener("amcHeight"),
+    phone: obtener("amcPhone"),
+    whatsapp: whatsapp,
+    obs: obtener("amcObs"),
+
+    latitude: lat,
+    longitude: lng,
+
+    paymentType:
+      obtener("amcPaymentType") || "contado",
+
+    creditDays:
+      Number(obtener("amcCreditDays") || 0),
+
+    user: {
+      uid: preventistaUid,
+      name: preventistaNombre
+    },
+
+    ownerUid: preventistaUid,
+    preventistaUid: preventistaUid,
+
+    createdByAdmin: true,
+    createdByUid: usuario.uid
+  };
+
+  try{
+
+    await firebaseDB.runTransaction(async transaction => {
+
+      const rangeSnap = await transaction.get(rangeRef);
+
+      if(!rangeSnap.exists){
+        throw new Error("NO_RANGE");
+      }
+
+      const range = rangeSnap.data();
+      const numero = Number(range.nextNumber);
+
+      if(
+        !Number.isInteger(numero) ||
+        numero < Number(range.startNumber) ||
+        numero > Number(range.endNumber)
+      ){
+        throw new Error("RANGE_FINISHED");
+      }
+
+      nuevoCliente.clientNumber = numero;
+
+      transaction.set(clientRef,{
+        ...nuevoCliente,
+        createdAt:
+          firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      transaction.update(rangeRef,{
+        nextNumber: numero + 1
+      });
+
+    });
+
+    clients.push(nuevoCliente);
+
+    const selectCliente =
+      document.getElementById("adminManualCliente");
+
+    if(selectCliente){
+      const option = document.createElement("option");
+
+      option.value = String(clientId);
+      option.textContent =
+        "Nº " + nuevoCliente.clientNumber + " · " + name;
+
+      selectCliente.appendChild(option);
+      selectCliente.value = String(clientId);
+    }
+
+    [
+      "amcName",
+      "amcZone",
+      "amcStreet",
+      "amcHeight",
+      "amcPhone",
+      "amcWhatsapp",
+      "amcObs",
+      "amcLatitude",
+      "amcLongitude"
+    ].forEach(id => {
+      const campo = document.getElementById(id);
+      if(campo) campo.value = "";
+    });
+
+    document.getElementById("amcLocationStatus").textContent =
+      "Todavía no se registró la ubicación. Marcá el comercio en el mapa.";
+
+    alert(
+      "Cliente guardado correctamente.\n" +
+      "Preventista: " + preventistaNombre + "\n" +
+      "Número de cliente: " + nuevoCliente.clientNumber
+    );
+
+  }catch(error){
+
+    console.error("Error guardando cliente manual:",error);
+
+    if(error.message === "NO_RANGE"){
+      alert("El preventista todavía no tiene un rango de números asignado.");
+    }else if(error.message === "RANGE_FINISHED"){
+      alert("Se terminó el rango de números de clientes de este preventista.");
+    }else{
+      alert("No se pudo guardar el cliente. Revisá la conexión y los permisos de Firebase.");
+    }
+  }
+}
+ 
+
 // GUARDAR RANGO DE CLIENTES
 async function guardarRangoClientes() {
   const uid = document.getElementById("clientRangePreventista").value;
