@@ -7974,6 +7974,54 @@ function renderManualProducts(){
   });
 }
 
+ // MAPA PARA REGISTRAR UBICACIONES DE CLIENTES
+let clientMap = null;
+let clientMarker = null;
+
+function iniciarMapaCliente(){
+
+  if(typeof L === "undefined"){
+    alert("El mapa todavía no está disponible. Revisá la conexión.");
+    return;
+  }
+
+  const contenedor = document.getElementById("clientMap");
+
+  if(!contenedor){
+    return;
+  }
+
+  if(!clientMap){
+
+    clientMap = L.map("clientMap").setView(
+      [-27.3621, -55.9009],
+      13
+    );
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        attribution: "&copy; OpenStreetMap"
+      }
+    ).addTo(clientMap);
+
+    clientMap.on("click", function(e){
+
+      marcarUbicacionCliente(
+        e.latlng.lat,
+        e.latlng.lng
+      );
+
+    });
+
+  }
+
+  setTimeout(function(){
+    clientMap.invalidateSize();
+  }, 300);
+
+} 
+
 function marcarUbicacionCliente(lat, lng){
 
   document.getElementById("cLatitude").value = lat;
