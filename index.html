@@ -13444,6 +13444,114 @@ async function guardarNuevoClienteManual(){
   
  
 // SELECCIONAR CLIENTE PARA CARGA MANUAL DE PEDIDO
+async function seleccionarClienteManual(){
+
+  try{
+
+    const usuario = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    if(usuario.role !== "admin"){
+      alert("Esta función es exclusiva del administrador.");
+      return;
+    }
+
+    if(!adminManualPreventistaSeleccionado?.uid){
+      alert("Primero seleccioná un preventista.");
+      return;
+    }
+
+    const selectCliente =
+      document.getElementById("adminManualCliente");
+
+    const clienteId = selectCliente?.value;
+
+    if(!clienteId){
+      alert("Seleccioná un cliente.");
+      return;
+    }
+
+    let cliente = clients.find(
+      c => String(c.id) === String(clienteId)
+    );
+
+    if(!cliente){
+      const doc = await firebaseDB
+        .collection("clients")
+        .doc(String(clienteId))
+        .get();
+
+      if(!doc.exists){
+        alert("No se encontró el cliente.");
+        return;
+      }
+
+      cliente = {id:doc.id,...doc.data()};
+      clients.push(cliente);
+    }
+
+    const preventistaUid =
+      adminManualPreventistaSeleccionado.uid;
+
+    if(
+      cliente.ownerUid !== preventistaUid &&
+      cliente.preventistaUid !== preventistaUid
+    ){
+      alert("El cliente no pertenece al preventista seleccionado.");
+      return;
+    }
+
+    const botonPedido = Array.from(
+      document.querySelectorAll("nav button")
+    ).find(b =>
+      (b.getAttribute("onclick") || "")
+        .includes("show('pedido'")
+    );
+
+    if(botonPedido){
+      show("pedido",botonPedido);
+    }
+
+    const pedidoCliente =
+      document.getElementById("orderClient");
+
+    let opcion = Array.from(
+      pedidoCliente.options
+    ).find(o =>
+      String(o.value) === String(cliente.id)
+    );
+
+    if(!opcion){
+      opcion = document.createElement("option");
+      opcion.value = String(cliente.id);
+      opcion.textContent = cliente.name || "Cliente";
+      pedidoCliente.appendChild(opcion);
+    }
+
+    pedidoCliente.value = String(cliente.id);
+
+    await showSelectedClient();
+
+    renderProducts();
+
+    alert(
+      "Cliente seleccionado correctamente: " +
+      cliente.name +
+      ". Ya podés cargar los productos."
+    );
+
+  }catch(error){
+
+    console.error(
+      "Error seleccionando cliente manual:",
+      error
+    );
+
+    alert("No se pudo seleccionar el cliente.");
+  }
+}
+
 
 
 
