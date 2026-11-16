@@ -9776,7 +9776,7 @@ function saveDraft(){
 
   });
 
-  // PROMOCIONES: PRODUCTOS QUE SE COBRAN
+  // PROMOCIONES
   for(const promo of promotionCart){
 
     const cantidad = promo.buyQty * promo.count;
@@ -9807,7 +9807,6 @@ function saveDraft(){
 
     total += lineTotal;
 
-    // PRODUCTOS BONIFICADOS: NO SE COBRAN
     bonuses.push({
       name:promo.giftProduct,
       presentation:promo.giftPresentation,
@@ -9837,19 +9836,36 @@ function saveDraft(){
     localStorage.getItem("NAA_USER") || "{}"
   );
 
+  let ownerUid = currentUser.uid || "";
+  let preventistaUid = currentUser.uid || "";
+  let preventistaName =
+    currentUser.name ||
+    currentUser.username ||
+    user;
+
+  // SI EL ADMINISTRADOR CARGA PARA UN PREVENTISTA
+  if(currentUser.role === "admin"){
+
+    if(!adminManualPreventistaSeleccionado?.uid){
+      alert("Seleccioná el preventista para este pedido.");
+      return;
+    }
+
+    ownerUid = adminManualPreventistaSeleccionado.uid;
+    preventistaUid = adminManualPreventistaSeleccionado.uid;
+    preventistaName = adminManualPreventistaSeleccionado.nombre;
+
+  }
+
   const draft = {
 
     date:new Date().toISOString(),
 
-    ownerUid:currentUser.uid || "",
-    preventistaUid:currentUser.uid || "",
+    ownerUid:ownerUid,
+    preventistaUid:preventistaUid,
+    preventistaName:preventistaName,
 
-    preventistaName:
-      currentUser.name ||
-      currentUser.username ||
-      user,
-
-    user:user,
+    user:preventistaName,
 
     client:c.name,
     clientId:cid,
