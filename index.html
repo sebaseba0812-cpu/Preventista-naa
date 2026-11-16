@@ -7797,7 +7797,11 @@ if(id === "rendicionBoletas"){
   renderRendicionBoletas();
 }  
 if(id==="pedido"){
-  renderClients();
+  if(user?.role === "admin"){
+    renderClients();
+  }else{
+    actualizarClientesPreventistaFirebase();
+  }
   renderProducts();
   renderAvailablePromotions();
   renderPromotionCart();
@@ -7813,7 +7817,11 @@ if(id==="pedido"){
 }
 if(id==="clientes"){
 
-  renderClients();
+  if(user?.role === "admin"){
+    renderClients();
+  }else{
+    actualizarClientesPreventistaFirebase();
+  }
 
   if(user?.role === "admin"){
     cargarClientesAdminUbicaciones();
@@ -8327,6 +8335,41 @@ if(!x)return '<span class="inactive">🛒 Nunca hizo un pedido</span>';
 if(x.days===0)return '<span class="activebuy">🟢 Compró hoy</span>';
 if(x.days===1)return '<span class="activebuy">🟢 Última compra: ayer</span>';
 return '<span class="inactive">⏱️ Hace '+x.days+' días que no compra</span>';
+}
+
+  // ACTUALIZAR CARTERA DEL PREVENTISTA DESDE FIREBASE
+async function actualizarClientesPreventistaFirebase(){
+
+  if(!user?.uid || user.role === "admin") return;
+
+  try{
+
+    const snapshot = await firebaseDB
+      .collection("clients")
+      .get();
+
+    clients = snapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .filter(c =>
+        c.preventistaUid === user.uid ||
+        c.ownerUid === user.uid ||
+        c.user?.uid === user.uid
+      );
+
+    localStorage.setItem("NAA_CLIENTS", JSON.stringify(clients));
+
+    renderClients();
+
+  }catch(error){
+
+    console.error("Error actualizando clientes desde Firebase:", error);
+
+    alert("No se pudo actualizar la cartera de clientes. Revisá la conexión.");
+
+  }
 }
 function renderClients(){
   let mine=clients.filter(c=>c.user?.uid===user?.uid);
