@@ -4589,6 +4589,43 @@ async function deletePromotion(id){
 function save(){localStorage.setItem("NAA_CLIENTS",JSON.stringify(clients));localStorage.setItem("NAA_ORDERS",JSON.stringify(orders))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 
+  // REGISTRO CENTRAL DE AUDITORÍA
+async function registrarAuditoria({
+  accion,
+  modulo,
+  descripcion,
+  registroId = "",
+  datos = {}
+}){
+
+  try{
+
+    if(!user?.uid) return;
+
+    await firebaseDB.collection("activityLogs").add({
+
+      actorUid: user.uid,
+      actorName: user.name || user.username || "Usuario",
+      actorRole: user.role || "preventista",
+
+      accion: String(accion || ""),
+      modulo: String(modulo || ""),
+      descripcion: String(descripcion || ""),
+      registroId: String(registroId || ""),
+
+      datos: datos,
+
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+
+    });
+
+  }catch(error){
+
+    console.error("Error registrando auditoría:", error);
+
+  }
+}
+
 async function login(){
   const username = (
     document.getElementById("loginName")?.value || ""
@@ -10266,7 +10303,8 @@ window.sendingDraft = true;
 
     return {
       boletaNumber: pedidoExistente.boletaNumber,
-      pedidoLocal: pedidoExistente
+      pedidoLocal: pedidoExistente,
+      alreadyExisted: true
     };
   }
 
@@ -10426,6 +10464,7 @@ const pedido = {
 
 return {
   boletaNumber: nextNumber,
+  alreadyExisted: false,
   pedidoLocal: {
     ...pedido,
     sentAt: new Date().toISOString(),
@@ -10436,6 +10475,21 @@ return {
     );
 
  const boletaNumber = resultadoEnvio.boletaNumber;
+   if(!resultadoEnvio.alreadyExisted){
+
+  await registrarAuditoria({
+    accion: "pedido_enviado",
+    modulo: "pedidos",
+    descripcion: "Envió el pedido a la oficina. Boleta Nº " + boletaNumber,
+    registroId: orderRef.id,
+    datos: {
+      cliente: draft.clientData?.name || draft.client || "",
+      total: Number(draft.total || 0),
+      boletaNumber: boletaNumber
+    }
+  });
+
+} 
 
 orders.unshift({
   id: orderRef.id,
@@ -10912,8 +10966,7 @@ async function anularPedidoOficina(id){
 
     const orderRef = firebaseDB.collection("orders").doc(String(id));
 
-    await firebaseDB.runTransaction(async transaction => {
-
+    const pedidoAnulado = await firebaseDB.runTransaction(async transaction => {
       const orderSnap = await transaction.get(orderRef);
 
       if(!orderSnap.exists){
@@ -11044,8 +11097,29 @@ async function anularPedidoOficina(id){
 
       });
 
+      return {
+        boletaNumber: pedido.boletaNumber || id,
+        cliente: pedido.clientData?.name || pedido.client || "",
+        total: Number(pedido.total || 0),
+        ownerUid: pedido.ownerUid || ""
+      };
+
     });
 
+await registrarAuditoria({
+  accion: "pedido_anulado",
+  modulo: "pedidos",
+  descripcion: "Anuló la boleta Nº " + pedidoAnulado.boletaNumber +
+    ". Motivo: " + motivo.trim(),
+  registroId: String(id),
+  datos: {
+    cliente: pedidoAnulado.cliente,
+    total: pedidoAnulado.total,
+    motivo: motivo.trim(),
+    ownerUid: pedidoAnulado.ownerUid
+  }
+});
+  
     await renderOfficeOrders();
     await renderStock();
 
@@ -11079,6 +11153,23 @@ async function anularPedidoOficina(id){
       paymentDate:paymentDate,
       updatedAt:paymentDate
     });
+
+const pedidoCobrado = snap.data() || {};
+
+await registrarAuditoria({
+  accion: "cuenta_corriente_cobrada",
+  modulo: "cuentas_corrientes",
+  descripcion: "Marcó como cobrada la boleta Nº " +
+    (pedidoCobrado.boletaNumber || id),
+  registroId: String(id),
+  datos: {
+    cliente: pedidoCobrado.clientData?.name || pedidoCobrado.client || "",
+    total: Number(pedidoCobrado.total || 0),
+    importePendiente: Number(pedidoCobrado.amountDue || pedidoCobrado.total || 0),
+    ownerUid: pedidoCobrado.ownerUid || ""
+  }
+});
+  
     const local=orders.find(x=>String(x.id)===String(id));
     if(local){local.paymentStatus="cobrado";local.paymentDate=paymentDate.toISOString();local.updatedAt=paymentDate.toISOString();save();}
     await renderOfficeOrders();
