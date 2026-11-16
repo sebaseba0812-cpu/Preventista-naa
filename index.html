@@ -8015,7 +8015,7 @@ function centrarMapaPosadas(){
 
   if(clientMap){
     clientMap.setView(
-      [POSADAS_LAT, POSADAS_LNG],
+      [-27.3621, -55.9009],
       13
     );
   }
@@ -8440,7 +8440,7 @@ function abrirEditorUbicacionCliente(id){
 
   const centro = tieneUbicacion
     ? [lat, lng]
-    : [POSADAS_LAT, POSADAS_LNG];
+    : [-27.3621, -55.9009];
 
   if(!adminLocationMap){
 
