@@ -7475,10 +7475,16 @@ valid.forEach(o=>{
     const pendingAccounts=all.filter(o=>
       o.paymentType==="cuenta_corriente" &&
       o.paymentStatus!=="cobrado" &&
+      o.status!=="nuevo" &&
       o.status!=="canceled" &&
       o.status!=="anulado"
     );
 
+    const accountsToConfirm=all.filter(o=>
+  o.paymentType==="cuenta_corriente" &&
+  o.paymentStatus!=="cobrado" &&
+  o.status==="nuevo"
+);
     const accountsTotal=pendingAccounts.reduce(
       (s,o)=>s+Number(o.total||0),
       0
@@ -7526,6 +7532,46 @@ valid.forEach(o=>{
       </div>
     `;
 
+    if(accountsToConfirm.length){
+
+      accounts.innerHTML+=`
+        <div class="card">
+          <h3>🕒 Pedidos de cuenta corriente a confirmar</h3>
+
+          <div class="muted">
+            ${accountsToConfirm.length}
+            pedido${accountsToConfirm.length===1?"":"s"} esperando aceptación
+        </div>
+
+        ${accountsToConfirm.map(o=>`
+          <div class="product">
+
+            <b>${esc(o.client||"Sin cliente")}</b>
+
+            <div class="muted">
+              Boleta Nº ${esc(o.boletaNumber||"Sin número")}
+            </div>
+
+            <div class="price">
+              ${dashboardMoney(o.total)}
+            </div>
+
+            <div class="small">
+              Plazo solicitado: ${o.creditDays||0} días
+            </div>
+
+            <div style="color:#c2410c;margin-top:5px">
+              ⏳ Pendiente de aceptación
+            </div>
+
+          </div>
+        `).join("")}
+
+        </div>
+      `;
+
+    }
+  
   }catch(error){
 
     console.error("Error cargando Dashboard:",error);
@@ -7627,13 +7673,19 @@ async function renderCurrentAccounts(){
 
       const daysLeft = Math.round((dueDate - today) / 86400000);
 
-      accounts.push({
-        id: doc.id,
-        ...o,
-        saleDate,
-        dueDate,
-        daysLeft
-      });
+     const cuenta={
+  id:doc.id,
+  ...o,
+  saleDate,
+  dueDate,
+  daysLeft
+};
+
+if(o.status==="nuevo"){
+  toConfirm.push(cuenta);
+}else{
+  accounts.push(cuenta);
+}
     });
 
     accounts.sort((a, b) => a.daysLeft - b.daysLeft);
@@ -14289,8 +14341,9 @@ async function renderCurrentAccounts(){
 
   try{
 
-    const snap=await firebaseDB.collection("orders").get();
-    const accounts=[];
+   const snap=await firebaseDB.collection("orders").get();
+const accounts=[];
+const toConfirm=[];
 
     snap.forEach(doc=>{
 
@@ -14300,7 +14353,7 @@ async function renderCurrentAccounts(){
       if(o.paymentStatus==="cobrado")return;
       if(o.status==="canceled"||o.status==="anulado")return;
       if(o.status==="borrador")return;
-      if(!["preparando","preparado","entregado"].includes(o.status))return;
+      if(!["nuevo","preparando","preparado","entregado"].includes(o.status))return;
 
       const saleDate=o.createdAt?.toDate
         ? o.createdAt.toDate()
@@ -14321,14 +14374,19 @@ async function renderCurrentAccounts(){
         (dueDate.getTime()-today.getTime())/86400000
       );
 
-      accounts.push({
-        id:doc.id,
-        ...o,
-        saleDate,
-        dueDate,
-        daysLeft
-      });
+     const cuenta = {
+  id:doc.id,
+  ...o,
+  saleDate,
+  dueDate,
+  daysLeft
+};
 
+if(o.status === "nuevo"){
+  toConfirm.push(cuenta);
+}else{
+  accounts.push(cuenta);
+}
     });
 
     accounts.sort((a,b)=>a.daysLeft-b.daysLeft);
@@ -14346,7 +14404,58 @@ async function renderCurrentAccounts(){
       </div>
     `;
 
-    if(!accounts.length){
+      if(toConfirm.length){
+
+      html+=`
+        <div class="card">
+          <h3>🕒 Pedidos a confirmar</h3>
+          <div class="muted">
+            ${toConfirm.length} pedido${toConfirm.length===1?"":"s"} esperando aceptación
+          </div>
+        </div>
+      `;
+
+      html+=toConfirm.map(o=>{
+
+        const preventista=
+          o.preventistaName ||
+          o.user?.name ||
+          o.user?.displayName ||
+          "Sin preventista";
+
+        return `
+          <div class="card">
+
+            <h3>🏪 ${esc(o.client||"Sin cliente")}</h3>
+
+            <div class="muted">
+              🧾 Boleta Nº ${esc(o.boletaNumber||"Sin número")}
+            </div>
+
+            <div class="muted">
+              👤 Preventista: ${esc(preventista)}
+            </div>
+
+            <div class="price">
+              ${dashboardMoney(o.total)}
+            </div>
+
+            <div class="small">
+              Plazo solicitado: ${creditDaysText(o.creditDays)}
+            </div>
+
+            <div style="margin-top:8px;color:#c2410c">
+              <b>⏳ Pendiente de aceptación</b>
+            </div>
+
+          </div>
+        `;
+
+      }).join("");
+
+    }  
+    
+   if(!accounts.length && !toConfirm.length){
 
       html+=`
         <div class="card">
