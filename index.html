@@ -296,6 +296,11 @@ body {
   onclick="show('cuentasCorrientes',this)">
   🟠 Cuentas corrientes
 </button>
+  <button id="auditoriaNavBtn"
+  style="display:none"
+  onclick="show('auditoria',this)">
+  🛡️ Auditoría
+</button>
   <button id="repartoNavBtn" style="display:inline-block" onclick="show('reparto',this)">🚚 Reparto</button>
   <button id="rendicionNavBtn"
   style="display:none"
@@ -1133,6 +1138,24 @@ onclick="createPromotion()">
   </div>
 </section> 
 
+ <section id="auditoria" class="screen">
+  <div class="card">
+    <h2>🛡️ Registro de auditoría</h2>
+    <p class="small">
+      Historial de acciones realizadas en el sistema.
+    </p>
+
+    <div id="auditoriaLista">
+      <p class="small">Todavía no se cargaron los movimientos.</p>
+    </div>
+
+    <button class="secondary"
+      style="width:100%;margin-top:10px"
+      onclick="renderAuditoria()">
+      🔄 Actualizar auditoría
+    </button>
+  </div>
+</section> 
   
 <section id="rendicionBoletas" class="screen">
   <div class="card">
@@ -1592,6 +1615,12 @@ async function toggleProductActive(name, presentation){
       statusUpdatedBy: usuario.uid || null
     }, {merge:true});
     productStatusById[id] = nuevoEstado;
+    registrarAuditoria({
+  accion: nuevoEstado ? "producto_activado" : "producto_inactivado",
+  modulo: "productos",
+  descripcion: (nuevoEstado ? "Activó el producto: " : "Inactivó el producto: ") + name + " - " + presentation,
+  registroId: id
+});
     renderProducts();
     renderCatalogEditor();
     loadPromotionProductOptions();
@@ -3146,6 +3175,20 @@ async function abrirCaja(){
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
+    await registrarAuditoria({
+  accion: "apertura_caja",
+  modulo: "caja",
+  descripcion: "Abrió la caja con efectivo de $" +
+    money(efectivo) + " y transferencias de $" +
+    money(transferencia),
+  registroId: referencia.id,
+  datos: {
+    sesionId: sesionId,
+    efectivoInicial: efectivo,
+    transferenciaInicial: transferencia
+  }
+});
+
     document.getElementById("cajaInicialEfectivo").value = "";
     document.getElementById("cajaInicialTransferencia").value = "";
 
@@ -3206,17 +3249,34 @@ async function registrarMovimientoCaja(){
 
     if(!confirm("¿Confirmás este movimiento?")) return;
 
-    await firebaseDB.collection("caja").add({
-      tipo: "movimiento",
-      sesionId: estado.sesion,
-      movimiento: movimiento,
-      medio: medio,
-      importe: importe,
-      descripcion: descripcion,
-      categoria: categoria,
-      usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+   const movimientoRef = await firebaseDB.collection("caja").add({
+  tipo: "movimiento",
+  sesionId: estado.sesion,
+  movimiento: movimiento,
+  medio: medio,
+  importe: importe,
+  descripcion: descripcion,
+  categoria: categoria,
+  usuario: JSON.parse(localStorage.getItem("NAA_USER") || "{}").name || "Administrador",
+  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+});
+
+await registrarAuditoria({
+  accion: movimiento === "ingreso"
+    ? "ingreso_caja"
+    : "egreso_caja",
+  modulo: "caja",
+  descripcion: (movimiento === "ingreso" ? "Registró un ingreso: " : "Registró un egreso: ") + descripcion,
+  registroId: movimientoRef.id,
+  datos: {
+    tipo: movimiento,
+    medio: medio,
+    importe: importe,
+    categoria: categoria,
+    descripcion: descripcion,
+    sesionId: estado.sesion
+  }
+});
 
     document.getElementById("cajaImporte").value = "";
     document.getElementById("cajaDescripcion").value = "";
@@ -3352,6 +3412,23 @@ async function marcarPedidoRendido(id){
 
     await batch.commit();
 
+  await registrarAuditoria({
+  accion: "pedido_rendido",
+  modulo: "rendicion_boletas",
+  descripcion: "Rindió el pedido " +
+    (pedido.boletaNumber || id) +
+    " del cliente " + (pedido.clientName || "Sin nombre"),
+  registroId: String(id),
+  datos: {
+    boleta: pedido.boletaNumber || "",
+    cliente: pedido.clientName || "",
+    total: total,
+    efectivo: efectivo,
+    transferencia: transferencia,
+    sesionCaja: estadoCaja.sesion
+  }
+});
+
     alert("Pedido rendido correctamente.");
 
     await renderHistory();
@@ -3439,31 +3516,39 @@ async function cerrarCaja(){
       localStorage.getItem("NAA_USER") || "{}"
     );
 
-    await firebaseDB.collection("caja").add({
-      tipo: "cierre",
-      sesionId: estado.sesion,
+const cierreRef = await firebaseDB.collection("caja").add({
+  tipo: "cierre",
+  sesionId: estado.sesion,
+  efectivoSistema: saldo.efectivo,
+  transferenciaSistema: saldo.transferencia,
+  efectivoContado: efectivoContado,
+  transferenciaContada: transferenciaContada,
+  diferenciaEfectivo: diferenciaEfectivo,
+  diferenciaTransferencia: diferenciaTransferencia,
+  diferenciaTotal: diferenciaTotal,
+  efectivoFinal: efectivoContado,
+  transferenciaFinal: transferenciaContada,
+  totalFinal: efectivoContado + transferenciaContada,
+  usuario: usuario.name || "Administrador",
+  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+});
 
-      // Importes calculados por el sistema
-      efectivoSistema: saldo.efectivo,
-      transferenciaSistema: saldo.transferencia,
-
-      // Importes contados físicamente
-      efectivoContado: efectivoContado,
-      transferenciaContada: transferenciaContada,
-
-      // Diferencias: negativo = faltante, positivo = sobrante
-      diferenciaEfectivo: diferenciaEfectivo,
-      diferenciaTransferencia: diferenciaTransferencia,
-      diferenciaTotal: diferenciaTotal,
-
-      // Se conserva el campo final para el historial existente
-      efectivoFinal: efectivoContado,
-      transferenciaFinal: transferenciaContada,
-      totalFinal: efectivoContado + transferenciaContada,
-
-      usuario: usuario.name || "Administrador",
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+await registrarAuditoria({
+  accion: "cierre_caja",
+  modulo: "caja",
+  descripcion: "Cerró la caja. Diferencia total: $" + money(diferenciaTotal),
+  registroId: cierreRef.id,
+  datos: {
+    sesionId: estado.sesion,
+    efectivoSistema: saldo.efectivo,
+    efectivoContado: efectivoContado,
+    transferenciaSistema: saldo.transferencia,
+    transferenciaContada: transferenciaContada,
+    diferenciaEfectivo: diferenciaEfectivo,
+    diferenciaTransferencia: diferenciaTransferencia,
+    diferenciaTotal: diferenciaTotal
+  }
+});
 
     alert(
       "Caja cerrada correctamente.\n\n" +
@@ -3612,6 +3697,22 @@ async function stockEntrada(id){
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
+    });
+
+      await registrarAuditoria({
+      accion: "entrada_stock",
+      modulo: "stock",
+      descripcion: "Ingresó " + ingreso +
+        " unidades de " + (producto.name || "Producto"),
+      registroId: String(id),
+      datos: {
+        productoId: id,
+        producto: producto.name || "",
+        cajas: cajas,
+        unidadesSueltas: sueltas,
+        cantidadIngresada: ingreso,
+        observacion: observacion.trim()
+      }
     });
 
     await renderStock();
@@ -3784,6 +3885,23 @@ async function stockSalida(id){
 
     });
 
+      await registrarAuditoria({
+      accion: "salida_stock",
+      modulo: "stock",
+      descripcion: "Retiró " + salida +
+        " unidades de " + (p.name || "Producto"),
+      registroId: String(id),
+      datos: {
+        productoId: id,
+        producto: p.name || "",
+        cajas: cajas,
+        unidadesSueltas: sueltas,
+        cantidadRetirada: salida,
+        motivo: motivo,
+        observacion: observacion.trim()
+      }
+    });
+
     await renderStock();
     await renderStockHistory();
 
@@ -3910,6 +4028,22 @@ async function stockAjustar(id){
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
+    });
+
+      await registrarAuditoria({
+      accion: "ajuste_stock",
+      modulo: "stock",
+      descripcion: "Ajustó el stock de " + (producto.name || "Producto") +
+        " de " + actual + " a " + nuevoStock + " unidades",
+      registroId: String(id),
+      datos: {
+        productoId: id,
+        producto: producto.name || "",
+        stockAnterior: actual,
+        stockNuevo: nuevoStock,
+        diferencia: nuevoStock - actual,
+        motivo: observacion.trim()
+      }
     });
 
     await renderStock();
@@ -4040,6 +4174,21 @@ async function stockRegistrarDano(id){
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
+    });
+
+      await registrarAuditoria({
+      accion: "mercaderia_danada",
+      modulo: "stock",
+      descripcion: "Registró " + cantidad +
+        " unidades dañadas de " + (producto.name || "Producto"),
+      registroId: String(id),
+      datos: {
+        productoId: id,
+        producto: producto.name || "",
+        cantidadDañada: cantidad,
+        motivo: motivo.trim(),
+        estado: "pendiente"
+      }
     });
 
     await renderStock();
@@ -5948,6 +6097,23 @@ async function registrarAdelantoLiquidacion() {
 
     await batch.commit();
 
+  await registrarAuditoria({
+  accion: "adelanto_preventista",
+  modulo: "liquidaciones",
+  descripcion: "Registró un adelanto de $" +
+    liqMoney(importe) + " para " + nombrePreventista,
+  registroId: adelantoRef.id,
+  datos: {
+    preventistaUid: uid,
+    preventistaNombre: nombrePreventista,
+    importe: importe,
+    medio: medio,
+    descripcion: descripcion,
+    mes: mes,
+    cajaSesionId: estadoCaja.sesion
+  }
+});
+
     alert("Adelanto registrado correctamente.");
 
     document.getElementById("liqAdelantoImporte").value = "";
@@ -6091,6 +6257,24 @@ async function registrarPagoLiquidacion() {
     });
 
     await batch.commit();
+
+    await registrarAuditoria({
+  accion: "pago_liquidacion",
+  modulo: "liquidaciones",
+  descripcion: "Pagó $" + liqMoney(importe) +
+    " a " + nombrePreventista,
+  registroId: pagoRef.id,
+  datos: {
+    preventistaUid: uid,
+    preventistaNombre: nombrePreventista,
+    importe: importe,
+    medio: medio,
+    descripcion: descripcion,
+    saldoAnterior: saldoAnterior,
+    saldoRestante: saldoRestante,
+    cajaSesionId: estadoCaja.sesion
+  }
+});
 
     document.getElementById("liqPagoImporte").value = "";
     document.getElementById("liqPagoDescripcion").value = "";
@@ -7790,6 +7974,7 @@ function show(id,btn){
     "proveedores",
     "caja",
     "cuentasCorrientes",
+    "auditoria",
     "reparto",
      "rendicionBoletas", 
     "personal",
@@ -7833,6 +8018,9 @@ if(btn) btn.classList.add("active");
 if(id === "rendicionBoletas"){
   renderRendicionBoletas();
 }  
+  if(id === "auditoria"){
+  renderAuditoria();
+}
 if(id==="pedido"){
   if(user?.role === "admin"){
     renderClients();
@@ -7989,6 +8177,13 @@ function saveCatalogProduct(item){
     localStorage.setItem("NAA_PRODUCT_OVERRIDES",JSON.stringify(productOverrides));
   }
 
+    registrarAuditoria({
+    accion: "producto_modificado",
+    modulo: "productos",
+    descripcion: "Modificó el producto: " + name + " - " + pres + ". Unidad: " + unit + ". Cantidad por empaque: " + packQty + ". Precio minorista: " + minoristaPrice,
+    registroId: item.original[0] + "|" + item.original[1]
+  });
+
   renderCatalogEditor();
   renderManualProducts();
   renderProducts();
@@ -7998,7 +8193,14 @@ function restoreCatalogProduct(item){
   if(item.type!=="base")return;
   const key=item.original[0]+"|"+item.original[1];
   delete productOverrides[key];
+   
   localStorage.setItem("NAA_PRODUCT_OVERRIDES",JSON.stringify(productOverrides));
+   registrarAuditoria({
+    accion: "producto_restaurado",
+    modulo: "productos",
+    descripcion: "Restauró el producto original: " + item.original[0] + " - " + item.original[1],
+    registroId: key
+  });
   renderCatalogEditor();renderProducts();
   showToast("↩️ Producto restaurado");
 }
@@ -8032,6 +8234,12 @@ function addManualProduct(){
   ]);
 
   localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
+  registrarAuditoria({
+  accion: "producto_creado",
+  modulo: "productos",
+  descripcion: "Agregó el producto: " + name + " - " + pres + ". Precio mayorista: " + price,
+  registroId: name + "|" + pres
+});
 
   ["pName","pPres","pUnit","pPackQty","pPrice","pMinoristaPrice"].forEach(id=>{
     document.getElementById(id).value="";
@@ -12944,6 +13152,92 @@ await renderReparto();
     );
   }
 }
+
+ async function renderAuditoria(){
+
+  const box = document.getElementById("auditoriaLista");
+  if(!box) return;
+
+  const usuario = JSON.parse(
+    localStorage.getItem("NAA_USER") || "{}"
+  );
+
+  if(usuario.role !== "admin"){
+    box.innerHTML = "<p>Acceso exclusivo del administrador.</p>";
+    return;
+  }
+
+  box.innerHTML = '<p class="small">Cargando auditoría...</p>';
+
+  try{
+
+    const snap = await firebaseDB
+      .collection("activityLogs")
+      .limit(250)
+      .get();
+
+    const registros = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    registros.sort((a,b) => {
+      const fechaA = a.createdAt?.toMillis
+        ? a.createdAt.toMillis() : 0;
+      const fechaB = b.createdAt?.toMillis
+        ? b.createdAt.toMillis() : 0;
+
+      return fechaB - fechaA;
+    });
+
+    if(!registros.length){
+      box.innerHTML = "<p>Todavía no hay movimientos registrados.</p>";
+      return;
+    }
+
+    box.innerHTML = registros.map(r => {
+
+      const fecha = r.createdAt?.toDate
+        ? r.createdAt.toDate().toLocaleString("es-AR")
+        : "Fecha no disponible";
+
+      return `
+        <div class="product" style="margin-top:10px">
+          <b>${esc(r.descripcion || r.accion || "Movimiento")}</b>
+
+          <div class="small" style="margin-top:6px">
+            📅 ${esc(fecha)}
+          </div>
+
+          <div class="small">
+            👤 Usuario: ${esc(r.actorName || "No identificado")}
+          </div>
+
+          <div class="small">
+            🔧 Módulo: ${esc(r.modulo || "General")}
+          </div>
+
+          <div class="small">
+            Acción: ${esc(r.accion || "")}
+          </div>
+
+          <div class="small">
+            Registro: ${esc(r.registroId || "-")}
+          </div>
+        </div>
+      `;
+
+    }).join("");
+
+  }catch(error){
+
+    console.error("Error cargando auditoría:",error);
+
+    box.innerHTML =
+      "<p>No se pudo cargar la auditoría. Revisá los permisos de Firebase.</p>";
+
+  }
+} 
  
 async function renderRendicionBoletas(){
   const box = document.getElementById("rendicionBoletasLista");
@@ -14988,6 +15282,9 @@ if(user.role === "admin" && document.getElementById("adminBanner")) document.get
   document.getElementById("pedidosOficinaNavBtn").style.display="inline-block";
       if(user.role==="admin" && document.getElementById("cuentasCorrientesNavBtn"))
   document.getElementById("cuentasCorrientesNavBtn").style.display="inline-block"; 
+       if(user.role === "admin" && document.getElementById("auditoriaNavBtn")){
+  document.getElementById("auditoriaNavBtn").style.display="inline-block";
+}  
     if(user.role === "admin" && document.getElementById("repartoNavBtn"))
   document.getElementById("repartoNavBtn").style.display="inline-block"; 
      if(user.role === "admin" && document.getElementById("rendicionNavBtn"))
