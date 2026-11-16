@@ -8344,8 +8344,9 @@ async function actualizarClientesPreventistaFirebase(){
 
   try{
 
-    const snapshot = await firebaseDB
+        const snapshot = await firebaseDB
       .collection("clients")
+      .where("ownerUid", "==", user.uid)
       .get();
 
     clients = snapshot.docs
