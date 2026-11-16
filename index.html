@@ -8367,7 +8367,12 @@ async function actualizarClientesPreventistaFirebase(){
 
     console.error("Error actualizando clientes desde Firebase:", error);
 
-    alert("No se pudo actualizar la cartera de clientes. Revisá la conexión.");
+   alert(
+  "Error al actualizar clientes:\n" +
+  (error.code || "Sin código") +
+  "\n" +
+  (error.message || error)
+);
 
   }
 }
