@@ -167,6 +167,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script> 
 
 <script>
   const firebaseConfig = {
@@ -182,6 +183,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 
   const firebaseAuth = firebase.auth();
   const firebaseDB = firebase.firestore();
+  const firebaseStorage = firebase.storage();
 </script>
 <style>
 /* Personalización visual Distribuidora N.A.A. */
@@ -1549,6 +1551,7 @@ let customProducts=JSON.parse(localStorage.getItem("NAA_CUSTOM_PRODUCTS")||"[]")
 
 let productOverrides=JSON.parse(localStorage.getItem("NAA_PRODUCT_OVERRIDES")||"{}");
 let productStatusById = {};
+let productImageById = {};  
 
 function productFirebaseId(name, presentation){
   return encodeURIComponent(name + "|" + presentation);
@@ -1562,11 +1565,15 @@ async function cargarEstadosProductosFirebase(){
   try{
     const snap = await firebaseDB.collection("products").get();
     productStatusById = {};
+    productImageById = {};
    
 snap.forEach(doc => {
   const data = doc.data() || {};
 
   productStatusById[doc.id] = data.active !== false;
+  if(data.imageUrl){
+  productImageById[doc.id] = data.imageUrl;
+}
 
   if(
     data.minoristaPrice !== undefined &&
@@ -4393,7 +4400,10 @@ async function addStockProduct(){
     alert("No se pudo vincular el producto: " + error.message);
   }
 }
-  function productImage(p){
+ function productImage(p){
+ let sharedImage = productImageById[productFirebaseId(p[0],p[1])];
+ if(sharedImage) return sharedImage;
+
  let n=p[0].toLowerCase(), pres=p[1].toLowerCase();
  if(n.includes("sancor")) return IMG.sancor;
  if(n.includes("santa brígida")||n.includes("santa brigida")){
