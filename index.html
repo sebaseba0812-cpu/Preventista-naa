@@ -8377,6 +8377,43 @@ function renderClients(){
 // CLIENTES DE FIREBASE PARA ADMINISTRAR UBICACIONES
 let clientesAdminUbicaciones = [];
 
+ // PREVENTISTAS DISPONIBLES PARA TRANSFERIR CLIENTES
+let preventistasAdminTransferencia = [];
+
+async function cargarPreventistasAdminTransferencia(){
+
+  try{
+
+    const snapshot = await firebaseDB
+      .collection("users")
+      .get();
+
+    preventistasAdminTransferencia = snapshot.docs
+      .map(doc => ({
+        uid: doc.id,
+        ...doc.data()
+      }))
+      .filter(p =>
+        String(p.role || "").toLowerCase() === "preventista" &&
+        p.active !== false
+      )
+      .sort((a, b) =>
+        String(a.name || a.username || "").localeCompare(
+          String(b.name || b.username || ""),
+          "es"
+        )
+      );
+
+  }catch(error){
+
+    console.error("Error cargando preventistas para transferencia:", error);
+
+    preventistasAdminTransferencia = [];
+
+    throw error;
+  }
+} 
+
 async function cargarClientesAdminUbicaciones(){
 
   const usuario = JSON.parse(
@@ -8398,6 +8435,8 @@ async function cargarClientesAdminUbicaciones(){
 
   try{
 
+    await cargarPreventistasAdminTransferencia();
+    
     const snapshot = await firebaseDB
       .collection("clients")
       .get();
@@ -8455,6 +8494,18 @@ function filtrarClientesAdmin(){
       Number.isFinite(Number(c.longitude)) &&
       c.latitude !== "" &&
       c.longitude !== "";
+        const preventistaActualUid =
+      c.preventistaUid || c.ownerUid || c.user?.uid || "";
+
+    const preventistaActual = preventistasAdminTransferencia.find(
+      p => p.uid === preventistaActualUid
+    );
+
+    const nombrePreventistaActual =
+      preventistaActual?.name ||
+      preventistaActual?.username ||
+      c.user?.name ||
+      "Sin preventista asignado";
 
     return `
       <div class="product">
@@ -8463,6 +8514,36 @@ function filtrarClientesAdmin(){
 
         <div class="small">
           Cliente N.º: ${esc(c.clientNumber || "Sin número")}
+        </div>
+
+          <div class="small" style="margin-top:8px">
+          👤 Preventista actual:
+          <strong>${esc(nombrePreventistaActual)}</strong>
+        </div>
+
+        <div style="margin-top:8px">
+          <label>Cambiar preventista</label>
+
+          <select data-transfer-select="${esc(c.id)}">
+            <option value="">Seleccionar preventista</option>
+
+            ${preventistasAdminTransferencia.map(p => `
+              <option
+                value="${esc(p.uid)}"
+                ${p.uid === preventistaActualUid ? "selected" : ""}>
+                ${esc(p.name || p.username || "Sin nombre")}
+              </option>
+            `).join("")}
+
+          </select>
+
+          <button
+            type="button"
+            class="primary"
+            data-transfer-client="${esc(c.id)}"
+            style="margin-top:8px">
+            🔄 Confirmar cambio de preventista
+          </button>
         </div>
 
         <div class="muted">
@@ -8500,8 +8581,116 @@ function filtrarClientesAdmin(){
 
   });
 
+  lista.querySelectorAll("[data-transfer-client]").forEach(boton => {
+
+    boton.addEventListener("click", function(){
+
+      transferirClientePreventista(this.dataset.transferClient);
+
+    });
+
+  });
+  
 }
 
+// TRANSFERIR CLIENTE A OTRO PREVENTISTA
+async function transferirClientePreventista(clienteId){
+
+  if(user?.role !== "admin"){
+    alert("Solamente el administrador puede transferir clientes.");
+    return;
+  }
+
+  const cliente = clientesAdminUbicaciones.find(
+    c => String(c.id) === String(clienteId)
+  );
+
+  if(!cliente){
+    alert("No se encontró el cliente.");
+    return;
+  }
+
+  const select = document.querySelector(
+    `[data-transfer-select="${clienteId}"]`
+  );
+
+  const nuevoUid = select?.value || "";
+
+  if(!nuevoUid){
+    alert("Primero seleccioná el nuevo preventista.");
+    return;
+  }
+
+  const nuevoPreventista = preventistasAdminTransferencia.find(
+    p => p.uid === nuevoUid
+  );
+
+  if(!nuevoPreventista){
+    alert("El preventista seleccionado no está disponible.");
+    return;
+  }
+
+  const nombreNuevo =
+    nuevoPreventista.name ||
+    nuevoPreventista.username ||
+    "Preventista";
+
+  const uidActual =
+    cliente.preventistaUid ||
+    cliente.ownerUid ||
+    cliente.user?.uid ||
+    "";
+
+  if(uidActual === nuevoUid){
+    alert("Este cliente ya pertenece a ese preventista.");
+    return;
+  }
+
+  if(!confirm(
+    "¿Confirmás transferir el cliente " +
+    cliente.name +
+    " a " +
+    nombreNuevo +
+    "?"
+  )){
+    return;
+  }
+
+  try{
+
+    await firebaseDB
+      .collection("clients")
+      .doc(String(cliente.id))
+      .update({
+        ownerUid: nuevoUid,
+        preventistaUid: nuevoUid,
+        user: {
+          uid: nuevoUid,
+          name: nombreNuevo
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+    cliente.ownerUid = nuevoUid;
+    cliente.preventistaUid = nuevoUid;
+    cliente.user = {
+      uid: nuevoUid,
+      name: nombreNuevo
+    };
+
+    alert("Cliente transferido correctamente a " + nombreNuevo + ".");
+
+    filtrarClientesAdmin();
+
+  }catch(error){
+
+    console.error("Error transfiriendo cliente:", error);
+
+    alert("No se pudo transferir el cliente. Revisá Firebase.");
+
+  }
+}
+  
   // EDITOR DE UBICACION PARA ADMINISTRADOR
 
 let adminLocationMap = null;
