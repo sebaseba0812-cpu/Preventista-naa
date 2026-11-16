@@ -13138,7 +13138,7 @@ function iniciarMapaClienteManual(){
   if(!adminManualClientMap){
 
     adminManualClientMap = L.map("adminManualClientMap")
-      .setView([POSADAS_LAT, POSADAS_LNG], 13);
+      .setView([-27.3621, -55.9009], 13);
 
     L.tileLayer(
       "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -13203,7 +13203,7 @@ function centrarMapaClienteManual(){
 
   if(adminManualClientMap){
     adminManualClientMap.setView(
-      [POSADAS_LAT, POSADAS_LNG],
+      [-27.3621, -55.9009],,
       13
     );
   }
