@@ -1601,31 +1601,33 @@ const claveBase = data.originalName && data.originalPresentation
   ? data.originalName + "|" + data.originalPresentation
   : key;
 
-      const precios = Array.isArray(data.prices)
-        ? data.prices.map(t=>[
-            Number(t.from) || 1,
-            Number(t.price) || 0
-          ])
-        : [[1, Number(data.price) || 0]];
+     const precios = Array.isArray(data.prices) && data.prices.length > 0
+  ? data.prices.map(t=>[
+      Number(t.from) || 1,
+      Number(t.price) || 0
+    ])
+  : null;
 
       if(data.isCustom === true){
         productosLocales.set(key,[
           data.name,
           data.presentation,
           data.unit || "unidad",
-          precios,
+          precios || [[1, Number(data.price) || 0]],
           Number(data.packagingQuantity) || 1,
           Number(data.minoristaPrice) || 0
         ]);
       }else{
         const actual = productOverrides[claveBase] || {};
 
-        productOverrides[key] = {
+        productOverrides[claveBase] = {
           ...actual,
           name:data.name,
           pres:data.presentation,
           unit:data.unit || actual.unit,
-          prices:precios,
+          prices: precios || (Array.isArray(actual.prices) && actual.prices.length > 0
+  ? actual.prices
+  : [[1, Number(data.price) || 0]]),
           packQty:Number(data.packagingQuantity) || actual.packQty || 1,
          minoristaPrice: data.minoristaPrice !== undefined
   ? (Number(data.minoristaPrice) || 0)
@@ -1702,7 +1704,7 @@ function getProducts(){
           o.name || p[0],
           o.pres || p[1],
           o.unit || p[2],
-          o.prices || p[3],
+          Array.isArray(o.prices) && o.prices.length > 0 ? o.prices : p[3],
           Number(o.packQty)||Number(p[4])||1,
           Number(o.minoristaPrice)||0
         ]
@@ -1774,10 +1776,14 @@ async function asegurarStockDesdeCatalogo(products){
         name:p[0],
         presentation:p[1],
         unit:p[2],
-        prices:(p[3]||[]).map(t=>({
-          from:t[0],
-          price:t[1]
-        })),
+        prices: Array.isArray(p[3]) && p[3].length > 0
+  ? p[3].map(t=>({
+      from:t[0],
+      price:t[1]
+    }))
+  : (Array.isArray(existingData.prices) && existingData.prices.length > 0
+      ? existingData.prices
+      : []),
         packagingQuantity:Number(p[4])||1,
 minoristaPrice:Number(p[5])||0,
        isCustom: existing.exists
@@ -9691,9 +9697,19 @@ async function showSelectedClient(){
   }
 }
 function tierPrice(p,q){
-let price=p[3][0][1];
-p[3].forEach(t=>{if(q>=t[0])price=t[1]});
-return price;
+  const tiers = Array.isArray(p[3]) && p[3].length
+    ? p[3]
+    : [[1,0]];
+
+  let price = Number(tiers[0][1]) || 0;
+
+  tiers.forEach(t=>{
+    if(q >= Number(t[0])){
+      price = Number(t[1]) || 0;
+    }
+  });
+
+  return price;
 }
 function keyFor(p){return encodeURIComponent(p[0]+"|"+p[1])}
 
