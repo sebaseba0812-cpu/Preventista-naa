@@ -14959,6 +14959,8 @@ async function cargarRangoClientes() {
 }
 
   
+
+
 async function imprimirHojaRuta() {
   const vehiculo = prompt("Ingresá el número de vehículo (1 o 2):");
 
@@ -14968,133 +14970,475 @@ async function imprimirHojaRuta() {
   }
 
   try {
-    const snap = await firebaseDB.collection("orders").get();
+    const [pedidosSnap, clientesSnap, personalSnap] = await Promise.all([
+      firebaseDB.collection("orders").get(),
+      firebaseDB.collection("clients").get(),
+      firebaseDB.collection("users").get()
+    ]);
 
-    const pedidos = snap.docs.map(doc => ({
+    const repartidores = personalSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(u =>
+        String(u.role || "").toLowerCase() === "repartidor" &&
+        u.active !== false
+      );
+
+    if (!repartidores.length) {
+      alert("No hay repartidores activos registrados.");
+      return;
+    }
+
+    const opciones = repartidores
+      .map((r, i) => `${i + 1}. ${r.name || r.username || "Sin nombre"}`)
+      .join("\n");
+
+    const seleccion = prompt(
+      "Seleccioná el repartidor:\n\n" + opciones +
+      "\n\nIngresá el número correspondiente:"
+    );
+
+    const indice = Number(seleccion) - 1;
+
+    if (
+      seleccion === null ||
+      !Number.isInteger(indice) ||
+      indice < 0 ||
+      indice >= repartidores.length
+    ) {
+      alert("Seleccioná un repartidor válido.");
+      return;
+    }
+
+    const repartidor = repartidores[indice];
+
+    const clientes = clientesSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
-    })).filter(p => {
-      const estado = String(p.status || p.estado || "")
-        .toLowerCase().trim();
+    }));
 
-     
-const estadoPreparado = [
-  "preparado",
-  "preparada",
-  "preparados",
-  "preparadas"
-].includes(estado);
+    const pedidos = pedidosSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => {
+        const estado = String(p.status || p.estado || "")
+          .toLowerCase().trim();
 
-const estaPendiente = p.repartoStatus === "pendiente";
+        const preparado = [
+          "preparado", "preparada", "preparados", "preparadas"
+        ].includes(estado);
 
-const vehiculoAsignado = String(
-  p.vehiculoReparto || p.repartoVehiculo || ""
-) === vehiculo;
+        const pendiente = p.repartoStatus === "pendiente";
 
-const estadoReparto = String(
-  p.repartoStatus || ""
-).toLowerCase();
+        const asignado = String(
+          p.vehiculoReparto || p.repartoVehiculo || ""
+        ) === vehiculo;
 
-const puedeSalir = estaPendiente ||
-  (
-    estadoPreparado &&
-    !["en_reparto", "entregada", "anulada"].includes(estadoReparto)
-  );
+        const estadoReparto = String(p.repartoStatus || "").toLowerCase();
 
-const anulada = [
-  "anulado",
-  "anulada",
-  "cancelado",
-  "cancelada"
-].includes(estado);
+        const anulada = [
+          "anulado", "anulada", "cancelado", "cancelada"
+        ].includes(estado);
 
-return !anulada && vehiculoAsignado && puedeSalir;
-    });
+        return !anulada && asignado &&
+          (pendiente || (
+            preparado &&
+            !["en_reparto", "entregada", "anulada"].includes(estadoReparto)
+          ));
+      });
 
     if (!pedidos.length) {
-      alert("No hay pedidos preparados asignados al Vehículo " + vehiculo + ".");
+      alert("No hay pedidos disponibles para el Vehículo " + vehiculo + ".");
       return;
     }
 
-    const filas = pedidos.map(p => {
-      const cliente = p.clientName || p.client || p.cliente || "Sin cliente";
-      const boleta = p.boletaNumber || p.invoiceNumber || p.boleta || p.invoice || "Sin número";
-      const clienteDatos = clients.find(c => String(c.id) === String(p.clientId));
-const direccion = clienteDatos
-  ? clientAddress(clienteDatos)
-  : (p.address || p.street || p.direccion || "Sin dirección");
-      const zona = p.zone || p.zona || "";
-      const altura = p.height || p.altura || "";
-      const telefono = p.phone || p.telefono || "";
-      const observaciones = p.obs || p.observaciones || "";
-      const estadoEntrega = p.repartoStatus === "pendiente"
-  ? "PENDIENTE - " + (p.repartoMotivoPendiente || "Sin motivo")
-  : "NUEVA";
+    const puntos = [];
+    const filas = [];
+    let sinUbicacion = 0;
 
-      return `
-        <tr>
-          <td>${esc(String(boleta))}</td>
-          <td>${esc(String(cliente))}</td>
-          <td>${esc([zona, direccion, altura].filter(Boolean).join(" "))}</td>
-          <td>${esc(String(telefono))}</td>
-         <td>${esc(String(observaciones))}</td>
-<td>${esc(String(estadoEntrega))}</td>
-<td class="check"></td>
-        </tr>`;
-    }).join("");
+    pedidos.forEach(p => {
+      const cliente = clientes.find(c =>
+        String(c.id) === String(p.clientId)
+      );
 
-    const ventana = window.open("", "_blank");
+      const lat = Number(cliente?.latitude);
+      const lng = Number(cliente?.longitude);
 
-    if (!ventana) {
-      alert("El navegador bloqueó la ventana. Permití las ventanas emergentes e intentá de nuevo.");
+      if (
+        !cliente ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        !lat ||
+        !lng
+      ) {
+        sinUbicacion++;
+        return;
+      }
+
+      const punto = {
+        nombre: cliente.name || p.clientName || p.client || "Sin cliente",
+        direccion: [
+          cliente.zone || p.zone || "",
+          cliente.street || p.address || p.street || "",
+          cliente.height || p.height || ""
+        ].filter(Boolean).join(" "),
+        lat,
+        lng,
+        boleta: p.boletaNumber || p.invoiceNumber ||
+          p.boleta || p.invoice || "Sin número"
+      };
+
+      puntos.push(punto);
+      filas.push(punto);
+    });
+
+    if (!puntos.length) {
+      alert(
+        "Los pedidos seleccionados no tienen ubicaciones registradas."
+      );
       return;
     }
 
-    ventana.document.write(`
+    const escapeHTML = value =>
+      String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[c]);
+
+    const filasHTML = filas.map((p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeHTML(p.boleta)}</td>
+        <td>${escapeHTML(p.nombre)}</td>
+        <td>${escapeHTML(p.direccion)}</td>
+        <td class="check"></td>
+      </tr>
+    `).join("");
+
+    const datosMapa = JSON.stringify(puntos)
+      .replace(/</g, "\\u003c");
+
+    let modal = document.getElementById("rutaPreviewModal");
+
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "rutaPreviewModal";
+
+      modal.style.cssText = `
+        display:none;
+        position:fixed;
+        inset:0;
+        background:rgba(0,0,0,.80);
+        z-index:100001;
+        padding:12px;
+        overflow:auto;
+      `;
+
+      modal.innerHTML = `
+        <div style="
+          background:white;
+          color:black;
+          border-radius:12px;
+          padding:12px;
+          max-width:1200px;
+          margin:auto;
+        ">
+          <div style="
+            display:flex;
+            gap:10px;
+            margin-bottom:12px;
+          ">
+            <button class="primary"
+              onclick="imprimirVistaPreviaRuta()">
+              🖨️ Imprimir hoja de ruta
+            </button>
+
+            <button class="secondary"
+              onclick="cerrarVistaPreviaRuta()">
+              ✖ Cerrar
+            </button>
+          </div>
+
+          <iframe id="rutaPreviewFrame"
+            style="
+              width:100%;
+              height:80vh;
+              border:1px solid #ccc;
+              background:white;
+            ">
+          </iframe>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    const marco = document.getElementById("rutaPreviewFrame");
+
+    marco.srcdoc = `
       <!DOCTYPE html>
       <html lang="es">
       <head>
         <meta charset="UTF-8">
-        <title>Hoja de ruta - Vehículo ${vehiculo}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <title>Hoja de ruta</title>
+
+        <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
         <style>
-          body { font-family: Arial, sans-serif; color: #000; background: #fff; padding: 18px; }
-          h1, p { margin-bottom: 8px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { border: 1px solid #000; padding: 7px; text-align: left; }
-          th { background: #fff; }
-          .check { width: 45px; height: 28px; }
-          @media print { button { display: none; } }
+          body {
+            font-family: Arial, sans-serif;
+            color: #000;
+            background: #fff;
+            padding: 15px;
+          }
+
+          h1, h2, p {
+            margin: 5px 0;
+          }
+
+          .encabezado {
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+          }
+
+          #mapaRuta {
+            width: 100%;
+            height: 520px;
+            border: 1px solid #000;
+            margin: 12px 0;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+
+          th, td {
+            border: 1px solid #000;
+            padding: 7px;
+            text-align: left;
+          }
+
+          .check {
+            width: 65px;
+            height: 25px;
+          }
+
+          .aviso {
+            font-size: 11px;
+            margin: 8px 0;
+          }
+
+          @media print {
+            @page {
+              size: A4 landscape;
+              margin: 8mm;
+            }
+
+            body {
+              padding: 0;
+            }
+
+            #mapaRuta {
+              height: 420px;
+              break-inside: avoid;
+            }
+
+            table {
+              break-inside: auto;
+            }
+
+            tr {
+              break-inside: avoid;
+            }
+          }
         </style>
       </head>
+
       <body>
-        <h1>DISTRIBUIDORA N.A.A. S.A.S.</h1>
-        <h2>Hoja de ruta — Vehículo ${vehiculo}</h2>
-        <p>Fecha: ${new Date().toLocaleDateString("es-AR")}</p>
-        <p>Pedidos: ${pedidos.length}</p>
+        <div class="encabezado">
+          <h1>DISTRIBUIDORA N.A.A. S.A.S.</h1>
+          <h2>Hoja de ruta - Vehículo ${vehiculo}</h2>
+          <p><b>Repartidor:</b> ${escapeHTML(repartidor.name || repartidor.username)}</p>
+          <p><b>Fecha:</b> ${new Date().toLocaleDateString("es-AR")}</p>
+          <p><b>Comercios ubicados:</b> ${puntos.length}</p>
+          <p><b>Pedidos sin ubicación:</b> ${sinUbicacion}</p>
+        </div>
+
+        <h2>📍 Mapa del recorrido</h2>
+        <div id="mapaRuta"></div>
+
+        <p class="aviso">
+          Los números del mapa corresponden al orden de las paradas.
+        </p>
+
+        <h2>Listado de entregas</h2>
+
         <table>
           <thead>
             <tr>
-              <th>Boleta</th><th>Cliente</th><th>Dirección</th>
-              <th>Teléfono</th>
-<th>Observaciones</th>
-<th>Estado de entrega</th>
-<th>Entregado</th>
+              <th>Parada</th>
+              <th>Boleta</th>
+              <th>Comercio</th>
+              <th>Dirección</th>
+              <th>Entregado</th>
             </tr>
           </thead>
-          <tbody>${filas}</tbody>
+          <tbody id="listaParadas">
+            ${filasHTML}
+          </tbody>
         </table>
-        <p><button onclick="window.print()">Imprimir hoja de ruta</button></p>
+
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+
+        <script>
+          const puntos = ${datosMapa};
+
+          async function prepararMapa() {
+            const mapa = L.map("mapaRuta");
+
+            L.tileLayer(
+              "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+              {
+                attribution: "&copy; OpenStreetMap"
+              }
+            ).addTo(mapa);
+
+            let ordenados = [...puntos];
+            let geometria = null;
+
+            if (puntos.length >= 2) {
+              try {
+                const coordenadas = puntos
+                  .map(p => p.lng + "," + p.lat)
+                  .join(";");
+
+                const url =
+                  "https://router.project-osrm.org/trip/v1/driving/" +
+                  coordenadas +
+                  "?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson";
+
+                const respuesta = await fetch(url);
+                const resultado = await respuesta.json();
+
+                if (
+                  resultado.code === "Ok" &&
+                  resultado.trips?.length
+                ) {
+                  ordenados = puntos.map((p, i) => ({
+                    ...p,
+                    orden: resultado.waypoints[i].waypoint_index
+                  })).sort((a, b) => a.orden - b.orden);
+
+                  geometria = resultado.trips[0].geometry;
+                }
+              } catch (error) {
+                console.warn("No se pudo calcular la ruta:", error);
+              }
+            }
+
+            const marcadores = [];
+
+            ordenados.forEach((p, i) => {
+              const icono = L.divIcon({
+                className: "",
+                html: '<div style="' +
+                  'background:#1769ff;color:white;' +
+                  'border:2px solid white;border-radius:50%;' +
+                  'width:28px;height:28px;display:flex;' +
+                  'align-items:center;justify-content:center;' +
+                  'font-weight:bold;box-shadow:0 1px 5px #555;">' +
+                  (i + 1) + '</div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+              });
+
+              const marcador = L.marker(
+                [p.lat, p.lng],
+                { icon: icono }
+              ).addTo(mapa);
+
+              marcador.bindPopup(
+                "<b>Parada " + (i + 1) + "</b><br>" +
+                p.nombre + "<br>" + p.direccion
+              );
+
+              marcadores.push(marcador);
+            });
+
+            if (geometria) {
+              L.geoJSON(geometria, {
+                style: {
+                  color: "#1769ff",
+                  weight: 5,
+                  opacity: 0.85
+                }
+              }).addTo(mapa);
+            }
+
+            const limites = L.latLngBounds(
+              ordenados.map(p => [p.lat, p.lng])
+            );
+
+            mapa.fitBounds(limites, { padding: [30, 30] });
+
+            document.getElementById("listaParadas").innerHTML =
+              ordenados.map((p, i) => \`
+                <tr>
+                  <td>\${i + 1}</td>
+                  <td>\${p.boleta}</td>
+                  <td>\${p.nombre}</td>
+                  <td>\${p.direccion}</td>
+                  <td class="check"></td>
+                </tr>
+              \`).join("");
+
+            window.mapaRutaLista = true;
+          }
+
+          window.onload = prepararMapa;
+        <\/script>
       </body>
       </html>
-    `);
+    `;
 
-    ventana.document.close();
+    modal.style.display = "block";
 
   } catch (error) {
     console.error("Error generando hoja de ruta:", error);
     alert("No se pudo generar la hoja de ruta. Revisá la conexión con Firebase.");
   }
 }
+
+window.imprimirVistaPreviaRuta = function() {
+  const marco = document.getElementById("rutaPreviewFrame");
+
+  if (!marco || !marco.contentWindow) return;
+
+  const imprimir = () => {
+    marco.contentWindow.focus();
+    marco.contentWindow.print();
+  };
+
+  if (marco.contentWindow.mapaRutaLista) {
+    imprimir();
+  } else {
+    marco.onload = () => setTimeout(imprimir, 1500);
+  }
+};
+
+window.cerrarVistaPreviaRuta = function() {
+  const modal = document.getElementById("rutaPreviewModal");
+
+  if (modal) modal.style.display = "none";
+};
+
 
 
  
