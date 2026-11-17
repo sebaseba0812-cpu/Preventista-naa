@@ -262,7 +262,7 @@ body {
 <div class="loginbox">
 <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MDAiIGhlaWdodD0iMjIwIiB2aWV3Qm94PSIwIDAgODAwIDIyMCI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMjIwIiByeD0iMzIiIGZpbGw9IiMxMTE4MjciLz4KPGNpcmNsZSBjeD0iMTE1IiBjeT0iMTEwIiByPSI3NSIgZmlsbD0id2hpdGUiLz4KPHRleHQgeD0iMTE1IiB5PSIxMjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSI0MyIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzExMTgyNyI+Ti5BLkEuPC90ZXh0Pgo8dGV4dCB4PSIyMjUiIHk9IjEwMyIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjQzIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSJ3aGl0ZSI+RElTVFJJQlVJRE9SQTwvdGV4dD4KPHRleHQgeD0iMjI1IiB5PSIxNTMiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIzOCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiPk4uQS5BLiBTLkEuUy48L3RleHQ+Cjwvc3ZnPg==" style="display:block;width:100%;height:auto;margin:0 auto 14px;border-radius:16px" alt="DISTRIBUIDORA N.A.A. S.A.S.">
 <h2 style="text-align:center">DISTRIBUIDORA N.A.A. S.A.S.</h2>
-<p style="text-align:center;color:#64748b">Preventista Fácil · versión inicial</p>
+<p style="text-align:center;color:#64748b">Preventista Fácil · versión 10.102</p>
 <label>Usuario</label><input id="loginName" autocomplete="username" placeholder="Ej.: milagros.gonzalez">
 <label>Contraseña</label><input id="loginPass" type="password" autocomplete="current-password" placeholder="Contraseña">
 <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:400;cursor:pointer">
@@ -691,7 +691,7 @@ body {
   <button class="secondary" style="margin-top:10px;width:100%" onclick="syncProductsToFirebase()">🔄 Sincronizar productos con Firebase</button>
 </div>
 <div class="card"><h3>✏️ Editar productos del catálogo</h3>
-<p class="small">Acá aparecen también los productos que ya vienen cargados en la pantalla principal. Podés cambiar precios, presentación, empaque o nombre. Los cambios quedan guardados en este dispositivo.</p>
+<p class="small">Acá aparecen también los productos que ya vienen cargados en la pantalla principal. Podés cambiar precios, presentación, empaque o nombre. Los cambios se guardan en el catálogo compartido y se reflejan en los dispositivos de los preventistas.</p>
 <div id="catalogEditor"></div>
 </div>
 <div class="card"><h3>Productos manuales</h3><div id="manualProducts"></div></div>
@@ -1594,40 +1594,43 @@ async function cargarEstadosProductosFirebase(){
         productImageById[doc.id] = data.imageUrl;
       }
 
-      if(data.name && data.presentation){
+      if(!data.name || !data.presentation) return;
 
-        if(data.minoristaPrice !== undefined){
-          const key = data.name + "|" + data.presentation;
-          const actual = productOverrides[key] || {};
+     const key = data.name + "|" + data.presentation;
+const claveBase = data.originalName && data.originalPresentation
+  ? data.originalName + "|" + data.originalPresentation
+  : key;
 
-          productOverrides[key] = {
-            ...actual,
-            minoristaPrice: Number(data.minoristaPrice) || 0
-          };
-        }
+      const precios = Array.isArray(data.prices)
+        ? data.prices.map(t=>[
+            Number(t.from) || 1,
+            Number(t.price) || 0
+          ])
+        : [[1, Number(data.price) || 0]];
 
-        if(data.isCustom === true){
-          const precios = Array.isArray(data.prices)
-            ? data.prices.map(t=>[
-                Number(t.from) || 1,
-                Number(t.price) || 0
-              ])
-            : [[1, Number(data.price) || 0]];
+      if(data.isCustom === true){
+        productosLocales.set(key,[
+          data.name,
+          data.presentation,
+          data.unit || "unidad",
+          precios,
+          Number(data.packagingQuantity) || 1,
+          Number(data.minoristaPrice) || 0
+        ]);
+      }else{
+        const actual = productOverrides[claveBase] || {};
 
-          const producto = [
-            data.name,
-            data.presentation,
-            data.unit || "unidad",
-            precios,
-            Number(data.packagingQuantity) || 1,
-            Number(data.minoristaPrice) || 0
-          ];
-
-          productosLocales.set(
-            data.name + "|" + data.presentation,
-            producto
-          );
-        }
+        productOverrides[key] = {
+          ...actual,
+          name:data.name,
+          pres:data.presentation,
+          unit:data.unit || actual.unit,
+          prices:precios,
+          packQty:Number(data.packagingQuantity) || actual.packQty || 1,
+         minoristaPrice: data.minoristaPrice !== undefined
+  ? (Number(data.minoristaPrice) || 0)
+  : (Number(actual.minoristaPrice) || 0)
+        };
       }
     });
 
@@ -1649,7 +1652,7 @@ async function cargarEstadosProductosFirebase(){
     loadPromotionProductOptions();
 
   }catch(error){
-    console.error("No se pudieron cargar los productos de Firebase:", error);
+    console.error("No se pudieron cargar los productos de Firebase:",error);
   }
 }
 async function toggleProductActive(name, presentation){
@@ -1777,6 +1780,9 @@ async function asegurarStockDesdeCatalogo(products){
         })),
         packagingQuantity:Number(p[4])||1,
 minoristaPrice:Number(p[5])||0,
+       isCustom: existing.exists
+  ? existingData.isCustom === true
+  : customProducts.some(c=>c[0]===p[0] && c[1]===p[1]), 
         active:existing.exists ? existingData.active!==false : true,
         updatedAt:firebase.firestore.FieldValue.serverTimestamp()
       },{merge:true});
@@ -8331,6 +8337,8 @@ async function saveCatalogProduct(item){
       minoristaPrice: minoristaPrice,
       active: anterior.exists ? anterior.data().active !== false : true,
       isCustom: item.type === "manual",
+      originalName: item.type === "base" ? item.original[0] : name,
+originalPresentation: item.type === "base" ? item.original[1] : pres,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
