@@ -671,7 +671,18 @@ body {
 <label>Unidad / empaque</label><input id="pUnit" placeholder="Ej.: bulto, caja, unidad">
  <label>Cantidad de unidades por empaque</label>
 <input id="pPackQty" type="number" min="1" step="1" value="1" placeholder="Ej.: 8, 10, 12"> 
-<label>Precio inicial</label><input id="pPrice" type="number" min="0" step="0.01" placeholder="0">
+<label>Precios mayoristas según cantidad</label>
+
+<div id="pTiersContainer">
+  <div class="price-tier-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+    <input class="pTierQty" type="number" min="1" step="1" value="1" placeholder="Desde cantidad" style="width:45%">
+    <input class="pTierPrice" type="number" min="0" step="0.01" placeholder="Precio por caja" style="width:55%">
+  </div>
+</div>
+
+<button type="button" class="secondary" style="width:100%;margin:8px 0" onclick="agregarFilaPrecioNuevo()">
+  ➕ Agregar otro precio por cantidad
+</button>
  
 <label>Precio minorista ($)</label>
 <input id="pMinoristaPrice" type="number" min="0" step="0.01" placeholder="0">
@@ -1564,46 +1575,83 @@ function productIsActive(product){
 async function cargarEstadosProductosFirebase(){
   try{
     const snap = await firebaseDB.collection("products").get();
+
     productStatusById = {};
     productImageById = {};
-   
-snap.forEach(doc => {
-  const data = doc.data() || {};
 
-  productStatusById[doc.id] = data.active !== false;
-  if(data.imageUrl){
-  productImageById[doc.id] = data.imageUrl;
-}
+    const productosLocales = new Map();
 
-  if(
-    data.minoristaPrice !== undefined &&
-    data.name &&
-    data.presentation
-  ){
-    const key = data.name + "|" + data.presentation;
-    const actual = productOverrides[key] || {};
+    customProducts.forEach(p=>{
+      productosLocales.set(p[0] + "|" + p[1], p);
+    });
 
-    productOverrides[key] = {
-      ...actual,
-      minoristaPrice: Number(data.minoristaPrice) || 0
-    };
-  }
-});
+    snap.forEach(doc=>{
+      const data = doc.data() || {};
 
-localStorage.setItem(
-  "NAA_PRODUCT_OVERRIDES",
-  JSON.stringify(productOverrides)
-);
+      productStatusById[doc.id] = data.active !== false;
+
+      if(data.imageUrl){
+        productImageById[doc.id] = data.imageUrl;
+      }
+
+      if(data.name && data.presentation){
+
+        if(data.minoristaPrice !== undefined){
+          const key = data.name + "|" + data.presentation;
+          const actual = productOverrides[key] || {};
+
+          productOverrides[key] = {
+            ...actual,
+            minoristaPrice: Number(data.minoristaPrice) || 0
+          };
+        }
+
+        if(data.isCustom === true){
+          const precios = Array.isArray(data.prices)
+            ? data.prices.map(t=>[
+                Number(t.from) || 1,
+                Number(t.price) || 0
+              ])
+            : [[1, Number(data.price) || 0]];
+
+          const producto = [
+            data.name,
+            data.presentation,
+            data.unit || "unidad",
+            precios,
+            Number(data.packagingQuantity) || 1,
+            Number(data.minoristaPrice) || 0
+          ];
+
+          productosLocales.set(
+            data.name + "|" + data.presentation,
+            producto
+          );
+        }
+      }
+    });
+
+    customProducts = Array.from(productosLocales.values());
+
+    localStorage.setItem(
+      "NAA_CUSTOM_PRODUCTS",
+      JSON.stringify(customProducts)
+    );
+
+    localStorage.setItem(
+      "NAA_PRODUCT_OVERRIDES",
+      JSON.stringify(productOverrides)
+    );
 
     renderProducts();
     renderCatalogEditor();
     renderManualProducts();
     loadPromotionProductOptions();
+
   }catch(error){
-    console.error("No se pudieron cargar los estados de productos:", error);
+    console.error("No se pudieron cargar los productos de Firebase:", error);
   }
 }
-
 async function toggleProductActive(name, presentation){
   const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
   if(usuario.role !== "admin"){
@@ -8215,54 +8263,167 @@ function restoreCatalogProduct(item){
   showToast("↩️ Producto restaurado");
 }
 
+ function agregarFilaPrecioNuevo(){
+  const container = document.getElementById("pTiersContainer");
 
-function addManualProduct(){
-  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
-    alert('Solo el administrador puede agregar productos.');
+  if(!container) return;
+
+  const fila = document.createElement("div");
+
+  fila.className = "price-tier-row";
+  fila.style.cssText = "display:flex;gap:8px;margin-bottom:8px;align-items:center";
+
+  fila.innerHTML = `
+    <input
+      class="pTierQty"
+      type="number"
+      min="1"
+      step="1"
+      placeholder="Desde cantidad"
+      style="width:45%"
+    >
+
+    <input
+      class="pTierPrice"
+      type="number"
+      min="0"
+      step="0.01"
+      placeholder="Precio por caja"
+      style="width:45%"
+    >
+
+    <button
+      type="button"
+      onclick="this.parentElement.remove()"
+      title="Eliminar fila"
+      style="width:10%;padding:8px"
+    >✖</button>
+  `;
+
+  container.appendChild(fila);
+} 
+
+
+async function addManualProduct(){
+  const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+  if(usuario.role !== "admin"){
+    alert("Solo el administrador puede agregar productos.");
     return;
   }
 
-  let name=document.getElementById("pName").value.trim(),
-      pres=document.getElementById("pPres").value.trim(),
-      unit=document.getElementById("pUnit").value.trim()||"unidad",
-      packQty=Math.max(1,parseInt(document.getElementById("pPackQty").value,10)||1),
-      price=Number(document.getElementById("pPrice").value),
-      minoristaPrice=Math.max(0,Number(document.getElementById("pMinoristaPrice").value)||0);
+  const name = document.getElementById("pName").value.trim();
+  const pres = document.getElementById("pPres").value.trim();
+  const unit = document.getElementById("pUnit").value.trim() || "unidad";
+  const packQty = Math.max(1, parseInt(document.getElementById("pPackQty").value,10) || 1);
+  const minoristaPrice = Math.max(0, Number(document.getElementById("pMinoristaPrice").value) || 0);
 
-  if(!name||!pres||!price||price<0){
-    alert("Completá nombre, presentación y precio mayorista");
+  const filas = Array.from(document.querySelectorAll("#pTiersContainer .price-tier-row"));
+
+  const precios = filas.map(fila=>({
+    cantidad: Number(fila.querySelector(".pTierQty").value),
+    precio: Number(fila.querySelector(".pTierPrice").value)
+  }));
+
+  if(!name || !pres){
+    alert("Completá el nombre y la presentación del producto.");
     return;
   }
 
-  customProducts.push([
-    name,
-    pres,
-    unit,
-    [[1,price]],
-    packQty,
-    minoristaPrice
-  ]);
+  if(precios.length === 0 || precios.some(p=>
+    !Number.isInteger(p.cantidad) ||
+    p.cantidad < 1 ||
+    !Number.isFinite(p.precio) ||
+    p.precio <= 0
+  )){
+    alert("Completá correctamente todas las cantidades y sus precios.");
+    return;
+  }
 
-  localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
-  registrarAuditoria({
-  accion: "producto_creado",
-  modulo: "productos",
-  descripcion: "Agregó el producto: " + name + " - " + pres + ". Precio mayorista: " + price,
-  registroId: name + "|" + pres
-});
+  precios.sort((a,b)=>a.cantidad-b.cantidad);
 
-  ["pName","pPres","pUnit","pPackQty","pPrice","pMinoristaPrice"].forEach(id=>{
-    document.getElementById(id).value="";
-  });
+  for(let i=1;i<precios.length;i++){
+    if(precios[i].cantidad === precios[i-1].cantidad){
+      alert("No podés repetir una misma cantidad en los precios.");
+      return;
+    }
+  }
 
-  document.getElementById("pPackQty").value="1";
+  const tablaPrecios = precios.map(p=>[p.cantidad,p.precio]);
+  const id = productFirebaseId(name,pres);
 
-  renderManualProducts();
-  renderCatalogEditor();
-  renderProducts();
-  alert("Producto agregado");
+  try{
+    const productRef = firebaseDB.collection("products").doc(id);
+    const existente = await productRef.get();
+
+    if(existente.exists){
+      alert("Ese producto ya existe en el catálogo.");
+      return;
+    }
+
+    const nuevoProducto = [
+      name,
+      pres,
+      unit,
+      tablaPrecios,
+      packQty,
+      minoristaPrice
+    ];
+
+    await productRef.set({
+      name: name,
+      presentation: pres,
+      unit: unit,
+      prices: tablaPrecios.map(p=>({
+        from: p[0],
+        price: p[1]
+      })),
+      packagingQuantity: packQty,
+      minoristaPrice: minoristaPrice,
+      active: true,
+      isCustom: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    customProducts.push(nuevoProducto);
+
+    localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
+
+    await asegurarStockDesdeCatalogo([nuevoProducto]);
+
+    registrarAuditoria({
+      accion: "producto_creado",
+      modulo: "productos",
+      descripcion: "Agregó el producto: " + name + " - " + pres,
+      registroId: id
+    });
+
+    ["pName","pPres","pUnit","pPackQty","pMinoristaPrice"].forEach(id=>{
+      document.getElementById(id).value="";
+    });
+
+    document.querySelectorAll("#pTiersContainer .price-tier-row").forEach((fila,i)=>{
+      if(i===0){
+        fila.querySelector(".pTierQty").value="1";
+        fila.querySelector(".pTierPrice").value="";
+      }else{
+        fila.remove();
+      }
+    });
+
+    document.getElementById("pPackQty").value="1";
+
+    await cargarEstadosProductosFirebase();
+
+    showToast("Producto guardado en el catálogo compartido");
+    alert("Producto agregado correctamente con todos sus precios por cantidad.");
+
+  }catch(error){
+    console.error("Error al guardar el producto:",error);
+    alert("No se pudo guardar el producto. Revisá la conexión y los permisos de Firebase.");
+  }
 }
-
 function removeManualProduct(i){
   if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
     alert('Solo el administrador puede eliminar productos.');
