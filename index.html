@@ -167,7 +167,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
- <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script> 
+ 
 
 <script>
   const firebaseConfig = {
@@ -183,7 +183,7 @@ button.primary,button.secondary,button.danger,button.gray{border:0;border-radius
 
   const firebaseAuth = firebase.auth();
   const firebaseDB = firebase.firestore();
-  const firebaseStorage = firebase.storage();
+ 
 </script>
 <style>
 /* Personalización visual Distribuidora N.A.A. */
@@ -665,7 +665,7 @@ body {
 <section id="productos" class="screen">
 <div class="card">
 <h2>📦 Productos</h2>
-<p class="small">Acá podés agregar o modificar productos manualmente. Los productos agregados quedan guardados en este dispositivo.</p>
+<p class="small">Acá podés agregar o modificar productos manualmente. Los productos agregados o modificados se guardan en el catálogo compartido y estarán disponibles para todos los preventistas.</p>
 <label>Nombre del producto</label><input id="pName" placeholder="Ej.: Yerba Cierda">
 <label>Presentación</label><input id="pPres" placeholder="Ej.: 1 kg">
 <label>Unidad / empaque</label><input id="pUnit" placeholder="Ej.: bulto, caja, unidad">
@@ -8168,84 +8168,216 @@ function renderCatalogEditor(){
   box.querySelectorAll(".catalog-toggle").forEach(btn=>btn.onclick=()=>toggleProductActive(decodeURIComponent(btn.dataset.name),decodeURIComponent(btn.dataset.pres)));
 }
 function editCatalogProduct(j){
-  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
-    alert('Solo el administrador puede editar productos.');
+  if((JSON.parse(localStorage.getItem("NAA_USER") || "{}").role || "") !== "admin"){
+    alert("Solo el administrador puede editar productos.");
     return;
   }
 
-  const built=PRODUCTS.map((p,i)=>({p:getProducts()[i], original:p, type:"base", index:i}));
-  const manual=customProducts.map((p,i)=>({p, original:p, type:"manual", index:i}));
-  const all=built.concat(manual), item=all[j];
-  if(!item)return;
+  const built = PRODUCTS.map((p,i)=>({
+    p:getProducts()[i],
+    original:p,
+    type:"base",
+    index:i
+  }));
 
-  const p=item.p, box=document.getElementById("catalogEditor");
-  const prices=p[3]||[];
-  const packQty=Number(p[4])||1;
+  const manual = customProducts.map((p,i)=>({
+    p,
+    original:p,
+    type:"manual",
+    index:i
+  }));
 
-  box.innerHTML='<div class="product" style="border:2px solid #0f766e">'+
-    '<h3>✏️ Editando producto</h3>'+
-    '<label>Nombre</label><input id="editName" value="'+esc(p[0])+'">'+
-    '<label>Presentación</label><input id="editPres" value="'+esc(p[1])+'">'+
-    '<label>Unidad / empaque</label><input id="editUnit" value="'+esc(p[2])+'">'+
-    '<label>Cantidad de unidades por empaque</label><input id="editPackQty" type="number" min="1" step="1" value="'+packQty+'">'+
-    '<label>Precio minorista ($)</label><input id="editMinoristaPrice" type="number" min="0" step="0.01" value="'+(Number(p[5])||0)+'" placeholder="Ingresar precio minorista">'+
-    '<h4 style="margin-bottom:6px">Precios por cantidad</h4>'+
-    prices.map((t,i)=>'<div class="row" style="margin-bottom:6px"><div><label>Desde cantidad</label><input id="editQty'+i+'" type="number" min="1" value="'+t[0]+'"></div><div><label>Precio</label><input id="editPrice'+i+'" type="number" min="0" step="0.01" value="'+t[1]+'"></div></div>').join('')+
-    '<div class="row" style="margin-top:10px"><button class="primary" type="button" id="saveEditBtn">💾 Guardar cambios</button><button class="secondary" type="button" id="cancelEditBtn">Cancelar</button></div>'+
-    (item.type==="base"?'<button class="danger" type="button" id="restoreEditBtn" style="margin-top:8px;width:100%">↩️ Restaurar precio original</button>':'')+
+  const all = built.concat(manual);
+  const item = all[j];
+
+  if(!item) return;
+
+  const p = item.p;
+  const box = document.getElementById("catalogEditor");
+  const prices = p[3] || [];
+  const packQty = Number(p[4]) || 1;
+
+  box.innerHTML =
+    '<div class="product" style="border:2px solid #0f766e">' +
+      '<h3>✏️ Editando producto</h3>' +
+
+      '<label>Nombre</label>' +
+      '<input id="editName" value="'+esc(p[0])+'">' +
+
+      '<label>Presentación</label>' +
+      '<input id="editPres" value="'+esc(p[1])+'">' +
+
+      '<label>Unidad / empaque</label>' +
+      '<input id="editUnit" value="'+esc(p[2])+'">' +
+
+      '<label>Cantidad de unidades por empaque</label>' +
+      '<input id="editPackQty" type="number" min="1" step="1" value="'+packQty+'">' +
+
+      '<label>Precio minorista ($)</label>' +
+      '<input id="editMinoristaPrice" type="number" min="0" step="0.01" value="'+(Number(p[5])||0)+'">' +
+
+      '<h4>Precios mayoristas por cantidad</h4>' +
+
+      '<div id="editPriceTiers">' +
+        prices.map((t,i)=>
+          '<div class="edit-tier-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">' +
+            '<input class="edit-tier-qty" type="number" min="1" step="1" value="'+t[0]+'" placeholder="Desde cantidad" style="width:40%">' +
+            '<input class="edit-tier-price" type="number" min="0" step="0.01" value="'+t[1]+'" placeholder="Precio por caja" style="width:45%">' +
+            '<button type="button" class="danger" onclick="this.parentElement.remove()" style="width:15%">✖</button>' +
+          '</div>'
+        ).join("") +
+      '</div>' +
+
+      '<button type="button" class="secondary" id="addEditTierBtn" style="width:100%;margin:8px 0">' +
+        '➕ Agregar otro precio por cantidad' +
+      '</button>' +
+
+      '<div class="row" style="margin-top:10px">' +
+        '<button class="primary" type="button" id="saveEditBtn">💾 Guardar cambios</button>' +
+        '<button class="secondary" type="button" id="cancelEditBtn">Cancelar</button>' +
+      '</div>' +
+
+      (item.type==="base"
+        ? '<button class="danger" type="button" id="restoreEditBtn" style="margin-top:8px;width:100%">↩️ Restaurar precio original</button>'
+        : '') +
+
     '</div>';
 
-  document.getElementById("saveEditBtn").onclick=()=>saveCatalogProduct(item);
-  document.getElementById("cancelEditBtn").onclick=renderCatalogEditor;
+  document.getElementById("addEditTierBtn").onclick = function(){
+    const container = document.getElementById("editPriceTiers");
 
-  const rb=document.getElementById("restoreEditBtn");
-  if(rb)rb.onclick=()=>restoreCatalogProduct(item);
+    const fila = document.createElement("div");
+    fila.className = "edit-tier-row";
+    fila.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
+
+    fila.innerHTML =
+      '<input class="edit-tier-qty" type="number" min="1" step="1" placeholder="Desde cantidad" style="width:40%">' +
+      '<input class="edit-tier-price" type="number" min="0" step="0.01" placeholder="Precio por caja" style="width:45%">' +
+      '<button type="button" class="danger" style="width:15%">✖</button>';
+
+    fila.querySelector("button").onclick = ()=>fila.remove();
+
+    container.appendChild(fila);
+  };
+
+  document.getElementById("saveEditBtn").onclick = ()=>saveCatalogProduct(item);
+  document.getElementById("cancelEditBtn").onclick = renderCatalogEditor;
+
+  const rb = document.getElementById("restoreEditBtn");
+  if(rb) rb.onclick = ()=>restoreCatalogProduct(item);
 }
-function saveCatalogProduct(item){
-  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
-    alert('Solo el administrador puede editar productos.');
+async function saveCatalogProduct(item){
+  const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+  if(usuario.role !== "admin"){
+    alert("Solo el administrador puede editar productos.");
     return;
   }
 
-  const name=document.getElementById("editName").value.trim();
-  const pres=document.getElementById("editPres").value.trim();
-  const unit=document.getElementById("editUnit").value.trim()||"unidad";
-  const packQty=Math.max(1,parseInt(document.getElementById("editPackQty").value,10)||1);
-  const minoristaPrice=Math.max(
-  0,
-  Number(document.getElementById("editMinoristaPrice").value)||0
-);
+  const name = document.getElementById("editName").value.trim();
+  const pres = document.getElementById("editPres").value.trim();
+  const unit = document.getElementById("editUnit").value.trim() || "unidad";
+  const packQty = Math.max(1,parseInt(document.getElementById("editPackQty").value,10) || 1);
+  const minoristaPrice = Math.max(0,Number(document.getElementById("editMinoristaPrice").value) || 0);
 
-  if(!name||!pres){
-    alert("Completá nombre y presentación");
+  if(!name || !pres){
+    alert("Completá nombre y presentación.");
     return;
   }
 
-  const prices=(item.p[3]||[]).map((t,i)=>[
-    Math.max(1,parseInt(document.getElementById("editQty"+i).value,10)||t[0]),
-    Math.max(0,Number(document.getElementById("editPrice"+i).value))
+  const filas = Array.from(document.querySelectorAll("#editPriceTiers .edit-tier-row"));
+
+  const prices = filas.map(fila=>[
+    Number(fila.querySelector(".edit-tier-qty").value),
+    Number(fila.querySelector(".edit-tier-price").value)
   ]).sort((a,b)=>a[0]-b[0]);
 
-  if(item.type==="manual"){
-    customProducts[item.index]=[name,pres,unit,prices,packQty,minoristaPrice];
-    localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
-  }else{
-    const key=item.original[0]+"|"+item.original[1];
-   productOverrides[key]={name,pres,unit,prices,packQty,minoristaPrice};
-    localStorage.setItem("NAA_PRODUCT_OVERRIDES",JSON.stringify(productOverrides));
+  if(prices.length === 0 || prices.some(t=>
+    !Number.isInteger(t[0]) || t[0] < 1 ||
+    !Number.isFinite(t[1]) || t[1] <= 0
+  )){
+    alert("Completá correctamente todas las cantidades y precios.");
+    return;
   }
 
-    registrarAuditoria({
-    accion: "producto_modificado",
-    modulo: "productos",
-    descripcion: "Modificó el producto: " + name + " - " + pres + ". Unidad: " + unit + ". Cantidad por empaque: " + packQty + ". Precio minorista: " + minoristaPrice,
-    registroId: item.original[0] + "|" + item.original[1]
-  });
+  for(let i=1;i<prices.length;i++){
+    if(prices[i][0] === prices[i-1][0]){
+      alert("No podés repetir una misma cantidad.");
+      return;
+    }
+  }
 
-  renderCatalogEditor();
-  renderManualProducts();
-  renderProducts();
-  showToast("✅ Producto actualizado");
+  if(prices[0][0] !== 1){
+    alert("El primer precio debe comenzar desde la cantidad 1.");
+    return;
+  }
+
+  const idAnterior = productFirebaseId(item.original[0],item.original[1]);
+  const idNuevo = productFirebaseId(name,pres);
+
+  try{
+    const refAnterior = firebaseDB.collection("products").doc(idAnterior);
+    const anterior = await refAnterior.get();
+
+    const datos = {
+      name: name,
+      presentation: pres,
+      unit: unit,
+      prices: prices.map(t=>({
+        from:t[0],
+        price:t[1]
+      })),
+      packagingQuantity: packQty,
+      minoristaPrice: minoristaPrice,
+      active: anterior.exists ? anterior.data().active !== false : true,
+      isCustom: item.type === "manual",
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    if(idNuevo !== idAnterior){
+      const refNuevo = firebaseDB.collection("products").doc(idNuevo);
+      const existeNuevo = await refNuevo.get();
+
+      if(existeNuevo.exists){
+        alert("Ya existe otro producto con ese nombre y presentación.");
+        return;
+      }
+
+      await refNuevo.set(datos);
+      if(anterior.exists) await refAnterior.delete();
+    }else{
+      await refAnterior.set(datos,{merge:true});
+    }
+
+    const productoActualizado = [name,pres,unit,prices,packQty,minoristaPrice];
+
+    if(item.type === "manual"){
+      customProducts[item.index] = productoActualizado;
+      localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
+    }else{
+      const key = item.original[0] + "|" + item.original[1];
+      productOverrides[key] = {
+        name,pres,unit,prices,packQty,minoristaPrice
+      };
+      localStorage.setItem("NAA_PRODUCT_OVERRIDES",JSON.stringify(productOverrides));
+    }
+
+    registrarAuditoria({
+      accion: "producto_modificado",
+      modulo: "productos",
+      descripcion: "Modificó el producto: " + name + " - " + pres,
+      registroId: idNuevo
+    });
+
+    await cargarEstadosProductosFirebase();
+
+    showToast("Producto actualizado en el catálogo compartido");
+    alert("Producto actualizado correctamente en Firebase.");
+
+  }catch(error){
+    console.error("Error al actualizar producto:",error);
+    alert("No se pudo actualizar el producto. Revisá la conexión y los permisos de Firebase.");
+  }
 }
 function restoreCatalogProduct(item){
   if(item.type!=="base")return;
@@ -8424,13 +8556,43 @@ async function addManualProduct(){
     alert("No se pudo guardar el producto. Revisá la conexión y los permisos de Firebase.");
   }
 }
-function removeManualProduct(i){
-  if((JSON.parse(localStorage.getItem('NAA_USER') || '{}').role || '') !== 'admin'){
-    alert('Solo el administrador puede eliminar productos.');
+async function removeManualProduct(i){
+  const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
+
+  if(usuario.role !== "admin"){
+    alert("Solo el administrador puede eliminar productos.");
     return;
   }
-if(!confirm("¿Quitar este producto?"))return;
-customProducts.splice(i,1);localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));renderManualProducts();renderProducts();
+
+  const producto = customProducts[i];
+  if(!producto) return;
+
+  if(!confirm("¿Quitar este producto del catálogo compartido? Ya no aparecerá para los preventistas.")) return;
+
+  try{
+    const id = productFirebaseId(producto[0],producto[1]);
+    const ref = firebaseDB.collection("products").doc(id);
+
+    await ref.set({
+      active:false,
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    },{merge:true});
+
+    customProducts.splice(i,1);
+    localStorage.setItem("NAA_CUSTOM_PRODUCTS",JSON.stringify(customProducts));
+
+    await cargarEstadosProductosFirebase();
+
+    renderManualProducts();
+    renderProducts();
+
+    showToast("Producto desactivado en el catálogo compartido");
+    alert("Producto quitado correctamente del catálogo.");
+
+  }catch(error){
+    console.error("Error al quitar producto:",error);
+    alert("No se pudo quitar el producto. Revisá la conexión.");
+  }
 }
 
 function renderManualProducts(){
