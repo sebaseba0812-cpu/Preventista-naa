@@ -12513,18 +12513,43 @@ async function renderOfficeOrders(){
 
 
 window.imprimirBoletaPedidoOficina = async function(id) {
-  const ventana = window.open("", "_blank");
 
-  if (!ventana) {
-    alert("Permití las ventanas emergentes para imprimir.");
-    return;
+  let modal = document.getElementById("boletaPreviewModal");
+
+  if(!modal){
+
+    modal = document.createElement("div");
+    modal.id = "boletaPreviewModal";
+
+    modal.style.cssText = `
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.75);
+      z-index:100000;
+      padding:15px;
+      overflow:auto;
+    `;
+
+    modal.innerHTML = `
+      <div style="background:white;color:black;border-radius:12px;padding:12px;max-width:1000px;margin:auto;">
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <button class="primary" onclick="imprimirVistaPreviaBoleta()">🖨️ Imprimir</button>
+          <button class="secondary" onclick="cerrarVistaPreviaBoleta()">✖ Cerrar</button>
+        </div>
+        <iframe id="boletaPreviewFrame" style="width:100%;height:75vh;border:1px solid #ccc;background:white;"></iframe>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
   }
+
+  const marco = document.getElementById("boletaPreviewFrame");
 
   try {
     const doc = await firebaseDB.collection("orders").doc(id).get();
 
     if (!doc.exists) {
-      ventana.close();
       alert("No se encontró el pedido.");
       return;
     }
@@ -12756,7 +12781,7 @@ ${Number(o.creditApplied || 0) > 0 ? `
       `;
     }
 
-    ventana.document.write(`
+    marco.srcdoc = `
       <!DOCTYPE html>
       <html lang="es">
       <head>
@@ -13055,16 +13080,36 @@ ${Number(o.creditApplied || 0) > 0 ? `
         </button>
       </body>
       </html>
-    `);
+        `;
 
-    ventana.document.close();
+    modal.style.display = "block";
 
   } catch (error) {
     console.error("Error imprimiendo remito:", error);
-    ventana.close();
     alert("No se pudo generar el remito: " + error.message);
   }
 };
+
+ window.imprimirVistaPreviaBoleta = function(){
+
+  const marco = document.getElementById("boletaPreviewFrame");
+
+  if(marco && marco.contentWindow){
+    marco.contentWindow.focus();
+    marco.contentWindow.print();
+  }
+
+};
+
+window.cerrarVistaPreviaBoleta = function(){
+
+  const modal = document.getElementById("boletaPreviewModal");
+
+  if(modal){
+    modal.style.display = "none";
+  }
+
+}; 
     
     function tarjetaPedido(o){
       const estado = estadoDe(o);
