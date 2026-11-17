@@ -739,6 +739,15 @@ placeholder="🔎 Buscar producto..."
 oninput="renderStock()">
 
 <div id="stockList"></div>
+ <div id="stockPreviewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;padding:15px;overflow:auto;">
+  <div style="background:white;color:black;border-radius:12px;padding:12px;max-width:1000px;margin:auto;">
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <button class="primary" onclick="imprimirVistaPreviaStock()">🖨️ Imprimir</button>
+      <button class="secondary" onclick="cerrarVistaPreviaStock()">✖ Cerrar</button>
+    </div>
+    <iframe id="stockPreviewFrame" style="width:100%;height:75vh;border:1px solid #ccc;background:white;"></iframe>
+  </div>
+</div> 
   <div class="card" style="margin-top:15px">
   <h3>📜 Historial de movimientos</h3>
 
@@ -2280,21 +2289,13 @@ div.appendChild(actions);
   }
 }
 
-  window.imprimirStock = async function(){
-
-  const ventana = window.open("", "_blank");
-
-  if(!ventana){
-    alert("Permití las ventanas emergentes para imprimir el stock.");
-    return;
-  }
+ window.imprimirStock = async function(){
 
   try{
 
     const snap = await firebaseDB.collection("stock").get();
 
     if(snap.empty){
-      ventana.close();
       alert("No hay productos cargados en stock.");
       return;
     }
@@ -2331,7 +2332,7 @@ div.appendChild(actions);
 
     }).join("");
 
-    ventana.document.write(`
+    const contenido = `
       <!DOCTYPE html>
       <html lang="es">
       <head>
@@ -2358,7 +2359,6 @@ div.appendChild(actions);
         <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
         <h3 style="text-align:center">INVENTARIO DE STOCK DISPONIBLE</h3>
         <div class="fecha">Fecha y hora de impresión: ${fecha}</div>
-
         <table>
           <thead>
             <tr>
@@ -2374,20 +2374,38 @@ div.appendChild(actions);
         </table>
       </body>
       </html>
-    `);
+    `;
 
-    ventana.document.close();
-    ventana.focus();
-    ventana.print();
+    const marco = document.getElementById("stockPreviewFrame");
+    const modal = document.getElementById("stockPreviewModal");
+
+    if(!marco || !modal){
+      alert("No se encontró el espacio de vista previa.");
+      return;
+    }
+
+    marco.srcdoc = contenido;
+    modal.style.display = "block";
 
   }catch(error){
 
     console.error(error);
-    ventana.close();
-    alert("No se pudo generar el inventario de stock.");
+    alert("No se pudo generar la vista previa del inventario.");
 
   }
 
+};
+
+window.imprimirVistaPreviaStock = function(){
+  const marco = document.getElementById("stockPreviewFrame");
+  if(marco && marco.contentWindow){
+    marco.contentWindow.focus();
+    marco.contentWindow.print();
+  }
+};
+
+window.cerrarVistaPreviaStock = function(){
+  document.getElementById("stockPreviewModal").style.display = "none";
 };
  // ===== PROVEEDORES Y PAGOS =====
 
