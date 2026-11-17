@@ -732,6 +732,7 @@ onclick="addStockProduct()">
 
 <div class="card">
 <h3>📋 Productos en stock</h3>
+ <button class="btn" onclick="imprimirStock()">🖨️ Imprimir stock disponible</button> 
 
 <input id="stockSearch"
 placeholder="🔎 Buscar producto..."
@@ -2278,6 +2279,116 @@ div.appendChild(actions);
 
   }
 }
+
+  window.imprimirStock = async function(){
+
+  const ventana = window.open("", "_blank");
+
+  if(!ventana){
+    alert("Permití las ventanas emergentes para imprimir el stock.");
+    return;
+  }
+
+  try{
+
+    const snap = await firebaseDB.collection("stock").get();
+
+    if(snap.empty){
+      ventana.close();
+      alert("No hay productos cargados en stock.");
+      return;
+    }
+
+    const productos = [];
+
+    snap.forEach(doc => {
+      productos.push(doc.data());
+    });
+
+    productos.sort((a,b) =>
+      (a.name || "").localeCompare(b.name || "")
+    );
+
+    const fecha = new Date().toLocaleString("es-AR");
+
+    const filas = productos.map(p => {
+
+      const packQty = Number(p.packQty) || 1;
+      const totalUnits = Number(p.quantity) || 0;
+      const cajas = Math.floor(totalUnits / packQty);
+      const sueltas = totalUnits % packQty;
+
+      return `
+        <tr>
+          <td>${esc(p.name || "")}</td>
+          <td>${esc(p.presentation || "")}</td>
+          <td>${esc(p.unit || "")}</td>
+          <td>${cajas}</td>
+          <td>${sueltas}</td>
+          <td>${totalUnits}</td>
+        </tr>
+      `;
+
+    }).join("");
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Inventario de Stock</title>
+        <style>
+          body{
+            font-family:Arial,sans-serif;
+            color:#000;
+            padding:20px;
+          }
+          h2{text-align:center;margin-bottom:5px}
+          .fecha{text-align:right;font-size:12px;margin-bottom:20px}
+          table{width:100%;border-collapse:collapse}
+          th,td{border:1px solid #000;padding:7px;font-size:12px}
+          th{background:#eee}
+          @media print{
+            body{padding:0}
+            th{background:#eee !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+          }
+        </style>
+      </head>
+      <body>
+        <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+        <h3 style="text-align:center">INVENTARIO DE STOCK DISPONIBLE</h3>
+        <div class="fecha">Fecha y hora de impresión: ${fecha}</div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Presentación</th>
+              <th>Unidad</th>
+              <th>Cajas / Bultos</th>
+              <th>Sueltas</th>
+              <th>Total unidades</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </body>
+      </html>
+    `);
+
+    ventana.document.close();
+    ventana.focus();
+    ventana.print();
+
+  }catch(error){
+
+    console.error(error);
+    ventana.close();
+    alert("No se pudo generar el inventario de stock.");
+
+  }
+
+};
  // ===== PROVEEDORES Y PAGOS =====
 
 async function guardarProveedor(){
@@ -10126,7 +10237,7 @@ async function imprimirRemitoVentaDirecta(saleId){
             </div>
             <div class="numero">
               <b>${tipo}</b>
-              <strong>Nº ${venta.boletaNumber || ""}</strong>
+              <strong>Nº ${String(venta.boletaNumber || "").padStart(4, "0")}</strong>
             </div>
           </div>
 
@@ -10182,7 +10293,7 @@ async function imprimirRemitoVentaDirecta(saleId){
       <html lang="es">
       <head>
         <meta charset="UTF-8">
-        <title>Remito Nº ${venta.boletaNumber || ""}</title>
+        <title>Remito Nº ${String(venta.boletaNumber || "").padStart(4, "0")}</title>
 
         <style>
           @page{
@@ -10551,7 +10662,8 @@ clientData: {
   clientNumber: c.clientNumber || "",
   zone: c.zone || "",
   street: c.street || "",
-  height: c.height || ""
+  height: c.height || "",
+  obs: c.obs || ""
 },
 
 lines:lines,
@@ -12418,7 +12530,7 @@ window.imprimirBoletaPedidoOficina = async function(id) {
 
    const datosCliente = o.clientData || {};
 
-const numero = String(o.boletaNumber || "");
+const numero = String(o.boletaNumber || "").padStart(4, "0");
  const nombrePreventista =
   o.preventistaName ||
   o.user?.name ||
@@ -12437,6 +12549,7 @@ const numeroCliente =
 const calle = datosCliente.street || cliente?.street || o.street || "";
 const altura = datosCliente.height || cliente?.height || o.height || "";
 const zona = datosCliente.zone || cliente?.zone || o.zone || "";
+const referenciaCliente = datosCliente.obs || cliente?.obs || "";
 
 const direccion = [calle, altura].filter(Boolean).join(" ");
 
@@ -12537,8 +12650,9 @@ const bonificaciones = (o.bonuses || []).map(p => {
               <div class="cliente">
                 <span>CLIENTE / COMERCIO</span>
                 <strong>${esc(comercio)}</strong>
-                ${direccion ? `<small>DIRECCIÓN: ${esc(direccion)}</small>` : ""}
-                ${zona ? `<small>BARRIO / ZONA: ${esc(zona)}</small>` : ""}
+               ${direccion ? `<small>DIRECCIÓN: ${esc(direccion)}</small>` : ""}
+${zona ? `<small>BARRIO / ZONA: ${esc(zona)}</small>` : ""}
+${referenciaCliente ? `<small>REFERENCIAS: ${esc(referenciaCliente)}</small>` : ""}
               </div>
 
               <div class="datos-derecha">
