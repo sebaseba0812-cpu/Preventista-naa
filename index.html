@@ -1102,10 +1102,59 @@ onclick="createPromotion()">
         <input id="provObservaciones" placeholder="Observaciones">
       </label>
     </div>
+    <div class="row">
+  <label>Deuda inicial con este proveedor ($)
+    <input
+      id="provDeudaInicial"
+      type="number"
+      min="0"
+      step="0.01"
+      placeholder="Ej.: 25000000"
+    >
+  </label>
+</div>
     <button class="primary" onclick="guardarProveedor()">Guardar proveedor</button>
   </div>
 
   <div class="card">
+  <h3>📦 Registrar nueva deuda / mercadería recibida</h3>
+
+  <label>Proveedor
+    <select id="deudaProveedor">
+      <option value="">Seleccionar proveedor</option>
+    </select>
+  </label>
+
+  <div class="row">
+    <label>Importe de la nueva deuda ($)
+      <input
+        id="deudaImporte"
+        type="number"
+        min="0.01"
+        step="0.01"
+        placeholder="Importe de la mercadería"
+      >
+    </label>
+
+    <label>Fecha
+      <input id="deudaFecha" type="date">
+    </label>
+  </div>
+
+  <label>Detalle de la mercadería o factura
+    <input
+      id="deudaObservaciones"
+      placeholder="Ej.: Mercadería recibida, factura..."
+    >
+  </label>
+
+  <button
+    class="primary"
+    onclick="guardarDeudaProveedor()"
+  >
+    ➕ Registrar deuda
+  </button>
+</div> 
     <h3>Registrar pago</h3>
     <label>Proveedor
       <select id="pagoProveedor"></select>
@@ -1134,6 +1183,13 @@ onclick="createPromotion()">
     <h3>Proveedores registrados</h3>
     <div id="proveedoresLista">Cargando proveedores...</div>
   </div>
+
+  <div class="card">
+  <h3>📦 Historial de nuevas deudas</h3>
+  <div id="proveedoresDeudasLista">
+    Cargando deudas...
+  </div>
+</div>
 
   <div class="card">
     <h3>Historial de pagos</h3>
@@ -2408,24 +2464,34 @@ window.cerrarVistaPreviaStock = function(){
   document.getElementById("stockPreviewModal").style.display = "none";
 };
  // ===== PROVEEDORES Y PAGOS =====
-
 async function guardarProveedor(){
+
   const nombre = document.getElementById("provNombre")?.value.trim();
   const cuit = document.getElementById("provCuit")?.value.trim() || "";
   const telefono = document.getElementById("provTelefono")?.value.trim() || "";
   const observaciones = document.getElementById("provObservaciones")?.value.trim() || "";
+  const deudaInicial = Number(
+    document.getElementById("provDeudaInicial")?.value || 0
+  );
 
   if(!nombre){
     alert("Ingresá el nombre del proveedor.");
     return;
   }
 
+  if(!Number.isFinite(deudaInicial) || deudaInicial < 0){
+    alert("Ingresá una deuda inicial válida.");
+    return;
+  }
+
   try{
+
     await firebaseDB.collection("proveedores").add({
       nombre,
       cuit,
       telefono,
       observaciones,
+      deudaInicial,
       creadoEn: new Date().toISOString()
     });
 
@@ -2433,13 +2499,18 @@ async function guardarProveedor(){
     document.getElementById("provCuit").value = "";
     document.getElementById("provTelefono").value = "";
     document.getElementById("provObservaciones").value = "";
+    document.getElementById("provDeudaInicial").value = "";
 
     alert("Proveedor guardado correctamente.");
+
     await renderProveedores();
 
   }catch(error){
+
     console.error("Error guardando proveedor:", error);
+
     alert("No se pudo guardar el proveedor. Revisá los permisos de Firebase.");
+
   }
 }
 
@@ -2551,16 +2622,81 @@ async function guardarPagoProveedor(){
   }
 }
 
+async function guardarDeudaProveedor(){
+
+  const proveedorId = document.getElementById("deudaProveedor")?.value || "";
+  const importe = Number(
+    document.getElementById("deudaImporte")?.value || 0
+  );
+  const fecha = document.getElementById("deudaFecha")?.value || "";
+  const observaciones =
+    document.getElementById("deudaObservaciones")?.value.trim() || "";
+
+  if(!proveedorId){
+    alert("Seleccioná un proveedor.");
+    return;
+  }
+
+  if(!Number.isFinite(importe) || importe <= 0){
+    alert("Ingresá un importe válido.");
+    return;
+  }
+
+  if(!fecha){
+    alert("Seleccioná la fecha de la deuda.");
+    return;
+  }
+
+  try{
+
+    const proveedorDoc = await firebaseDB
+      .collection("proveedores")
+      .doc(proveedorId)
+      .get();
+
+    if(!proveedorDoc.exists){
+      alert("El proveedor seleccionado no existe.");
+      return;
+    }
+
+    const proveedorNombre = proveedorDoc.data().nombre || "";
+
+    await firebaseDB.collection("proveedoresDeudas").add({
+      proveedorId,
+      proveedorNombre,
+      importe,
+      fecha,
+      observaciones,
+      creadoEn: new Date().toISOString()
+    });
+
+    document.getElementById("deudaImporte").value = "";
+    document.getElementById("deudaObservaciones").value = "";
+
+    alert("Nueva deuda registrada correctamente.");
+
+    await renderProveedores();
+
+  }catch(error){
+
+    console.error("Error registrando deuda:", error);
+
+    alert("No se pudo registrar la deuda. Revisá la conexión y los permisos de Firebase.");
+
+  }
+}
 async function renderProveedores(){
   const lista = document.getElementById("proveedoresLista");
   const pagosLista = document.getElementById("proveedoresPagosLista");
   const selector = document.getElementById("pagoProveedor");
+  const deudaSelector = document.getElementById("deudaProveedor");
 
   try{
-    const [proveedoresSnap, pagosSnap] = await Promise.all([
-      firebaseDB.collection("proveedores").get(),
-      firebaseDB.collection("proveedoresPagos").get()
-    ]);
+   const [proveedoresSnap, pagosSnap, deudasSnap] = await Promise.all([
+  firebaseDB.collection("proveedores").get(),
+  firebaseDB.collection("proveedoresPagos").get(),
+  firebaseDB.collection("proveedoresDeudas").get()
+]);
 
     const proveedores = proveedoresSnap.docs.map(doc => ({
       id: doc.id,
@@ -2571,6 +2707,10 @@ async function renderProveedores(){
       id: doc.id,
       ...doc.data()
     }));
+    const deudas = deudasSnap.docs.map(doc => ({
+  id: doc.id,
+  ...doc.data()
+}));
 
     if(selector){
       const seleccionado = selector.value;
@@ -2583,13 +2723,36 @@ async function renderProveedores(){
         selector.value = seleccionado;
       }
     }
+if(deudaSelector){
+  const seleccionadoDeuda = deudaSelector.value;
+
+  deudaSelector.innerHTML =
+    '<option value="">Seleccionar proveedor</option>' +
+    proveedores.map(p =>
+      `<option value="${esc(p.id)}">${esc(p.nombre || "Sin nombre")}</option>`
+    ).join("");
+
+  if(proveedores.some(p => p.id === seleccionadoDeuda)){
+    deudaSelector.value = seleccionadoDeuda;
+  }
+}
 
     if(lista){
       lista.innerHTML = proveedores.length
         ? proveedores.map(p => {
-            const totalPagado = pagos
-              .filter(pg => pg.proveedorId === p.id)
-              .reduce((s, pg) => s + Number(pg.importe || 0), 0);
+           const totalDeudas = deudas
+  .filter(d => d.proveedorId === p.id)
+  .reduce((s, d) => s + Number(d.importe || 0), 0);
+
+const totalPagado = pagos
+  .filter(pg => pg.proveedorId === p.id)
+  .reduce((s, pg) => s + Number(pg.importe || 0), 0);
+
+const deudaInicial = Number(p.deudaInicial || 0);
+
+const deudaTotal = deudaInicial + totalDeudas;
+
+const saldoPendiente = deudaTotal - totalPagado;
 
             return `
               <div class="card">
@@ -2597,7 +2760,18 @@ async function renderProveedores(){
                 <p>CUIT: ${esc(p.cuit || "-")}</p>
                 <p>Teléfono: ${esc(p.telefono || "-")}</p>
                 <p>Observaciones: ${esc(p.observaciones || "-")}</p>
-                <p><b>Total pagado registrado:</b> ${money(totalPagado)}</p>
+                <p><b>Deuda inicial:</b> ${money(deudaInicial)}</p>
+<p><b>Nuevas deudas:</b> ${money(totalDeudas)}</p>
+<p><b>Deuda total:</b> ${money(deudaTotal)}</p>
+<p><b>Total pagado:</b> ${money(totalPagado)}</p>
+<p style="color:#c2410c;font-weight:bold">
+  Saldo pendiente: ${money(Math.max(0, saldoPendiente))}
+</p>
+${saldoPendiente < 0 ? `
+  <p style="color:#15803d;font-weight:bold">
+    Crédito a favor: ${money(Math.abs(saldoPendiente))}
+  </p>
+` : ""}
               </div>
             `;
           }).join("")
@@ -2618,6 +2792,25 @@ async function renderProveedores(){
             </div>
           `).join("")
         : '<p class="small">Todavía no hay pagos registrados.</p>';
+    }
+
+        const deudasLista = document.getElementById("proveedoresDeudasLista");
+
+    if(deudasLista){
+      deudas.sort((a,b) =>
+        String(b.fecha || "").localeCompare(String(a.fecha || ""))
+      );
+
+      deudasLista.innerHTML = deudas.length
+        ? deudas.map(d => `
+            <div class="card">
+              <b>${esc(d.proveedorNombre || "Proveedor")}</b>
+              <p>Fecha: ${esc(d.fecha || "-")}</p>
+              <p>Importe: ${money(Number(d.importe || 0))}</p>
+              <p>Detalle: ${esc(d.observaciones || "-")}</p>
+            </div>
+          `).join("")
+        : '<p class="small">Todavía no hay nuevas deudas registradas.</p>';
     }
 
   }catch(error){
@@ -7545,18 +7738,38 @@ function dashboardOrderDate(o){
   return null;
 }
 
-function dashboardIsValid(o){
-  if(o.status==="canceled"||o.status==="anulado")return false;
 
+function dashboardIsValid(o){
   if(
-    o.paymentType==="cuenta_corriente" &&
-    o.paymentStatus!=="cobrado"
+    o.status === "canceled" ||
+    o.status === "anulado"
   ){
     return false;
   }
 
-  return true;
+  // Las ventas directas se mantienen.
+  if(o.esVentaDirecta === true){
+    return true;
+  }
+
+  // Cuenta corriente: solo cuenta cuando se cobró.
+  if(o.paymentType === "cuenta_corriente"){
+    return o.paymentStatus === "cobrado";
+  }
+
+  // Boletas de contado: deben estar rendidas.
+  if(o.rendicionStatus === "rendida"){
+    return true;
+  }
+
+  // Compatibilidad con pedidos cobrados por el sistema anterior.
+  if(o.paymentStatus === "cobrado"){
+    return true;
+  }
+
+  return false;
 }
+
 
 function dashboardMoney(n){
   return "$"+money(Number(n||0));
@@ -7636,19 +7849,67 @@ const paymentTotals={
   cuenta_corriente:0
 };
 
+// Ventas y boletas rendidas.
 valid.forEach(o=>{
-  const tipo = o.esVentaDirecta === true
-    ? (o.medioPago || "efectivo")
-    : (o.paymentType || "efectivo");
 
-  if(tipo === "transferencia"){
-    paymentTotals.transferencia += Number(o.total || 0);
-  }else if(tipo === "cuenta_corriente"){
-    paymentTotals.cuenta_corriente += Number(o.total || 0);
-  }else{
-    paymentTotals.efectivo += Number(o.total || 0);
+  if(o.esVentaDirecta === true){
+    const tipo = o.medioPago || "efectivo";
+
+    if(tipo === "transferencia"){
+      paymentTotals.transferencia += Number(o.total || 0);
+    }else{
+      paymentTotals.efectivo += Number(o.total || 0);
+    }
+
+    return;
+  }
+
+  if(o.paymentType === "cuenta_corriente"){
+    return;
+  }
+
+  if(o.rendicionStatus === "rendida"){
+    paymentTotals.efectivo += Number(o.rendicionEfectivo || 0);
+    paymentTotals.transferencia += Number(
+      o.rendicionTransferencia || 0
+    );
+    return;
+  }
+
+  if(o.paymentStatus === "cobrado"){
+    if(o.paymentMethod === "transferencia"){
+      paymentTotals.transferencia += Number(o.total || 0);
+    }else{
+      paymentTotals.efectivo += Number(o.total || 0);
+    }
   }
 });
+
+// Cobros de cuentas corrientes según la fecha real de cada pago.
+all.forEach(o=>{
+
+  if(o.paymentType !== "cuenta_corriente") return;
+  if(!Array.isArray(o.paymentHistory)) return;
+
+  o.paymentHistory.forEach(pago=>{
+
+    let fecha = pago.fecha;
+
+    if(fecha?.toDate){
+      fecha = fecha.toDate();
+    }else if(fecha){
+      fecha = new Date(fecha);
+    }
+
+    if(!fecha || fecha < a || fecha > b) return;
+
+    paymentTotals.efectivo += Number(pago.efectivo || 0);
+    paymentTotals.transferencia += Number(
+      pago.transferencia || 0
+    );
+  });
+});
+
     
     const today=new Date();
 
@@ -7739,10 +8000,7 @@ valid.forEach(o=>{
     <b>${dashboardMoney(paymentTotals.transferencia)}</b>
   </div>
 
-  <div style="margin-top:5px">
-    🟠 Cuenta corriente:
-    <b>${dashboardMoney(paymentTotals.cuenta_corriente)}</b>
-  </div>
+ 
 </div>
 
         <div>
@@ -8141,7 +8399,25 @@ if(o.status==="nuevo"){
             <h3>🏪 ${esc(o.client || "Sin cliente")}</h3>
             <div class="muted">🧾 Boleta Nº ${esc(String(o.boletaNumber || "Sin número"))}</div>
             <div class="muted">👤 Preventista: ${esc(o.preventistaName || o.user?.name || "Sin preventista")}</div>
-            <div class="price">${dashboardMoney(Number(o.total || 0))}</div>
+           
+<div class="price">
+  Total de la cuenta: ${dashboardMoney(o.amountDue ?? o.total ?? 0)}
+</div>
+
+<div class="small" style="color:#15803d;margin-top:6px">
+  💵 Ya cobrado: ${dashboardMoney(o.collectedAmount || 0)}
+</div>
+
+<div class="price" style="color:#c2410c;margin-top:6px">
+  Saldo pendiente: ${dashboardMoney(
+    Math.max(
+      0,
+      Number(o.amountDue ?? o.total ?? 0) -
+      Number(o.collectedAmount || 0)
+    )
+  )}
+</div>
+
             <div style="margin-top:8px;color:${color}"><b>${estado}</b></div>
             <div class="small">Plazo otorgado: ${o.creditDays || 0} días</div>
             <div class="small">Venta: ${fecha(o.saleDate)}</div>
@@ -11101,10 +11377,14 @@ const pedido = {
 
   creditDays: Number(pedidoClient?.creditDays || 0),
 
-  paymentStatus:
-    pedidoClient?.paymentType === "cuenta_corriente"
-      ? (saldoPendiente > 0 ? "pendiente" : "cobrado")
-      : "cobrado",
+ paymentStatus:
+  pedidoClient?.paymentType === "cuenta_corriente"
+    ? (saldoPendiente > 0 ? "pendiente" : "cobrado")
+    : "pendiente",
+
+paymentMethod: "",
+paymentDate: null,
+collectedAmount: 0,
 
   boletaNumber: nextNumber,
 
@@ -11830,51 +12110,243 @@ await registrarAuditoria({
 
 }
 
-  
- async function marcarCobradoOficina(id){
-  if(!confirm("¿Marcar esta cuenta corriente como COBRADA?"))return;
-  const ref=firebaseDB.collection("orders").doc(String(id));
+
+async function marcarCobradoOficina(id){
+  const ref = firebaseDB.collection("orders").doc(String(id));
+
   try{
-    const snap=await ref.get();
-    if(!snap.exists){alert("No se encontró el pedido en la base de datos.");return;}
-    if(snap.data().paymentStatus==="cobrado"){
-      alert("Este pedido ya figura como cobrado.");
+    const snap = await ref.get();
+
+    if(!snap.exists){
+      alert("No se encontró el pedido.");
+      return;
+    }
+
+    const pedido = snap.data() || {};
+
+    if(pedido.paymentType !== "cuenta_corriente"){
+      alert("Este pedido no es una cuenta corriente.");
+      return;
+    }
+
+    if(pedido.paymentStatus === "cobrado"){
+      alert("Esta cuenta ya está totalmente cobrada.");
       await renderCurrentAccounts();
       return;
     }
-    const paymentDate=new Date();
-    await ref.update({
-      paymentStatus:"cobrado",
-      paymentDate:paymentDate,
-      updatedAt:paymentDate
+
+    const yaCobrado = Number(pedido.collectedAmount || 0);
+    const saldoOriginal = Number(
+      pedido.amountDue ?? pedido.total ?? 0
+    );
+
+    const saldoPendiente = Math.max(0, saldoOriginal - yaCobrado);
+
+    if(saldoPendiente <= 0){
+      alert("Esta cuenta no tiene saldo pendiente.");
+      return;
+    }
+
+    const estadoCaja = await obtenerEstadoCajaActual();
+
+    if(!estadoCaja.abierta){
+      alert("Primero tenés que abrir la caja para registrar el cobro.");
+      return;
+    }
+
+    const efectivoTexto = prompt(
+      "CUENTA CORRIENTE\n\n" +
+      "Cliente: " + (pedido.client || "Sin cliente") +
+      "\nSaldo pendiente: $" + money(saldoPendiente) +
+      "\n\n¿Cuánto recibiste en EFECTIVO?"
+    );
+
+    if(efectivoTexto === null) return;
+
+    const efectivo = Number(efectivoTexto.replace(",", "."));
+
+    if(!Number.isFinite(efectivo) || efectivo < 0){
+      alert("El importe en efectivo no es válido.");
+      return;
+    }
+
+    const transferenciaTexto = prompt(
+      "¿Cuánto recibiste por TRANSFERENCIA?\n\n" +
+      "Saldo pendiente: $" + money(saldoPendiente - efectivo)
+    );
+
+    if(transferenciaTexto === null) return;
+
+    const transferencia = Number(
+      transferenciaTexto.replace(",", ".")
+    );
+
+    if(!Number.isFinite(transferencia) || transferencia < 0){
+      alert("El importe de transferencia no es válido.");
+      return;
+    }
+
+    const importeTotal = efectivo + transferencia;
+
+    if(importeTotal <= 0){
+      alert("Tenés que ingresar un importe mayor a cero.");
+      return;
+    }
+
+    if(importeTotal > saldoPendiente + 0.01){
+      alert("El cobro supera el saldo pendiente de la cuenta.");
+      return;
+    }
+
+    const nuevoTotalCobrado = yaCobrado + importeTotal;
+    const nuevoSaldo = Math.max(0, saldoOriginal - nuevoTotalCobrado);
+    const estaCancelada = nuevoSaldo <= 0.01;
+
+    const paymentDate = new Date();
+
+    const usuario = JSON.parse(
+      localStorage.getItem("NAA_USER") || "{}"
+    );
+
+    const pagoRef = firebaseDB.collection("caja").doc();
+    const pagoTransferenciaRef = firebaseDB.collection("caja").doc();
+
+    const pagoHistorial = {
+      fecha: paymentDate,
+      efectivo: efectivo,
+      transferencia: transferencia,
+      total: importeTotal,
+      usuario: usuario.name || "Administrador"
+    };
+
+    if(!confirm(
+      "CONFIRMAR COBRO\n\n" +
+      "Efectivo: $" + money(efectivo) +
+      "\nTransferencia: $" + money(transferencia) +
+      "\nTotal recibido: $" + money(importeTotal) +
+      "\nSaldo restante: $" + money(nuevoSaldo) +
+      "\n\n¿Confirmás el cobro?"
+    )){
+      return;
+    }
+
+    await firebaseDB.runTransaction(async transaction => {
+      const actualSnap = await transaction.get(ref);
+
+      if(!actualSnap.exists){
+        throw new Error("La cuenta corriente ya no existe.");
+      }
+
+      const actual = actualSnap.data() || {};
+
+      if(actual.paymentStatus === "cobrado"){
+        throw new Error("La cuenta ya fue cobrada por completo.");
+      }
+
+      const cobradoActual = Number(actual.collectedAmount || 0);
+      const totalPendiente = Number(
+        actual.amountDue ?? actual.total ?? 0
+      );
+
+      const saldoActual = Math.max(0, totalPendiente - cobradoActual);
+
+      if(importeTotal > saldoActual + 0.01){
+        throw new Error("El saldo cambió. Actualizá la pantalla e intentá nuevamente.");
+      }
+
+      const acumulado = cobradoActual + importeTotal;
+      const saldoRestante = Math.max(0, totalPendiente - acumulado);
+      const finalizada = saldoRestante <= 0.01;
+
+      transaction.update(ref, {
+        collectedAmount: acumulado,
+        remainingAmount: saldoRestante,
+        paymentStatus: finalizada ? "cobrado" : "pendiente",
+        paymentMethod: efectivo > 0 && transferencia > 0
+          ? "mixto"
+          : efectivo > 0 ? "efectivo" : "transferencia",
+        paymentDate: paymentDate,
+        paymentHistory: firebase.firestore.FieldValue.arrayUnion(pagoHistorial),
+        updatedAt: paymentDate
+      });
+
+      if(efectivo > 0){
+        transaction.set(pagoRef, {
+          tipo: "movimiento",
+          sesionId: estadoCaja.sesion,
+          movimiento: "ingreso",
+          medio: "efectivo",
+          importe: efectivo,
+          descripcion: "Cobro cuenta corriente - Boleta Nº " +
+            (pedido.boletaNumber || id),
+          pedidoId: String(id),
+          usuario: usuario.name || "Administrador",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      if(transferencia > 0){
+        transaction.set(pagoTransferenciaRef, {
+          tipo: "movimiento",
+          sesionId: estadoCaja.sesion,
+          movimiento: "ingreso",
+          medio: "transferencia",
+          importe: transferencia,
+          descripcion: "Cobro cuenta corriente - Boleta Nº " +
+            (pedido.boletaNumber || id),
+          pedidoId: String(id),
+          usuario: usuario.name || "Administrador",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
     });
 
-const pedidoCobrado = snap.data() || {};
+    await registrarAuditoria({
+      accion: "pago_cuenta_corriente",
+      modulo: "cuentas_corrientes",
+      descripcion: "Registró un pago de cuenta corriente. Boleta Nº " +
+        (pedido.boletaNumber || id),
+      registroId: String(id),
+      datos: {
+        cliente: pedido.client || "",
+        importe: importeTotal,
+        efectivo: efectivo,
+        transferencia: transferencia,
+        saldoAnterior: saldoPendiente,
+        saldoRestante: nuevoSaldo,
+        ownerUid: pedido.ownerUid || ""
+      }
+    });
 
-await registrarAuditoria({
-  accion: "cuenta_corriente_cobrada",
-  modulo: "cuentas_corrientes",
-  descripcion: "Marcó como cobrada la boleta Nº " +
-    (pedidoCobrado.boletaNumber || id),
-  registroId: String(id),
-  datos: {
-    cliente: pedidoCobrado.clientData?.name || pedidoCobrado.client || "",
-    total: Number(pedidoCobrado.total || 0),
-    importePendiente: Number(pedidoCobrado.amountDue || pedidoCobrado.total || 0),
-    ownerUid: pedidoCobrado.ownerUid || ""
-  }
-});
-  
-    const local=orders.find(x=>String(x.id)===String(id));
-    if(local){local.paymentStatus="cobrado";local.paymentDate=paymentDate.toISOString();local.updatedAt=paymentDate.toISOString();save();}
+    const local = orders.find(x => String(x.id) === String(id));
+
+    if(local){
+      local.collectedAmount = nuevoTotalCobrado;
+      local.remainingAmount = nuevoSaldo;
+      local.paymentStatus = estaCancelada ? "cobrado" : "pendiente";
+      local.paymentDate = paymentDate.toISOString();
+      save();
+    }
+
     await renderOfficeOrders();
     await renderCurrentAccounts();
-    if(typeof renderDashboard==="function")renderDashboard();
-    alert("Cuenta corriente marcada como cobrada correctamente.");
+
+    if(typeof renderDashboard === "function"){
+      renderDashboard();
+    }
+
+    alert(
+      "Cobro registrado correctamente.\n\n" +
+      "Recibido: $" + money(importeTotal) +
+      "\nSaldo pendiente: $" + money(nuevoSaldo)
+    );
+
   }catch(error){
-    console.error("Error marcando cuenta como cobrada:",error);
-    alert("No se pudo marcar como cobrada: "+error.message);
+    console.error("Error registrando cobro:", error);
+    alert("No se pudo registrar el cobro: " + error.message);
   }
+}
+
 }
 function startOfficeBadgeListener(){
   if(!document.getElementById("officePendingCount"))return;
@@ -13557,10 +14029,9 @@ if(resultado === "entregada"){
   }
 }
 
- 
+
 async function registrarRendicionBoleta(id){
   try{
-    // Solo el administrador puede confirmar rendiciones.
     const usuario = JSON.parse(
       localStorage.getItem("NAA_USER") || "{}"
     );
@@ -13576,63 +14047,222 @@ async function registrarRendicionBoleta(id){
 
     const ref = firebaseDB.collection("orders").doc(id);
 
-    const resultado = await firebaseDB.runTransaction(
-      async transaction => {
-        const doc = await transaction.get(ref);
+    // Primero verificamos que exista la boleta.
+    const snap = await ref.get();
 
-        if(!doc.exists){
-          throw new Error("La boleta no existe.");
-        }
+    if(!snap.exists){
+      alert("La boleta no existe.");
+      return;
+    }
 
-        const boleta = doc.data();
+    const boleta = snap.data();
 
-        if(boleta.rendicionStatus === "rendida"){
-          throw new Error("Esta boleta ya fue rendida.");
-        }
+    if(boleta.rendicionStatus === "rendida"){
+      alert("Esta boleta ya fue rendida.");
+      return;
+    }
 
-        if(boleta.repartoStatus !== "entregada"){
-          throw new Error(
-            "Solo se pueden rendir boletas entregadas."
-          );
-        }
+    if(boleta.repartoStatus !== "entregada"){
+      alert("Solo se pueden rendir boletas entregadas.");
+      return;
+    }
 
-        const estado = String(
-          boleta.status || boleta.estado || ""
-        ).toLowerCase();
+    const estado = String(
+      boleta.status || boleta.estado || ""
+    ).toLowerCase();
 
-        if(estado.includes("anulad") ||
-           estado.includes("cancelad")){
-          throw new Error(
-            "No se puede rendir una boleta anulada."
-          );
-        }
+    if(estado.includes("anulad") || estado.includes("cancelad")){
+      alert("No se puede rendir una boleta anulada.");
+      return;
+    }
 
-        const fecha = firebase.firestore.FieldValue
-          .serverTimestamp();
+    const esCuentaCorriente =
+      boleta.paymentType === "cuenta_corriente";
 
-        transaction.update(ref, {
-          rendicionStatus: "rendida",
-          rendicionFecha: fecha,
-          rendicionAdministrador:
-            usuario.name ||
-            usuario.username ||
-            usuario.email ||
-            usuario.uid,
-          rendicionAdministradorUid: usuario.uid,
-          updatedAt: fecha
-        });
+    let efectivo = 0;
+    let transferencia = 0;
+    let estadoCaja = null;
 
-        return boleta.boletaNumber || id;
+    // Las cuentas corrientes solamente se controlan.
+    // No generan movimientos de caja en la rendición.
+    if(!esCuentaCorriente){
+
+      estadoCaja = await obtenerEstadoCajaActual();
+
+      if(!estadoCaja.abierta){
+        alert("La caja está cerrada. Primero debe abrirla el administrador.");
+        return;
       }
-    );
+
+      const total = Number(boleta.total || 0);
+
+      const efectivoTexto = prompt(
+        "RENDICIÓN DE BOLETA N.º " +
+        (boleta.boletaNumber || id) +
+        "\n\n¿Cuánto recibiste en EFECTIVO?",
+        String(total)
+      );
+
+      if(efectivoTexto === null) return;
+
+      efectivo = Number(efectivoTexto);
+
+      if(!Number.isFinite(efectivo) || efectivo < 0){
+        alert("El importe en efectivo no es válido.");
+        return;
+      }
+
+      const transferenciaTexto = prompt(
+        "¿Cuánto recibiste por TRANSFERENCIA?",
+        "0"
+      );
+
+      if(transferenciaTexto === null) return;
+
+      transferencia = Number(transferenciaTexto);
+
+      if(!Number.isFinite(transferencia) || transferencia < 0){
+        alert("El importe de transferencia no es válido.");
+        return;
+      }
+
+      if(Math.abs(efectivo + transferencia - total) > 0.01){
+        alert(
+          "Los importes deben coincidir con el total de la boleta: $" +
+          money(total)
+        );
+        return;
+      }
+
+      if(!confirm(
+        "CONFIRMAR RENDICIÓN\n\n" +
+        "Efectivo: $" + money(efectivo) + "\n" +
+        "Transferencia: $" + money(transferencia) + "\n" +
+        "Total: $" + money(total) + "\n\n" +
+        "¿Confirmás el ingreso a Caja?"
+      )){
+        return;
+      }
+
+    }else{
+
+      if(!confirm(
+        "Esta boleta es CUENTA CORRIENTE.\n\n" +
+        "Se marcará como rendida para control del repartidor.\n" +
+        "No se generará ningún ingreso en Caja.\n\n" +
+        "¿Confirmás?"
+      )){
+        return;
+      }
+    }
+
+    const nombreAdmin =
+      usuario.name ||
+      usuario.username ||
+      usuario.email ||
+      usuario.uid;
+
+    await firebaseDB.runTransaction(async transaction => {
+
+      const doc = await transaction.get(ref);
+
+      if(!doc.exists){
+        throw new Error("La boleta ya no existe.");
+      }
+
+      const actual = doc.data();
+
+      if(actual.rendicionStatus === "rendida"){
+        throw new Error("Esta boleta ya fue rendida.");
+      }
+
+      if(actual.repartoStatus !== "entregada"){
+        throw new Error("La boleta ya no figura como entregada.");
+      }
+
+      const fecha = firebase.firestore.FieldValue.serverTimestamp();
+
+      // Registrar efectivo en Caja.
+      if(!esCuentaCorriente && efectivo > 0){
+        const cajaEfectivo = firebaseDB.collection("caja").doc();
+
+        transaction.set(cajaEfectivo,{
+          tipo: "movimiento",
+          sesionId: estadoCaja.sesion,
+          movimiento: "ingreso",
+          medio: "efectivo",
+          importe: efectivo,
+          descripcion: "Rendición boleta " +
+            (actual.boletaNumber || id),
+          pedidoId: String(id),
+          usuario: nombreAdmin,
+          createdAt: fecha
+        });
+      }
+
+      // Registrar transferencia en Caja.
+      if(!esCuentaCorriente && transferencia > 0){
+        const cajaTransferencia = firebaseDB.collection("caja").doc();
+
+        transaction.set(cajaTransferencia,{
+          tipo: "movimiento",
+          sesionId: estadoCaja.sesion,
+          movimiento: "ingreso",
+          medio: "transferencia",
+          importe: transferencia,
+          descripcion: "Rendición boleta " +
+            (actual.boletaNumber || id),
+          pedidoId: String(id),
+          usuario: nombreAdmin,
+          createdAt: fecha
+        });
+      }
+
+      transaction.update(ref,{
+        rendicionStatus: "rendida",
+        rendicionFecha: fecha,
+        rendicionAdministrador: nombreAdmin,
+        rendicionAdministradorUid: usuario.uid,
+        rendido: true,
+        rendidoAt: fecha,
+        rendidoPor: nombreAdmin,
+        rendicionEfectivo: efectivo,
+        rendicionTransferencia: transferencia,
+        rendicionFinanciera: esCuentaCorriente
+          ? "sin_cobro"
+          : "registrada",
+        updatedAt: fecha
+      });
+    });
+
+    await registrarAuditoria({
+      accion: "boleta_rendida",
+      modulo: "rendicion_boletas",
+      descripcion: "Rindió la boleta Nº " +
+        (boleta.boletaNumber || id),
+      registroId: String(id),
+      datos: {
+        boleta: boleta.boletaNumber || "",
+        cliente: boleta.clientName || "",
+        total: Number(boleta.total || 0),
+        cuentaCorriente: esCuentaCorriente,
+        efectivo: efectivo,
+        transferencia: transferencia,
+        sesionCaja: estadoCaja?.sesion || null
+      }
+    });
 
     alert(
-      "Boleta N.º " + resultado +
-      " rendida correctamente."
+      esCuentaCorriente
+        ? "Boleta rendida correctamente. Sin ingreso a Caja."
+        : "Boleta rendida y movimientos registrados en Caja."
     );
 
     await renderRendicionBoletas();
-await renderReparto();
+    await renderReparto();
+    await renderCaja();
+    await renderHistory();
+
   }catch(error){
     console.error("Error registrando rendición:", error);
     alert(
@@ -13641,6 +14271,7 @@ await renderReparto();
     );
   }
 }
+
 
  async function renderAuditoria(){
 
@@ -15503,8 +16134,12 @@ if(o.status === "nuevo"){
 
     accounts.sort((a,b)=>a.daysLeft-b.daysLeft);
 
-    const total=accounts.reduce(
-  (sum,o)=>sum+Number(o.amountDue ?? o.total ?? 0),0
+const total=accounts.reduce(
+  (sum,o)=>sum+Math.max(
+    0,
+    Number(o.amountDue ?? o.total ?? 0) -
+    Number(o.collectedAmount || 0)
+  ),0
 );
     let html=`
       <div class="card">
@@ -15548,9 +16183,25 @@ if(o.status === "nuevo"){
               👤 Preventista: ${esc(preventista)}
             </div>
 
-            <div class="price">
-              ${dashboardMoney(o.total)}
-            </div>
+            
+<div class="price">
+  Total de la cuenta: ${dashboardMoney(o.amountDue ?? o.total ?? 0)}
+</div>
+
+<div class="small" style="color:#15803d;margin-top:6px">
+  💵 Ya cobrado: ${dashboardMoney(o.collectedAmount || 0)}
+</div>
+
+<div class="price" style="color:#c2410c;margin-top:6px">
+  Saldo pendiente: ${dashboardMoney(
+    Math.max(
+      0,
+      Number(o.amountDue ?? o.total ?? 0) -
+      Number(o.collectedAmount || 0)
+    )
+  )}
+</div>
+
 
             <div class="small">
               Plazo solicitado: ${creditDaysText(o.creditDays)}
