@@ -830,6 +830,7 @@ onclick="createPromotion()">
 <div id="promotionsList"></div>
 
 </div>
+</div>
 
 </section>
   <section id="cuentasCorrientes" class="screen">
@@ -1153,8 +1154,10 @@ onclick="createPromotion()">
     onclick="guardarDeudaProveedor()"
   >
     ➕ Registrar deuda
-  </button>
-</div> 
+ </button>
+</div>
+
+<div class="card">
     <h3>Registrar pago</h3>
     <label>Proveedor
       <select id="pagoProveedor"></select>
@@ -1472,9 +1475,10 @@ onclick="createPromotion()">
         </select>
       </label>
 
-      <label>Mes a liquidar
-        
-<div class="grid">
+      <div>
+  <label>Período a liquidar</label>
+
+  <div class="grid">
   <label>Fecha desde
     <input type="date" id="liqDesde">
   </label>
@@ -1486,11 +1490,9 @@ onclick="createPromotion()">
   <label>Fecha de cierre
     <input type="date" id="liqFechaCierre">
   </label>
+  </div>
 </div>
-
-      </label>
-    </div>
-
+</div>
     <div id="liqCamposBulto">
       <div class="grid">
         <label>Objetivo mensual
@@ -1560,7 +1562,7 @@ onclick="createPromotion()">
   </button>
 
   <div id="liqHistorialAdelantos" style="margin-top:15px"></div>
-
+</div>
 <div class="card" style="margin-top:15px">
   <h3>💰 Liquidar saldo pendiente</h3>
 
@@ -1600,7 +1602,7 @@ onclick="createPromotion()">
 </div>
   
 </div>
-  </div>
+  
 </section>
 </main></div>
 
@@ -2685,6 +2687,7 @@ async function guardarDeudaProveedor(){
 
   }
 }
+
 async function renderProveedores(){
   const lista = document.getElementById("proveedoresLista");
   const pagosLista = document.getElementById("proveedoresPagosLista");
@@ -2813,12 +2816,35 @@ ${saldoPendiente < 0 ? `
         : '<p class="small">Todavía no hay nuevas deudas registradas.</p>';
     }
 
-  }catch(error){
+   }catch(error){
     console.error("Error cargando proveedores:", error);
+
+    const deudasLista = document.getElementById("proveedoresDeudasLista");
+
+    if(lista){
+      lista.innerHTML = '<p class="small">No se pudieron cargar los proveedores.</p>';
+    }
+
+    if(pagosLista){
+      pagosLista.innerHTML = '<p class="small">No se pudieron cargar los pagos.</p>';
+    }
+
+    if(deudasLista){
+      deudasLista.innerHTML = '<p class="small">No se pudieron cargar las nuevas deudas.</p>';
+    }
+
+    if(selector){
+      selector.innerHTML = '<option value="">Error al cargar proveedores</option>';
+    }
+
+    if(deudaSelector){
+      deudaSelector.innerHTML = '<option value="">Error al cargar proveedores</option>';
+    }
+  }
     if(lista) lista.innerHTML = '<p class="small">No se pudieron cargar los proveedores.</p>';
     if(pagosLista) pagosLista.innerHTML = '<p class="small">No se pudieron cargar los pagos.</p>';
   }
-}
+
   // =====================================
 // CAJA - DISTRIBUIDORA N.A.A.
 // =====================================
@@ -8535,6 +8561,7 @@ if(id==="historial")renderHistory();
  if(id==="cuentasCorrientes") renderCurrentAccounts(); 
   if(id==="reparto") renderReparto();
   if(id==="proveedores") renderProveedores();
+  if(id==="liquidaciones") renderLiquidaciones();
   if(id==="caja") renderCaja();
   if(id==="personal") renderPersonal();
 if(id==="productos"){renderManualProducts();renderCatalogEditor();}
