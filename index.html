@@ -13740,19 +13740,7 @@ async function renderReparto(){
       );
     };
 
-        const estaAnulado = p => {
-      const estados = [p.status, p.estado].map(e =>
-        String(e || "").toLowerCase().trim()
-      );
-
-      return estados.some(e =>
-        [
-          "anulado", "anulada",
-          "cancelado", "cancelada",
-          "canceled", "cancelled"
-        ].includes(e)
-      );
-    };
+        
 
     const preparados = pedidos.filter(p => {
       const estado = String(p.status || p.estado || "")
