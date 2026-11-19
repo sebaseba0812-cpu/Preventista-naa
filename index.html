@@ -588,13 +588,7 @@ body {
 </div>
 <div class="card">
 
-  <button
-    type="button"
-    class="secondary"
-    style="width:100%;margin-bottom:12px"
-    onclick="imprimirCarteraPreventista()">
-    🖨️ Imprimir mi lista de clientes
-  </button>
+
 
   <div id="clientList"></div>
 
@@ -602,6 +596,23 @@ body {
    <div class="card hidden" id="adminClientLocations">
 
   <h3>📍 Administración de ubicaciones</h3>
+
+  <div class="card" style="background:#f1f5f9;margin-top:12px">
+  <h3>🖨️ Imprimir cartera de clientes</h3>
+
+  <label>Seleccionar cartera</label>
+  <select id="adminPrintPreventista">
+    <option value="todos">Todos los clientes</option>
+  </select>
+
+  <button
+    type="button"
+    class="primary"
+    style="width:100%;margin-top:10px"
+    onclick="imprimirCarteraAdministracion()">
+    🖨️ Imprimir lista de clientes
+  </button>
+</div>
 
   <p class="small">
     Desde acá podés buscar un comercio y corregir su ubicación en el mapa.
@@ -9465,28 +9476,37 @@ function renderClients(){
 
 
 
-function imprimirCarteraPreventista(){
 
-  if(!user || !user.uid){
-    alert("No se pudo identificar al preventista.");
+function imprimirCarteraAdministracion(){
+
+  if(!user || user.role !== "admin"){
+    alert("Esta función está disponible solamente para Administración.");
     return;
   }
 
-  if(user.role === "admin"){
-    alert("La impresión de la cartera general se habilitará desde Administración.");
+  const selector = document.getElementById("adminPrintPreventista");
+  const filtro = selector?.value || "todos";
+
+  let clientes = [...clientesAdminUbicaciones];
+
+  if(filtro !== "todos"){
+    clientes = clientes.filter(c =>
+      (c.preventistaUid || c.ownerUid || c.user?.uid) === filtro
+    );
+  }
+
+  if(!clientes.length){
+    alert("No hay clientes para imprimir con ese filtro.");
     return;
   }
 
-  const misClientes = clients.filter(c =>
-    c.user?.uid === user.uid ||
-    c.ownerUid === user.uid ||
-    c.preventistaUid === user.uid
-  );
+  const preventistaSeleccionado =
+    preventistasAdminTransferencia.find(p => p.uid === filtro);
 
-  if(!misClientes.length){
-    alert("No tenés clientes asignados para imprimir.");
-    return;
-  }
+  const titulo = filtro === "todos"
+    ? "Cartera general de clientes"
+    : "Cartera de " + (preventistaSeleccionado?.name ||
+        preventistaSeleccionado?.username || "Preventista");
 
   const ventana = window.open("", "_blank");
 
@@ -9495,80 +9515,138 @@ function imprimirCarteraPreventista(){
     return;
   }
 
-  const filas = misClientes.map((c, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>${esc(c.clientNumber || "")}</td>
-      <td>${esc(c.name || "")}</td>
-      <td>${esc(clientAddress(c))}</td>
-      <td>${esc(c.phone || "")}</td>
-      <td>${esc(c.obs || "")}</td>
-    </tr>
-  `).join("");
+  const paginas = [];
+
+  for(let i = 0; i < clientes.length; i += 30){
+
+    const grupo = clientes.slice(i, i + 30);
+
+    const filas = grupo.map((c, j) => `
+      <tr>
+        <td>${i + j + 1}</td>
+        <td>${esc(c.clientNumber || "")}</td>
+        <td>${esc(c.name || "")}</td>
+        <td>${esc(clientAddress(c))}</td>
+        <td>${esc(c.phone || "")}</td>
+        <td>${esc(c.obs || "")}</td>
+      </tr>
+    `).join("");
+
+    paginas.push(`
+      <section class="pagina">
+        <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+        <h3>${esc(titulo)}</h3>
+
+        <div class="info">
+          Cantidad de clientes: ${clientes.length}
+          <span>Página ${paginas.length + 1} de ${Math.ceil(clientes.length / 30)}</span>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>N° cliente</th>
+              <th>Negocio</th>
+              <th>Dirección</th>
+              <th>Teléfono</th>
+              <th>Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </section>
+    `);
+  }
 
   ventana.document.write(`
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Mi cartera de clientes</title>
+      <title>${esc(titulo)}</title>
+
       <style>
+        @page{
+          size:A4 portrait;
+          margin:8mm;
+        }
+
         body{
           font-family:Arial,sans-serif;
           color:#000;
-          padding:20px;
+          margin:0;
+          padding:0;
         }
+
+        .pagina{
+          width:100%;
+          page-break-after:always;
+          break-after:page;
+        }
+
+        .pagina:last-child{
+          page-break-after:auto;
+          break-after:auto;
+        }
+
         h2,h3{
           text-align:center;
-          margin:5px 0;
+          margin:2px 0;
         }
+
+        h2{
+          font-size:15px;
+        }
+
+        h3{
+          font-size:12px;
+        }
+
         .info{
-          margin:18px 0;
-          font-size:13px;
+          display:flex;
+          justify-content:space-between;
+          font-size:9px;
+          margin:8px 0 5px;
         }
+
         table{
           width:100%;
           border-collapse:collapse;
-          font-size:12px;
+          table-layout:fixed;
+          font-size:7.5px;
         }
+
         th,td{
           border:1px solid #000;
-          padding:7px;
+          padding:3px 2px;
           text-align:left;
+          overflow-wrap:anywhere;
         }
+
         th{
           background:#eee;
         }
+
+        tr{
+          page-break-inside:avoid;
+          break-inside:avoid;
+        }
+
         @media print{
-          body{padding:0;}
+          body{
+            margin:0;
+          }
         }
       </style>
     </head>
+
     <body>
-      <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
-      <h3>Mi cartera de clientes</h3>
-
-      <div class="info">
-        Preventista: ${esc(user.name || "")}<br>
-        Cantidad de clientes: ${misClientes.length}
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>N°</th>
-            <th>N° cliente</th>
-            <th>Negocio</th>
-            <th>Dirección</th>
-            <th>Teléfono</th>
-            <th>Observaciones</th>
-          </tr>
-        </thead>
-        <tbody>${filas}</tbody>
-      </table>
+      ${paginas.join("")}
 
       <script>
         window.onload = function(){
+          window.focus();
           window.print();
         };
       <\/script>
@@ -9578,6 +9656,7 @@ function imprimirCarteraPreventista(){
 
   ventana.document.close();
 }
+
 
 // CLIENTES DE FIREBASE PARA ADMINISTRAR UBICACIONES
 let clientesAdminUbicaciones = [];
@@ -9641,6 +9720,15 @@ async function cargarClientesAdminUbicaciones(){
   try{
 
     await cargarPreventistasAdminTransferencia();
+    const selector = document.getElementById("adminPrintPreventista");
+
+if (selector) {
+  selector.innerHTML =
+    '<option value="todos">Todos los clientes</option>' +
+    preventistasAdminTransferencia.map(p =>
+      `<option value="${esc(p.uid)}">${esc(p.name || p.username || "Sin nombre")}</option>`
+    ).join("");
+}
     
     const snapshot = await firebaseDB
       .collection("clients")
