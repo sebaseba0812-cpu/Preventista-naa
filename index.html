@@ -586,7 +586,19 @@ body {
 </div>
   <button class="primary" style="margin-top:10px" onclick="addClient()">➕ Agregar cliente</button>
 </div>
-<div class="card"><div id="clientList"></div></div>
+<div class="card">
+
+  <button
+    type="button"
+    class="secondary"
+    style="width:100%;margin-bottom:12px"
+    onclick="imprimirCarteraPreventista()">
+    🖨️ Imprimir mi lista de clientes
+  </button>
+
+  <div id="clientList"></div>
+
+</div>
    <div class="card hidden" id="adminClientLocations">
 
   <h3>📍 Administración de ubicaciones</h3>
@@ -9402,7 +9414,11 @@ async function actualizarClientesPreventistaFirebase(){
   }
 }
 function renderClients(){
-  let mine=clients.filter(c=>c.user?.uid===user?.uid);
+ let mine=clients.filter(c=>
+  c.user?.uid===user?.uid ||
+  c.ownerUid===user?.uid ||
+  c.preventistaUid===user?.uid
+);
 
   let options='<option value="">Seleccionar cliente...</option>';
 
@@ -9445,6 +9461,122 @@ function renderClients(){
   document.getElementById("clientList").innerHTML=html||'<div class="empty">Todavía no hay clientes.</div>';
 
   renderClientWhatsapp();
+}
+
+
+
+function imprimirCarteraPreventista(){
+
+  if(!user || !user.uid){
+    alert("No se pudo identificar al preventista.");
+    return;
+  }
+
+  if(user.role === "admin"){
+    alert("La impresión de la cartera general se habilitará desde Administración.");
+    return;
+  }
+
+  const misClientes = clients.filter(c =>
+    c.user?.uid === user.uid ||
+    c.ownerUid === user.uid ||
+    c.preventistaUid === user.uid
+  );
+
+  if(!misClientes.length){
+    alert("No tenés clientes asignados para imprimir.");
+    return;
+  }
+
+  const ventana = window.open("", "_blank");
+
+  if(!ventana){
+    alert("Permití las ventanas emergentes para poder imprimir.");
+    return;
+  }
+
+  const filas = misClientes.map((c, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${esc(c.clientNumber || "")}</td>
+      <td>${esc(c.name || "")}</td>
+      <td>${esc(clientAddress(c))}</td>
+      <td>${esc(c.phone || "")}</td>
+      <td>${esc(c.obs || "")}</td>
+    </tr>
+  `).join("");
+
+  ventana.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Mi cartera de clientes</title>
+      <style>
+        body{
+          font-family:Arial,sans-serif;
+          color:#000;
+          padding:20px;
+        }
+        h2,h3{
+          text-align:center;
+          margin:5px 0;
+        }
+        .info{
+          margin:18px 0;
+          font-size:13px;
+        }
+        table{
+          width:100%;
+          border-collapse:collapse;
+          font-size:12px;
+        }
+        th,td{
+          border:1px solid #000;
+          padding:7px;
+          text-align:left;
+        }
+        th{
+          background:#eee;
+        }
+        @media print{
+          body{padding:0;}
+        }
+      </style>
+    </head>
+    <body>
+      <h2>DISTRIBUIDORA N.A.A. S.A.S.</h2>
+      <h3>Mi cartera de clientes</h3>
+
+      <div class="info">
+        Preventista: ${esc(user.name || "")}<br>
+        Cantidad de clientes: ${misClientes.length}
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>N° cliente</th>
+            <th>Negocio</th>
+            <th>Dirección</th>
+            <th>Teléfono</th>
+            <th>Observaciones</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+
+      <script>
+        window.onload = function(){
+          window.print();
+        };
+      <\/script>
+    </body>
+    </html>
+  `);
+
+  ventana.document.close();
 }
 
 // CLIENTES DE FIREBASE PARA ADMINISTRAR UBICACIONES
