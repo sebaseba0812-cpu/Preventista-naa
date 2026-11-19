@@ -13729,24 +13729,65 @@ async function renderReparto(){
       ...doc.data()
     }));
 
+        const estaAnulado = p => {
+      const estados = [p.status, p.estado].map(e =>
+        String(e || "").toLowerCase().trim()
+      );
+
+      return estados.some(e =>
+        ["anulado", "anulada", "cancelado", "cancelada",
+         "canceled", "cancelled"].includes(e)
+      );
+    };
+
+        const estaAnulado = p => {
+      const estados = [p.status, p.estado].map(e =>
+        String(e || "").toLowerCase().trim()
+      );
+
+      return estados.some(e =>
+        [
+          "anulado", "anulada",
+          "cancelado", "cancelada",
+          "canceled", "cancelled"
+        ].includes(e)
+      );
+    };
+
     const preparados = pedidos.filter(p => {
       const estado = String(p.status || p.estado || "")
         .toLowerCase().trim();
 
-      return [
-        "preparado","preparada","preparados","preparadas"
-      ].includes(estado) &&
-      !["en_reparto","entregada","pendiente"].includes(
-        String(p.repartoStatus || "").toLowerCase()
-      );
+      return !estaAnulado(p) &&
+        [
+          "preparado", "preparada",
+          "preparados", "preparadas"
+        ].includes(estado) &&
+        !["en_reparto", "entregada", "pendiente"].includes(
+          String(p.repartoStatus || "").toLowerCase().trim()
+        );
     });
 
+    const sinVehiculo = preparados.filter(p =>
+      !["1", "2"].includes(String(
+        p.vehiculoReparto || p.repartoVehiculo || ""
+      ))
+    );
+
+    const vehiculo1 = preparados.filter(p =>
+      String(p.vehiculoReparto || p.repartoVehiculo || "") === "1"
+    );
+
+    const vehiculo2 = preparados.filter(p =>
+      String(p.vehiculoReparto || p.repartoVehiculo || "") === "2"
+    );
+
     const enReparto = pedidos.filter(p =>
-      p.repartoStatus === "en_reparto"
+      !estaAnulado(p) && p.repartoStatus === "en_reparto"
     );
 
     const pendientes = pedidos.filter(p =>
-      p.repartoStatus === "pendiente"
+      !estaAnulado(p) && p.repartoStatus === "pendiente"
     );
 
     function tarjeta(p, tipo){
@@ -13799,23 +13840,38 @@ async function renderReparto(){
             ? `<p><b>Motivo:</b> ${esc(String(p.repartoMotivoPendiente))}</p>`
             : ""}
 
-          <label>Vehículo asignado</label>
-          <select id="vehiculo-${p.id}">
-            <option value="" ${vehiculo === "" ? "selected" : ""}>
-              Sin asignar
-            </option>
-            <option value="1" ${vehiculo === "1" ? "selected" : ""}>
-              Vehículo 1
-            </option>
-            <option value="2" ${vehiculo === "2" ? "selected" : ""}>
-              Vehículo 2
-            </option>
-          </select>
-
-          <button class="primary"
-            onclick="guardarVehiculoReparto('${p.id}')">
-            Guardar vehículo
-          </button>
+                    ${
+            tipo === "preparado"
+              ? `
+                <button class="primary"
+                  onclick="cambiarVehiculoReparto('${p.id}','1')">
+                  ➡️ Asignar Vehículo 1
+                </button>
+                <button class="primary"
+                  onclick="cambiarVehiculoReparto('${p.id}','2')">
+                  ➡️ Asignar Vehículo 2
+                </button>
+              `
+              : tipo === "vehiculo"
+                ? `
+                  <button class="secondary"
+                    onclick="cambiarVehiculoReparto('${p.id}','')">
+                    ❌ Quitar del vehículo
+                  </button>
+                `
+                : `
+                  <label>Vehículo asignado</label>
+                  <select id="vehiculo-${p.id}">
+                    <option value="">Sin asignar</option>
+                    <option value="1" ${vehiculo === "1" ? "selected" : ""}>Vehículo 1</option>
+                    <option value="2" ${vehiculo === "2" ? "selected" : ""}>Vehículo 2</option>
+                  </select>
+                  <button class="primary"
+                    onclick="guardarVehiculoReparto('${p.id}')">
+                    Guardar vehículo
+                  </button>
+                `
+          }
         `;
       }
 
@@ -13840,20 +13896,40 @@ async function renderReparto(){
         </p>
 
         <button class="primary"
-          onclick="registrarSalidaReparto('1')">
-          Registrar salida - Vehículo 1
-        </button>
+  onclick="registrarSalidaReparto('1')">
+  Registrar salida - Vehículo 1 (${vehiculo1.length})
+</button>
 
         <button class="primary"
-          onclick="registrarSalidaReparto('2')">
-          Registrar salida - Vehículo 2
-        </button>
+  onclick="registrarSalidaReparto('2')">
+  Registrar salida - Vehículo 2 (${vehiculo2.length})
+</button>
       </div>
 
-      <h3>📦 Preparados para salir (${preparados.length})</h3>
-      ${preparados.length
-        ? preparados.map(p => tarjeta(p,"preparado")).join("")
-        : '<p class="small">No hay pedidos preparados.</p>'}
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:start">
+
+        <div class="card">
+          <h3>📦 Sin vehículo (${sinVehiculo.length})</h3>
+          ${sinVehiculo.length
+            ? sinVehiculo.map(p => tarjeta(p,"preparado")).join("")
+            : '<p class="small">No hay pedidos sin asignar.</p>'}
+        </div>
+
+        <div class="card">
+          <h3>🚚 Vehículo 1 (${vehiculo1.length})</h3>
+          ${vehiculo1.length
+            ? vehiculo1.map(p => tarjeta(p,"vehiculo")).join("")
+            : '<p class="small">No hay pedidos asignados.</p>'}
+        </div>
+
+        <div class="card">
+          <h3>🚚 Vehículo 2 (${vehiculo2.length})</h3>
+          ${vehiculo2.length
+            ? vehiculo2.map(p => tarjeta(p,"vehiculo")).join("")
+            : '<p class="small">No hay pedidos asignados.</p>'}
+        </div>
+
+      </div>
 
       <h3>🚚 En reparto (${enReparto.length})</h3>
       ${enReparto.length
@@ -13905,12 +13981,20 @@ async function registrarSalidaReparto(vehiculo){
         p.vehiculoReparto || p.repartoVehiculo || ""
       ) === String(vehiculo);
 
-      const anulada = [
-  "anulado",
-  "anulada",
-  "cancelado",
-  "cancelada"
-].includes(estado);
+            const estadosPedido = [p.status, p.estado].map(e =>
+        String(e || "").toLowerCase().trim()
+      );
+
+      const anulada = estadosPedido.some(e =>
+        [
+          "anulado",
+          "anulada",
+          "cancelado",
+          "cancelada",
+          "canceled",
+          "cancelled"
+        ].includes(e)
+      );
 
 return !anulada &&
   (preparado || pendiente) &&
@@ -15545,29 +15629,34 @@ async function cargarRangoClientes() {
 } 
 
   
-  async function guardarVehiculoReparto(id){
-  const selector = document.getElementById("vehiculo-" + id);
-  if(!selector) return;
-
-  const vehiculo = selector.value;
+  async function cambiarVehiculoReparto(id, vehiculo){
+  if(!["", "1", "2"].includes(String(vehiculo))) return;
 
   try{
-    await firebaseDB.collection("orders").doc(id).update({
-      vehiculoReparto: vehiculo,
+    const ref = firebaseDB.collection("orders").doc(id);
+    const pedido = await ref.get();
+
+    if(!pedido.exists){
+      alert("No se encontró el pedido.");
+      return;
+    }
+
+    if(pedido.data().repartoStatus === "en_reparto"){
+      alert("Este pedido ya está en reparto y no se puede desasignar.");
+      return;
+    }
+
+    await ref.update({
+      vehiculoReparto: String(vehiculo),
+      repartoVehiculo: String(vehiculo),
       updatedAt: new Date()
     });
-
-    alert(
-      vehiculo
-        ? "Pedido asignado al Vehículo " + vehiculo + "."
-        : "Se quitó la asignación del vehículo."
-    );
 
     await renderReparto();
 
   }catch(error){
-    console.error("Error guardando vehículo:", error);
-    alert("No se pudo guardar el vehículo. Revisá los permisos de Firebase.");
+    console.error("Error cambiando vehículo:", error);
+    alert("No se pudo actualizar la asignación.");
   }
 }
 
