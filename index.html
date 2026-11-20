@@ -14174,7 +14174,7 @@ async function renderReparto(){
                     <option value="2" ${vehiculo === "2" ? "selected" : ""}>Vehículo 2</option>
                   </select>
                   <button class="primary"
-                    onclick="guardarVehiculoReparto('${p.id}')">
+                   onclick="cambiarVehiculoReparto('${p.id}', document.getElementById('vehiculo-${p.id}').value)"
                     Guardar vehículo
                   </button>
                 `
