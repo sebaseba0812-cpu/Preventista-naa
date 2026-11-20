@@ -14062,40 +14062,62 @@ async function renderReparto(){
         
 
     const preparados = pedidos.filter(p => {
-      const estado = String(p.status || p.estado || "")
-        .toLowerCase().trim();
+  const estado = String(p.status || p.estado || "")
+    .toLowerCase().trim();
 
-      return !estaAnulado(p) &&
-        [
-          "preparado", "preparada",
-          "preparados", "preparadas"
-        ].includes(estado) &&
-        !["en_reparto", "entregada", "pendiente"].includes(
-          String(p.repartoStatus || "").toLowerCase().trim()
-        );
-    });
-
-    const sinVehiculo = preparados.filter(p =>
-      !["1", "2"].includes(String(
-        p.vehiculoReparto || p.repartoVehiculo || ""
-      ))
+  return !estaAnulado(p) &&
+    [
+      "preparado", "preparada",
+      "preparados", "preparadas"
+    ].includes(estado) &&
+    !["en_reparto", "entregada"].includes(
+      String(p.repartoStatus || "").toLowerCase().trim()
     );
+});
 
-    const vehiculo1 = preparados.filter(p =>
-      String(p.vehiculoReparto || p.repartoVehiculo || "") === "1"
-    );
+const sinVehiculo = preparados.filter(p =>
+  !["1", "2"].includes(String(
+    p.vehiculoReparto || p.repartoVehiculo || ""
+  ))
+);
 
-    const vehiculo2 = preparados.filter(p =>
-      String(p.vehiculoReparto || p.repartoVehiculo || "") === "2"
-    );
+const pendientesAsignados = pedidos.filter(p =>
+  !estaAnulado(p) &&
+  p.repartoStatus === "pendiente" &&
+  ["1", "2"].includes(String(
+    p.vehiculoReparto || p.repartoVehiculo || ""
+  ))
+);
 
-    const enReparto = pedidos.filter(p =>
-      !estaAnulado(p) && p.repartoStatus === "en_reparto"
-    );
+const vehiculo1 = [
+  ...preparados.filter(p =>
+    String(p.vehiculoReparto || p.repartoVehiculo || "") === "1"
+  ),
+  ...pendientesAsignados.filter(p =>
+    String(p.vehiculoReparto || p.repartoVehiculo || "") === "1"
+  )
+];
 
-    const pendientes = pedidos.filter(p =>
-      !estaAnulado(p) && p.repartoStatus === "pendiente"
-    );
+const vehiculo2 = [
+  ...preparados.filter(p =>
+    String(p.vehiculoReparto || p.repartoVehiculo || "") === "2"
+  ),
+  ...pendientesAsignados.filter(p =>
+    String(p.vehiculoReparto || p.repartoVehiculo || "") === "2"
+  )
+];
+
+const enReparto = pedidos.filter(p =>
+  !estaAnulado(p) && p.repartoStatus === "en_reparto"
+);
+
+const pendientes = pedidos.filter(p =>
+  !estaAnulado(p) &&
+  p.repartoStatus === "pendiente" &&
+  !["1", "2"].includes(String(
+    p.vehiculoReparto || p.repartoVehiculo || ""
+  ))
+);
 
     function tarjeta(p, tipo){
       const cliente = p.clientName || p.client ||
@@ -14138,9 +14160,9 @@ async function renderReparto(){
       }else{
         contenido += `
           <p><b>Estado:</b> ${
-            tipo === "pendiente"
-              ? "Pendiente de entrega"
-              : "Preparado para reparto"
+           p.repartoStatus === "pendiente"
+  ? "Pendiente de entrega"
+  : "Preparado para reparto"
           }</p>
 
           ${tipo === "pendiente" && p.repartoMotivoPendiente
