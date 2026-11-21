@@ -671,6 +671,59 @@ body {
   </div>
 
 </div>
+
+<div class="card hidden" id="adminClientDataEditor">
+
+  <h3>✏️ Editar datos del cliente</h3>
+
+  <p id="adminClientDataName" class="small"></p>
+
+  <label>Nombre / comercio</label>
+  <input id="editClientName">
+
+  <label>Barrio / Zona</label>
+  <input id="editClientZone">
+
+  <label>Calle</label>
+  <input id="editClientStreet">
+
+  <label>Altura / Manzana-Casa</label>
+  <input id="editClientHeight">
+
+  <label>Teléfono</label>
+  <input id="editClientPhone">
+
+  <label>WhatsApp</label>
+  <input id="editClientWhatsapp" inputmode="tel">
+
+  <label>Tipo de cliente</label>
+  <select id="editClientPaymentType"
+    onchange="document.getElementById('editClientCreditDaysBox').style.display=this.value==='cuenta_corriente'?'block':'none'">
+    <option value="contado">💵 Contado</option>
+    <option value="cuenta_corriente">🟠 Cuenta corriente</option>
+  </select>
+
+  <div id="editClientCreditDaysBox" style="display:none">
+    <label>Plazo de crédito (días)</label>
+    <input id="editClientCreditDays" type="number" min="1" step="1">
+  </div>
+
+  <label>Referencia / observaciones</label>
+  <textarea id="editClientObs" rows="2"></textarea>
+
+  <button class="primary" type="button"
+    style="width:100%;margin-top:10px"
+    onclick="guardarEdicionDatosCliente()">
+    💾 Guardar cambios
+  </button>
+
+  <button class="gray" type="button"
+    style="width:100%;margin-top:8px"
+    onclick="cerrarEditorDatosCliente()">
+    Cancelar
+  </button>
+
+</div>
      
 </div> 
 <div class="card">
@@ -9851,6 +9904,14 @@ function filtrarClientesAdmin(){
             : "⚠️ No tiene ubicación registrada"}
         </div>
 
+                <button
+          type="button"
+          class="primary"
+          data-edit-client="${esc(c.id)}"
+          style="margin-top:10px">
+          ✏️ Editar cliente
+        </button>
+
         <button
           type="button"
           class="secondary"
@@ -9869,6 +9930,16 @@ function filtrarClientesAdmin(){
     boton.addEventListener("click", function(){
 
       abrirEditorUbicacionCliente(this.dataset.editLocation);
+
+    });
+
+  });
+
+    lista.querySelectorAll("[data-edit-client]").forEach(boton => {
+
+    boton.addEventListener("click", function(){
+
+      abrirEditorDatosCliente(this.dataset.editClient);
 
     });
 
@@ -9980,6 +10051,142 @@ async function transferirClientePreventista(clienteId){
     console.error("Error transfiriendo cliente:", error);
 
     alert("No se pudo transferir el cliente. Revisá Firebase.");
+
+  }
+}
+
+// EDITOR DE DATOS DEL CLIENTE - ADMINISTRADOR
+
+let adminClientDataActual = null;
+
+function abrirEditorDatosCliente(id){
+
+  if(user?.role !== "admin"){
+    alert("Solamente el administrador puede editar clientes.");
+    return;
+  }
+
+  const cliente = clientesAdminUbicaciones.find(
+    c => String(c.id) === String(id)
+  );
+
+  if(!cliente){
+    alert("No se encontró el cliente.");
+    return;
+  }
+
+  adminClientDataActual = cliente;
+
+  document.getElementById("adminClientDataEditor")
+    .classList.remove("hidden");
+
+  document.getElementById("adminClientDataName").textContent =
+    cliente.name + " · Cliente N.º " + (cliente.clientNumber || "Sin número");
+
+  document.getElementById("editClientName").value = cliente.name || "";
+  document.getElementById("editClientZone").value = cliente.zone || "";
+  document.getElementById("editClientStreet").value = cliente.street || "";
+  document.getElementById("editClientHeight").value = cliente.height || "";
+  document.getElementById("editClientPhone").value = cliente.phone || "";
+  document.getElementById("editClientWhatsapp").value =
+    String(cliente.whatsapp || "").replace(/^\+54 9\s*/, "");
+
+  document.getElementById("editClientPaymentType").value =
+    cliente.paymentType || "contado";
+
+  document.getElementById("editClientCreditDays").value =
+    cliente.creditDays || "";
+
+  document.getElementById("editClientObs").value = cliente.obs || "";
+
+  document.getElementById("editClientCreditDaysBox").style.display =
+    cliente.paymentType === "cuenta_corriente" ? "block" : "none";
+
+  document.getElementById("adminClientDataEditor")
+    .scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function cerrarEditorDatosCliente(){
+
+  document.getElementById("adminClientDataEditor")
+    .classList.add("hidden");
+
+  adminClientDataActual = null;
+}
+
+async function guardarEdicionDatosCliente(){
+
+  if(user?.role !== "admin"){
+    alert("Solamente el administrador puede editar clientes.");
+    return;
+  }
+
+  if(!adminClientDataActual){
+    alert("No hay ningún cliente seleccionado.");
+    return;
+  }
+
+  const obtener = id =>
+    document.getElementById(id)?.value?.trim() || "";
+
+  const name = obtener("editClientName");
+  const paymentType = obtener("editClientPaymentType");
+
+  if(!name){
+    alert("Ingresá el nombre del comercio.");
+    return;
+  }
+
+  let creditDays = 0;
+
+  if(paymentType === "cuenta_corriente"){
+    creditDays = Number(obtener("editClientCreditDays"));
+
+    if(!Number.isInteger(creditDays) || creditDays < 1){
+      alert("Ingresá un plazo de crédito válido.");
+      return;
+    }
+  }
+
+  const whatsapp = (function(v){
+    let n = String(v || "").replace(/[^\d]/g,"");
+    return n
+      ? "+54 9 " + n.replace(/^549/,"").replace(/^54/,"").replace(/^9/,"")
+      : "";
+  })(obtener("editClientWhatsapp"));
+
+  const cambios = {
+    name: name,
+    zone: obtener("editClientZone"),
+    street: obtener("editClientStreet"),
+    height: obtener("editClientHeight"),
+    phone: obtener("editClientPhone"),
+    whatsapp: whatsapp,
+    paymentType: paymentType,
+    creditDays: creditDays,
+    obs: obtener("editClientObs"),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try{
+
+    await firebaseDB
+      .collection("clients")
+      .doc(String(adminClientDataActual.id))
+      .update(cambios);
+
+    Object.assign(adminClientDataActual, cambios);
+
+    alert("Los datos del cliente se actualizaron correctamente.");
+
+    cerrarEditorDatosCliente();
+    filtrarClientesAdmin();
+
+  }catch(error){
+
+    console.error("Error editando cliente:", error);
+
+    alert("No se pudieron guardar los cambios. Revisá Firebase.");
 
   }
 }
@@ -12645,7 +12852,8 @@ function claimAdminOnly(){
   return true;
 }
 
-  function obtenerUnidadesPorEmpaqueReclamo(linea){
+  
+function obtenerUnidadesPorEmpaqueReclamo(linea){
   const productos = getProducts();
 
   const producto = productos.find(p =>
@@ -12653,8 +12861,20 @@ function claimAdminOnly(){
     String(p[1]).trim() === String(linea.presentation || "").trim()
   );
 
-  return Math.max(1, Number(producto?.[4]) || 1);
+  if(!producto) return 1;
+
+  const unidadesRegistradas = Number(producto[4]) || 0;
+
+  if(unidadesRegistradas > 1){
+    return unidadesRegistradas;
+  }
+
+  const empaque = String(producto[2] || "");
+  const coincidencia = empaque.match(/x\s*(\d+)/i);
+
+  return coincidencia ? Math.max(1, Number(coincidencia[1])) : 1;
 }
+
 
 async function buscarBoletaReclamo(){
   if(!claimAdminOnly()) return;
