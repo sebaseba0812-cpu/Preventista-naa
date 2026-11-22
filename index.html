@@ -11271,24 +11271,96 @@ delete cart[key];
 renderProducts();
 }
 function renderCart(){
-let entries=Object.entries(cart);
-let box=document.getElementById("cartList");
-if(!box)return;
-if(!entries.length){box.innerHTML='<div class="empty">Todavía no cargaste mercadería.</div>';updateTotal();return}
-box.innerHTML='<h3>Mercadería cargada</h3>'+entries.map(([key,q])=>{
-let [name,pres]=key.split("|"),p=getProducts().find(x=>x[0]===name&&x[1]===pres);
-let unit=tierPrice(p,q),line=q*unit;
-return '<div class="orderline"><div><b>'+esc(name)+'</b><div class="muted">'+esc(pres)+' · Cantidad: '+q+' · $'+money(unit)+' c/u</div></div><div style="text-align:right"><b>$'+money(line)+'</b><br><button class="danger remove-cart" type="button" data-key="'+encodeURIComponent(key)+'">❌ Quitar</button></div></div>';
-}).join("");
-document.querySelectorAll(".remove-cart").forEach(btn=>{
-btn.onclick=function(){quitarProducto(decodeURIComponent(this.dataset.key));};
-});
-updateTotal();
+
+  let entries = Object.entries(cart);
+  let box = document.getElementById("cartList");
+
+  if(!box)return;
+
+  if(!entries.length){
+    box.innerHTML = '<div class="empty">Todavía no cargaste mercadería.</div>';
+    updateTotal();
+    return;
+  }
+
+  const esCargaManualAdmin =
+    JSON.parse(localStorage.getItem("NAA_USER") || "{}").role === "admin" &&
+    !!adminManualPreventistaSeleccionado?.uid;
+
+  box.innerHTML = '<h3>Mercadería cargada</h3>' +
+  entries.map(([key,q])=>{
+
+    let [name,pres] = key.split("|");
+
+    let p = getProducts().find(
+      x => x[0] === name && x[1] === pres
+    );
+
+    let precioBase = tierPrice(p,q);
+
+    let unit = esCargaManualAdmin
+      ? Number(adminManualPrecios[key] ?? precioBase)
+      : precioBase;
+
+    let line = q * unit;
+
+    let precioHTML = esCargaManualAdmin
+      ? '<label style="display:block;font-size:12px;margin-top:6px">Precio unitario editable</label>' +
+        '<input type="number" min="0" step="0.01" ' +
+        'class="admin-manual-price" ' +
+        'data-key="' + encodeURIComponent(key) + '" ' +
+        'value="' + unit + '" style="width:115px;text-align:right">'
+      : '<div class="muted">$' + money(unit) + ' c/u</div>';
+
+    return '<div class="orderline">' +
+      '<div>' +
+        '<b>' + esc(name) + '</b>' +
+        '<div class="muted">' + esc(pres) + ' · Cantidad: ' + q + '</div>' +
+        precioHTML +
+      '</div>' +
+      '<div style="text-align:right">' +
+        '<b>$' + money(line) + '</b><br>' +
+        '<button class="danger remove-cart" type="button" data-key="' +
+        encodeURIComponent(key) + '">❌ Quitar</button>' +
+      '</div>' +
+    '</div>';
+
+  }).join("");
+
+  document.querySelectorAll(".remove-cart").forEach(btn=>{
+    btn.onclick = function(){
+      quitarProducto(decodeURIComponent(this.dataset.key));
+    };
+  });
+
+  document.querySelectorAll(".admin-manual-price").forEach(input=>{
+    input.addEventListener("change",function(){
+
+      const key = decodeURIComponent(this.dataset.key);
+      const precio = Number(this.value);
+
+      if(!Number.isFinite(precio) || precio < 0){
+        alert("Ingresá un precio válido.");
+        renderCart();
+        return;
+      }
+
+      adminManualPrecios[key] = precio;
+
+      renderCart();
+    });
+  });
+
+  updateTotal();
 }
 function setQty(key,val){cart[key]=Math.max(0,parseInt(val||0));renderProducts()}
 function updateTotal(){
 
   let total = 0;
+
+  const esCargaManualAdmin =
+    JSON.parse(localStorage.getItem("NAA_USER") || "{}").role === "admin" &&
+    !!adminManualPreventistaSeleccionado?.uid;
 
   Object.entries(cart).forEach(([key,q])=>{
 
@@ -11299,7 +11371,14 @@ function updateTotal(){
     );
 
     if(p && q > 0){
-      total += q * tierPrice(p,q);
+
+      let precioBase = tierPrice(p,q);
+
+      let unit = esCargaManualAdmin
+        ? Number(adminManualPrecios[key] ?? precioBase)
+        : precioBase;
+
+      total += q * unit;
     }
 
   });
@@ -11335,7 +11414,15 @@ async function saveOrder(){
 
     if(!p)return;
 
-    let unit=tierPrice(p,q);
+    const esCargaManualAdmin =
+  JSON.parse(localStorage.getItem("NAA_USER") || "{}").role === "admin" &&
+  !!adminManualPreventistaSeleccionado?.uid;
+
+let precioBase = tierPrice(p,q);
+
+let unit = esCargaManualAdmin
+  ? Number(adminManualPrecios[key] ?? precioBase)
+  : precioBase;
 
     lines.push({
       name,
@@ -11518,7 +11605,15 @@ function saveDraft(){
 
     if(!p) return;
 
-    let unit = tierPrice(p,q);
+    const esCargaManualAdmin =
+  JSON.parse(localStorage.getItem("NAA_USER") || "{}").role === "admin" &&
+  !!adminManualPreventistaSeleccionado?.uid;
+
+let precioBase = tierPrice(p,q);
+
+let unit = esCargaManualAdmin
+  ? Number(adminManualPrecios[key] ?? precioBase)
+  : precioBase;
     let lineTotal = q * unit;
 
     lines.push({
@@ -11931,7 +12026,9 @@ localStorage.removeItem("NAA_DRAFT_ORDER");
     save();
 
     cart = {};
-    promotionCart = [];
+promotionCart = [];
+adminManualPrecios = {};
+adminManualPreventistaSeleccionado = null;
 
     document.getElementById("orderObs").value = "";
 
@@ -12209,10 +12306,36 @@ function loadDraftToEditor(){
     const raw=localStorage.getItem("NAA_DRAFT_ORDER");
     if(!raw){alert("No hay un borrador guardado.");return;}
     const draft=JSON.parse(raw);
-    cart={};
-    (draft.lines||[]).forEach(line=>{
-      cart[String(line.name||"")+"|"+String(line.presentation||"")]=Number(line.qty||0);
-    });
+    cart = {};
+adminManualPrecios = {};
+
+const usuarioActual = JSON.parse(
+  localStorage.getItem("NAA_USER") || "{}"
+);
+
+if(usuarioActual.role === "admin" && draft.preventistaUid){
+  adminManualPreventistaSeleccionado = {
+    uid: draft.preventistaUid,
+    nombre: draft.preventistaName || draft.user || ""
+  };
+}
+
+(draft.lines || []).forEach(line => {
+  const key =
+    String(line.name || "") + "|" +
+    String(line.presentation || "");
+
+  cart[key] = Number(line.qty || 0);
+
+  if(
+    usuarioActual.role === "admin" &&
+    draft.preventistaUid &&
+    line.unit !== undefined &&
+    line.unit !== null
+  ){
+    adminManualPrecios[key] = Number(line.unit);
+  }
+});
     const clientSelect=document.getElementById("orderClient");
     if(clientSelect)clientSelect.value=String(draft.clientId||"");
     const obs=document.getElementById("orderObs");
@@ -15519,8 +15642,11 @@ async function cargarPreventistasRangos() {
 
 // CARGA MANUAL DE PEDIDOS DESDE ADMIN
 let adminManualPreventistaSeleccionado = null;
+let adminManualPrecios = {};
 
 async function abrirCargaPedidoManual(){
+    adminManualPrecios = {};
+  adminManualPreventistaSeleccionado = null;
 
   const usuario = JSON.parse(localStorage.getItem("NAA_USER") || "{}");
 
@@ -15581,6 +15707,7 @@ async function continuarCargaManual(){
     return;
   }
 
+adminManualPrecios = {};
   adminManualPreventistaSeleccionado = {
     uid: uid,
     nombre: select.options[select.selectedIndex].textContent
