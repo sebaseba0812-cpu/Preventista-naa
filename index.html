@@ -11315,7 +11315,13 @@ function renderCart(){
     return '<div class="orderline">' +
       '<div>' +
         '<b>' + esc(name) + '</b>' +
-        '<div class="muted">' + esc(pres) + ' · Cantidad: ' + q + '</div>' +
+        (esCargaManualAdmin
+  ? '<label style="display:block;font-size:12px;margin-top:6px">Cantidad (unidades)</label>' +
+    '<input type="number" min="1" step="1" ' +
+    'class="admin-manual-qty" ' +
+    'data-key="' + encodeURIComponent(key) + '" ' +
+    'value="' + q + '" style="width:115px;text-align:right">'
+  : '<div class="muted">Cantidad: ' + q + '</div>') +
         precioHTML +
       '</div>' +
       '<div style="text-align:right">' +
@@ -11348,6 +11354,24 @@ function renderCart(){
       adminManualPrecios[key] = precio;
 
       renderCart();
+    });
+  });
+
+    document.querySelectorAll(".admin-manual-qty").forEach(input=>{
+    input.addEventListener("change",function(){
+
+      const key = decodeURIComponent(this.dataset.key);
+      const cantidad = parseInt(this.value, 10);
+
+      if(!Number.isInteger(cantidad) || cantidad < 1){
+        alert("Ingresá una cantidad válida, como mínimo 1.");
+        renderCart();
+        return;
+      }
+
+      cart[key] = cantidad;
+
+      renderProducts();
     });
   });
 
